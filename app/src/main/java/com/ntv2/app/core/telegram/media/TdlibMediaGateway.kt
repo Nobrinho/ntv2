@@ -1,0 +1,62 @@
+﻿package com.ntv2.app.core.telegram.media
+
+import kotlinx.coroutines.delay
+
+data class TelegramVideoMessage(
+    val mediaId: String,
+    val chatId: Long,
+    val messageId: Long,
+    val title: String,
+    val caption: String?,
+    val fileName: String?,
+    val durationSeconds: Int,
+    val thumbnailPath: String?,
+    val fileId: Int
+)
+
+interface TdlibMediaGateway {
+    suspend fun listVideoMessages(chatId: Long, limit: Int = 200): List<TelegramVideoMessage>
+}
+
+class FakeTdlibMediaGateway : TdlibMediaGateway {
+    override suspend fun listVideoMessages(chatId: Long, limit: Int): List<TelegramVideoMessage> {
+        delay(180)
+        val base = (chatId * 1000).toInt()
+        val items = listOf(
+            TelegramVideoMessage(
+                mediaId = "${chatId}_1",
+                chatId = chatId,
+                messageId = base + 1L,
+                title = "Documentário Completo ${chatId}",
+                caption = "Versão remasterizada",
+                fileName = "documentario_${chatId}.mp4",
+                durationSeconds = 60 * 42,
+                thumbnailPath = null,
+                fileId = base + 1
+            ),
+            TelegramVideoMessage(
+                mediaId = "${chatId}_2",
+                chatId = chatId,
+                messageId = base + 2L,
+                title = "Episódio Especial ${chatId}",
+                caption = "Temporada 1",
+                fileName = "episodio_especial_${chatId}.mkv",
+                durationSeconds = 60 * 28,
+                thumbnailPath = null,
+                fileId = base + 2
+            ),
+            TelegramVideoMessage(
+                mediaId = "${chatId}_3",
+                chatId = chatId,
+                messageId = base + 3L,
+                title = "Clipe Curto ${chatId}",
+                caption = "Conteúdo curto",
+                fileName = "clip_${chatId}.mp4",
+                durationSeconds = 60 * 3,
+                thumbnailPath = null,
+                fileId = base + 3
+            )
+        )
+        return items.take(limit)
+    }
+}

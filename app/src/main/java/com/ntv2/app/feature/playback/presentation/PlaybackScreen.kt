@@ -16,14 +16,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.widget.FrameLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.core.player.PlaybackState
 
+@OptIn(UnstableApi::class)
 @Composable
 fun PlaybackScreen(
     mediaId: String,
@@ -75,7 +81,22 @@ fun PlaybackScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text("Reprodução", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-        if (!state.thumbnailPath.isNullOrBlank()) {
+        if (!state.isPlaceholderMode) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = false
+                        setKeepContentOnPlayerReset(true)
+                        layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                    }
+                },
+                update = { view -> view.player = viewModel.player },
+                onRelease = { view -> view.player = null },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(360.dp)
+            )
+        } else if (!state.thumbnailPath.isNullOrBlank()) {
             AsyncImage(
                 model = state.thumbnailPath,
                 contentDescription = state.title,

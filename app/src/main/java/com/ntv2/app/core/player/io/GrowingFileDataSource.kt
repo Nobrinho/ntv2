@@ -60,6 +60,11 @@ private class GrowingFileDataSource(
         randomAccessFile?.seek(readPosition)
         transferStarted(dataSpec)
 
+        // C2: garante que o Telegram baixe a faixa exigida por ESTE open (posição de seek
+        // ou moov no fim do MP4). lengthBytes=0 => baixa até o fim a partir do offset.
+        val requestLen = if (dataSpec.length == C.LENGTH_UNSET.toLong()) 0L else dataSpec.length
+        partialFileAccessor.requestRange(fileId, readPosition, requestLen, priority = 32)
+
         return bytesRemaining
     }
 
@@ -73,10 +78,13 @@ private class GrowingFileDataSource(
             return C.RESULT_END_OF_INPUT
         }
 
-        val startWait = SystemClock.elapsedRealtime()
+        var lastReadableEnd = -1L
+        var lastProgressAt = SystemClock.elapsedRealtime()
         while (true) {
-            val available = partialFileAccessor.downloadedBytes(fileId)
-            val canRead = available - readPosition
+            // C2: contiguidade real a partir do downloadOffset, não o downloadedSize (que pode
+            // conter regiões esparsas/"garbage" segundo a doc do TDLib).
+            val readableEnd = partialFileAccessor.contiguousReadableEnd(fileId)
+            val canRead = readableEnd - readPosition
 
             if (canRead > 0L) {
                 val maxByAvailability = min(canRead, length.toLong()).toInt()
@@ -103,7 +111,14 @@ private class GrowingFileDataSource(
                 return C.RESULT_END_OF_INPUT
             }
 
-            if (SystemClock.elapsedRealtime() - startWait > stallTimeoutMs) {
+            // Timeout adaptativo: só aborta se o prefixo contíguo não avançar dentro da janela
+            // (rede lenta mas progredindo não é abortada; rede parada é).
+            val now = SystemClock.elapsedRealtime()
+            if (readableEnd > lastReadableEnd) {
+                lastReadableEnd = readableEnd
+                lastProgressAt = now
+            }
+            if (now - lastProgressAt > stallTimeoutMs) {
                 throw IOException("Timeout aguardando bytes do arquivo parcial")
             }
 

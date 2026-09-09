@@ -101,7 +101,8 @@ class RealTdlibGateway(
 
     private var client: Client? = null
     private val auth = MutableStateFlow<TdAuthorizationState>(TdAuthorizationState.Unknown)
-    private val fileStates = mutableMapOf<Int, MutableStateFlow<TdlibPlaybackFileState>>()
+    // Acessado pela thread de callback do TDLib (handleUpdate) e por corrotinas.
+    private val fileStates = java.util.concurrent.ConcurrentHashMap<Int, MutableStateFlow<TdlibPlaybackFileState>>()
 
     override val authorizationState: Flow<TdAuthorizationState> = auth.asStateFlow()
 
@@ -201,12 +202,12 @@ class RealTdlibGateway(
         val result = send(TdApi.DownloadFile(fileId, 2, 0L, 0L, false))
         val file = (result as? TdApi.File) ?: throw IllegalStateException("Invalid TDLib file for fileId=$fileId")
         return mapFileState(file).also { state ->
-            fileStates.getOrPut(fileId) { MutableStateFlow(state) }.value = state
+            fileStates.computeIfAbsent(fileId) { MutableStateFlow(state) }.value = state
         }
     }
 
     override fun observeFile(fileId: Int): Flow<TdlibPlaybackFileState> {
-        return fileStates.getOrPut(fileId) {
+        return fileStates.computeIfAbsent(fileId) {
             MutableStateFlow(
                 TdlibPlaybackFileState(
                     fileId = fileId,
@@ -261,7 +262,7 @@ class RealTdlibGateway(
             is TdApi.UpdateAuthorizationState -> mapAuthorizationState(update.authorizationState)
             is TdApi.UpdateFile -> {
                 val mapped = mapFileState(update.file)
-                fileStates.getOrPut(mapped.fileId) { MutableStateFlow(mapped) }.value = mapped
+                fileStates.computeIfAbsent(mapped.fileId) { MutableStateFlow(mapped) }.value = mapped
             }
         }
     }
@@ -361,7 +362,9 @@ class RealTdlibGateway(
             localPath = localPath,
             downloadedBytes = downloaded,
             expectedBytes = expected,
-            isDownloadComplete = file.local?.isDownloadingCompleted == true
+            isDownloadComplete = file.local?.isDownloadingCompleted == true,
+            downloadOffset = file.local?.downloadOffset ?: 0L,
+            downloadedPrefixBytes = file.local?.downloadedPrefixSize ?: 0L
         )
     }
 

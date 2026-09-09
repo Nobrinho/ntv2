@@ -3,6 +3,7 @@
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.Player
 import com.ntv2.app.core.player.PlaybackSnapshot
 import com.ntv2.app.core.player.PlaybackState
 import com.ntv2.app.core.player.controller.PlaybackController
@@ -57,6 +58,8 @@ class PlayerScreenViewModel(
     private val _uiState = MutableStateFlow(PlayerScreenUiState())
     val uiState: StateFlow<PlayerScreenUiState> = _uiState.asStateFlow()
     private var observeJob: Job? = null
+
+    val player: Player? get() = playbackController.player
 
     init {
         observeJob = viewModelScope.launch {

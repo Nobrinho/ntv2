@@ -17,8 +17,8 @@ class TdlibTelegramPlaybackDataSource(
 ) : TelegramPlaybackDataSource {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val states = mutableMapOf<Int, MutableStateFlow<TdlibPlaybackFileState>>()
-    private val observeJobs = mutableMapOf<Int, Job>()
+    private val states = java.util.concurrent.ConcurrentHashMap<Int, MutableStateFlow<TdlibPlaybackFileState>>()
+    private val observeJobs = java.util.concurrent.ConcurrentHashMap<Int, Job>()
 
     override suspend fun inspectFile(fileId: Int): PlaybackFileHandle? {
         return runCatching { playbackGateway.openFile(fileId) }
@@ -28,21 +28,20 @@ class TdlibTelegramPlaybackDataSource(
 
     override suspend fun open(fileId: Int): PlaybackFileHandle {
         val opened = playbackGateway.openFile(fileId)
-        val stateFlow = states.getOrPut(fileId) { MutableStateFlow(opened) }
+        val stateFlow = states.computeIfAbsent(fileId) { MutableStateFlow(opened) }
         stateFlow.value = opened
 
-        observeJobs[fileId]?.cancel()
-        observeJobs[fileId] = scope.launch {
+        observeJobs.put(fileId, scope.launch {
             playbackGateway.observeFile(fileId).collect { remote ->
                 states[fileId]?.update { remote }
             }
-        }
+        })?.cancel()
 
         return opened.toHandle()
     }
 
     override fun observe(fileId: Int): Flow<TdlibPlaybackFileState> {
-        return states.getOrPut(fileId) {
+        return states.computeIfAbsent(fileId) {
             MutableStateFlow(
                 TdlibPlaybackFileState(
                     fileId = fileId,
@@ -72,6 +71,22 @@ class TdlibTelegramPlaybackDataSource(
     override fun expectedBytes(fileId: Int): Long? = states[fileId]?.value?.expectedBytes
 
     override fun isComplete(fileId: Int): Boolean = states[fileId]?.value?.isDownloadComplete ?: false
+
+    override fun contiguousReadableEnd(fileId: Int): Long {
+        val state = states[fileId]?.value ?: return 0L
+        val prefixEnd = state.downloadOffset + state.downloadedPrefixBytes
+        return if (state.isDownloadComplete) {
+            maxOf(state.expectedBytes, prefixEnd, state.downloadedBytes)
+        } else {
+            prefixEnd
+        }
+    }
+
+    override fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) {
+        scope.launch {
+            playbackGateway.requestChunk(fileId, offsetBytes, lengthBytes, priority)
+        }
+    }
 
     private fun TdlibPlaybackFileState.toHandle(): PlaybackFileHandle {
         return PlaybackFileHandle(

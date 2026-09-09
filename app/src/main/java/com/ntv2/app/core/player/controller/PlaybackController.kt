@@ -1,5 +1,6 @@
 package com.ntv2.app.core.player.controller
 
+import androidx.media3.common.Player
 import com.ntv2.app.core.player.PlaybackCoordinator
 import com.ntv2.app.core.player.PlaybackMedia
 import com.ntv2.app.core.player.PlaybackSnapshot
@@ -33,6 +34,7 @@ enum class PlaybackPrepareErrorStage {
 }
 
 interface PlaybackController {
+    val player: Player?
     val snapshot: StateFlow<PlaybackSnapshot>
     suspend fun prepare(request: PlaybackPrepareRequest): PlaybackPrepareResult
     fun play()
@@ -48,6 +50,8 @@ class DefaultPlaybackController(
     private val coordinator: PlaybackCoordinator,
     private val sourceResolver: PlaybackSourceResolver
 ) : PlaybackController {
+
+    override val player: Player? get() = coordinator.player
 
     override val snapshot: StateFlow<PlaybackSnapshot> = coordinator.snapshot
 

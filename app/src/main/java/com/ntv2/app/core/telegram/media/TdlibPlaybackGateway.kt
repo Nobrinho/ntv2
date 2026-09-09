@@ -19,7 +19,11 @@ data class TdlibPlaybackFileState(
     val localPath: String,
     val downloadedBytes: Long,
     val expectedBytes: Long,
-    val isDownloadComplete: Boolean
+    val isDownloadComplete: Boolean,
+    // C2: offset a partir do qual o prefixo contíguo é válido e o tamanho desse prefixo.
+    // Necessário para MP4 com moov no fim e para seeks (TDLib: downloadOffset/downloadedPrefixSize).
+    val downloadOffset: Long = 0L,
+    val downloadedPrefixBytes: Long = 0L
 )
 
 interface TdlibPlaybackGateway {
@@ -54,7 +58,9 @@ class FakeTdlibPlaybackGateway(
             localPath = file.absolutePath,
             downloadedBytes = file.length(),
             expectedBytes = expected,
-            isDownloadComplete = file.length() >= expected
+            isDownloadComplete = file.length() >= expected,
+            downloadOffset = 0L,
+            downloadedPrefixBytes = file.length()
         )
 
         val flow = states.getOrPut(fileId) { MutableStateFlow(initial) }
@@ -109,7 +115,8 @@ class FakeTdlibPlaybackGateway(
                     cursor += write
                     flow.value = flow.value.copy(
                         downloadedBytes = maxOf(flow.value.downloadedBytes, cursor),
-                        isDownloadComplete = cursor >= expected
+                        isDownloadComplete = cursor >= expected,
+                        downloadedPrefixBytes = maxOf(flow.value.downloadedPrefixBytes, cursor)
                     )
                     delay(if (priority > 0) 20 else 45)
                 }

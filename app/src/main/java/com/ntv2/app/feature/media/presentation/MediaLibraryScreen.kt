@@ -1,8 +1,10 @@
 ﻿package com.ntv2.app.feature.media.presentation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -245,6 +247,21 @@ private fun MediaCard(
                 model = media.thumbnailPath,
                 contentDescription = media.title
             )
+            if (media.progress > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(Color(0x33FFFFFF))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(media.progress)
+                            .height(4.dp)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
             Text(media.title, maxLines = 2)
             Text("${media.durationSeconds / 60} min")
         }

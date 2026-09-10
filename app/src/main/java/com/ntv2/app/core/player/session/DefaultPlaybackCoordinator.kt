@@ -208,6 +208,11 @@ class DefaultPlaybackCoordinator(
         }
     }
 
+    override fun discardMedia(fileId: Int) {
+        if (fileId <= 0) return
+        scope.launch { playbackDataSource.deleteFile(fileId) }
+    }
+
     override fun release() {
         stopInternal(closeSession = true, deleteFile = true)
         exoPlayer?.removeListener(playerListener)

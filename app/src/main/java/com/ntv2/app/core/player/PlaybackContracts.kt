@@ -48,4 +48,7 @@ interface PlaybackCoordinator {
     fun onAppStop()
     fun onAppResume()
     fun release()
+
+    /** Cancela e remove o download de um arquivo, mesmo que a reprodução nunca tenha iniciado. */
+    fun discardMedia(fileId: Int)
 }

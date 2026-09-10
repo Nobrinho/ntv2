@@ -10,8 +10,14 @@ interface PartialFileAccessor {
     fun isComplete(fileId: Int): Boolean
 
     /**
-     * Offset absoluto até onde os bytes estão disponíveis de forma contígua
-     * (downloadOffset + downloadedPrefixSize). É o limite seguro de leitura.
+     * Início da região contígua disponível (downloadOffset; 0 se o download concluiu).
+     * Ler numa posição ANTES disso retornaria lixo — a região baixada começa aqui.
+     */
+    fun contiguousReadableStart(fileId: Int): Long
+
+    /**
+     * Fim da região contígua disponível (downloadOffset + downloadedPrefixSize).
+     * A leitura só é válida no intervalo [contiguousReadableStart, contiguousReadableEnd).
      */
     fun contiguousReadableEnd(fileId: Int): Long
 

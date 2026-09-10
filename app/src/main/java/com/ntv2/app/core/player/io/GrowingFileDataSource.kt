@@ -14,16 +14,18 @@ import java.io.RandomAccessFile
 
 class GrowingFileDataSourceFactory(
     private val partialFileAccessor: PartialFileAccessor,
-    private val stallTimeoutMs: Long
+    private val stallTimeoutMs: Long,
+    private val readAheadBytes: Long
 ) : DataSource.Factory {
     override fun createDataSource(): DataSource {
-        return GrowingFileDataSource(partialFileAccessor, stallTimeoutMs)
+        return GrowingFileDataSource(partialFileAccessor, stallTimeoutMs, readAheadBytes)
     }
 }
 
 private class GrowingFileDataSource(
     private val partialFileAccessor: PartialFileAccessor,
-    private val stallTimeoutMs: Long
+    private val stallTimeoutMs: Long,
+    private val readAheadBytes: Long
 ) : BaseDataSource(false) {
 
     private var dataSpec: DataSpec? = null
@@ -31,6 +33,13 @@ private class GrowingFileDataSource(
     private var fileId: Int = -1
     private var readPosition: Long = 0L
     private var bytesRemaining: Long = C.LENGTH_UNSET.toLong()
+    // Base do download deste open (posição do dataSpec). O download é sempre estendido de forma
+    // CONTÍGUA a partir daqui (só aumentando o tamanho) — nunca movendo o offset à frente, o que
+    // criaria um buraco entre a fronteira baixada e a nova posição e travaria a leitura.
+    private var downloadBaseOffset: Long = 0L
+    // Até onde já pedimos download; mantém uma janela à frente do ponto de leitura em vez de
+    // baixar o arquivo inteiro de uma vez (isso enchia o disco e o TDLib abortava por ENOSPC).
+    private var lastRequestedEnd: Long = 0L
 
     override fun open(dataSpec: DataSpec): Long {
         this.dataSpec = dataSpec
@@ -58,10 +67,13 @@ private class GrowingFileDataSource(
         randomAccessFile?.seek(readPosition)
         transferStarted(dataSpec)
 
-        // C2: garante que o Telegram baixe a faixa exigida por ESTE open (posição de seek
-        // ou moov no fim do MP4). lengthBytes=0 => baixa até o fim a partir do offset.
-        val requestLen = if (dataSpec.length == C.LENGTH_UNSET.toLong()) 0L else dataSpec.length
+        // C2: baixa a faixa exigida por ESTE open (posição de seek ou índice no fim do arquivo),
+        // mas LIMITADA a uma janela — não o arquivo inteiro (evita encher o disco). Leituras de
+        // tamanho fixo (ex.: índice do MKV) pedem exatamente o solicitado.
+        downloadBaseOffset = readPosition
+        val requestLen = if (bytesRemaining == C.LENGTH_UNSET.toLong()) readAheadBytes else bytesRemaining
         partialFileAccessor.requestRange(fileId, readPosition, requestLen, priority = 32)
+        lastRequestedEnd = readPosition + requestLen
 
         return bytesRemaining
     }
@@ -80,9 +92,12 @@ private class GrowingFileDataSource(
             // C2: contiguidade real a partir do downloadOffset, não o downloadedSize (que pode
             // conter regiões esparsas/"garbage" segundo a doc do TDLib). A decisão fica isolada
             // em PartialReadPlanner (testável em JVM).
+            val readableStart = partialFileAccessor.contiguousReadableStart(fileId)
             val readableEnd = partialFileAccessor.contiguousReadableEnd(fileId)
+            maybeRequestAhead()
             when (
                 val plan = PartialReadPlanner.plan(
+                    contiguousReadableStart = readableStart,
                     contiguousReadableEnd = readableEnd,
                     readPosition = readPosition,
                     bytesRemaining = bytesRemaining,
@@ -111,7 +126,8 @@ private class GrowingFileDataSource(
                     // Timeout adaptativo: aborta só se NÃO houver avanço dentro do stallTimeout.
                     val progressed = runBlocking {
                         withTimeoutOrNull(stallTimeoutMs) {
-                            partialFileAccessor.awaitReadableBeyond(fileId, readableEnd)
+                            // Espera até que a posição de leitura esteja coberta pela região baixada.
+                            partialFileAccessor.awaitReadableBeyond(fileId, readPosition)
                             true
                         }
                     }
@@ -120,6 +136,28 @@ private class GrowingFileDataSource(
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Mantém ~[readAheadBytes] baixados à frente do ponto de leitura, estendendo a solicitação
+     * conforme a reprodução avança — em vez de baixar tudo de uma vez. Só para leituras de
+     * tamanho aberto (playback); leituras fixas (índice) não estendem.
+     */
+    private fun maybeRequestAhead() {
+        if (bytesRemaining != C.LENGTH_UNSET.toLong()) return
+        if (partialFileAccessor.isComplete(fileId)) return
+        val desiredEnd = readPosition + readAheadBytes
+        if (desiredEnd > lastRequestedEnd) {
+            // Estende o download CONTÍGUO a partir da base (aumenta o tamanho), sem mover o offset
+            // à frente — assim não abre buracos que travariam a leitura.
+            partialFileAccessor.requestRange(
+                fileId,
+                downloadBaseOffset,
+                desiredEnd - downloadBaseOffset,
+                priority = 32
+            )
+            lastRequestedEnd = desiredEnd
         }
     }
 
@@ -135,6 +173,8 @@ private class GrowingFileDataSource(
             fileId = -1
             readPosition = 0L
             bytesRemaining = C.LENGTH_UNSET.toLong()
+            downloadBaseOffset = 0L
+            lastRequestedEnd = 0L
         }
     }
 

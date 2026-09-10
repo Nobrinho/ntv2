@@ -23,21 +23,26 @@ internal object PartialReadPlanner {
     }
 
     /**
-     * @param contiguousReadableEnd offset absoluto até onde há bytes contíguos.
+     * @param contiguousReadableStart início da região contígua baixada (downloadOffset).
+     * @param contiguousReadableEnd fim da região contígua (downloadOffset + prefixo).
      * @param readPosition posição atual de leitura.
      * @param bytesRemaining limite restante do DataSpec, ou C.LENGTH_UNSET se ilimitado.
      * @param requestedLength quanto o chamador quer ler.
      * @param isComplete se o download do arquivo foi concluído.
      */
     fun plan(
+        contiguousReadableStart: Long,
         contiguousReadableEnd: Long,
         readPosition: Long,
         bytesRemaining: Long,
         requestedLength: Int,
         isComplete: Boolean
     ): Plan {
-        val canRead = contiguousReadableEnd - readPosition
-        if (canRead > 0L) {
+        // Só é seguro ler se a posição está DENTRO da região contígua baixada. Ler antes do início
+        // (offset à frente após um seek) retornaria lixo do disco → extrator falha (varint inválido).
+        val withinRegion = readPosition >= contiguousReadableStart && readPosition < contiguousReadableEnd
+        if (withinRegion) {
+            val canRead = contiguousReadableEnd - readPosition
             val maxByAvailability = min(canRead, requestedLength.toLong())
             val maxToRead = if (bytesRemaining == C.LENGTH_UNSET.toLong()) {
                 maxByAvailability

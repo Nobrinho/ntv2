@@ -47,6 +47,10 @@ class RealTdlibGateway(
     companion object {
         private const val TAG = "RealTdlibGateway"
 
+        // Trecho inicial baixado ao abrir um arquivo (suficiente para começar; o resto vem pela
+        // janela deslizante durante a reprodução).
+        private const val INITIAL_DOWNLOAD_LIMIT_BYTES = 8L * 1024L * 1024L
+
         @Volatile
         private var nativeProbeDone = false
 
@@ -234,7 +238,10 @@ class RealTdlibGateway(
 
     override suspend fun openFile(fileId: Int): TdlibPlaybackFileState {
         ensureConfigured()
-        val result = send(TdApi.DownloadFile(fileId, 2, 0L, 0L, false))
+        // Inicia o download de um trecho inicial (cria o arquivo local e chega ao mínimo de
+        // playback) em prioridade alta. limit=0 baixava o arquivo INTEIRO (enchia o disco →
+        // abort do TDLib); a janela deslizante continua durante a reprodução.
+        val result = send(TdApi.DownloadFile(fileId, 32, 0L, INITIAL_DOWNLOAD_LIMIT_BYTES, false))
         val file = (result as? TdApi.File) ?: throw IllegalStateException("Invalid TDLib file for fileId=$fileId")
         return mapFileState(file).also { state ->
             fileStates.computeIfAbsent(fileId) { MutableStateFlow(state) }.value = state
@@ -267,6 +274,9 @@ class RealTdlibGateway(
 
     override suspend fun deleteFile(fileId: Int) {
         if (!config.enabled) return
+        // Cancela o download ativo ANTES de deletar. Sem isso, o download seguia ativo após sair
+        // do vídeo e ocupava os slots do TDLib, impedindo o próximo vídeo de baixar (downloaded=0).
+        runCatching { send(TdApi.CancelDownloadFile(fileId, false)) }
         runCatching { send(TdApi.DeleteFile(fileId)) }
         fileStates.remove(fileId)
     }
@@ -282,12 +292,21 @@ class RealTdlibGateway(
                 Log.e(TAG, "Inicialização TDLib bloqueada: ${nativeFailureReason()}")
                 throw IllegalStateException("TDLib native library unavailable")
             }
+            // Reduz o log nativo do TDLib (default é altíssimo: milhares de linhas/s no download,
+            // custo de I/O e ruído). 1 = apenas erros.
+            runCatching { Client.execute(TdApi.SetLogVerbosityLevel(1)) }
             // Cliente novo: precisará receber SetTdlibParameters uma vez.
             authReducer.onClientCreated()
             client = Client.create(
                 { update -> handleUpdate(update) },
-                { error -> auth.value = TdAuthorizationState.Error(error.message ?: "TDLib error") },
-                { error -> auth.value = TdAuthorizationState.Error(error.message ?: "TDLib fatal error") }
+                { error ->
+                    Log.e(TAG, "TDLib update exception", error)
+                    auth.value = TdAuthorizationState.Error(error.message ?: "TDLib error")
+                },
+                { error ->
+                    Log.e(TAG, "TDLib fatal error", error)
+                    auth.value = TdAuthorizationState.Error(error.message ?: "TDLib fatal error")
+                }
             )
         }
     }
@@ -426,9 +445,7 @@ class RealTdlibGateway(
         return suspendCancellableCoroutine { continuation ->
             activeClient.send(
                 function,
-                Client.ResultHandler { result ->
-                    continuation.resume(result)
-                },
+                Client.ResultHandler { result -> continuation.resume(result) },
                 Client.ExceptionHandler { exception ->
                     continuation.resume(TdApi.Error(500, exception.message ?: "Unknown TDLib error"))
                 }

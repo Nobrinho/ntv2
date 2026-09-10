@@ -32,6 +32,7 @@ class DefaultPlaybackSourceResolverTest {
         override fun downloadedBytes(fileId: Int): Long = handle?.downloadedBytes ?: 0L
         override fun expectedBytes(fileId: Int): Long? = handle?.expectedBytes
         override fun isComplete(fileId: Int): Boolean = handle?.isDownloadComplete ?: false
+        override fun contiguousReadableStart(fileId: Int): Long = 0L
         override fun contiguousReadableEnd(fileId: Int): Long = handle?.downloadedBytes ?: 0L
         override fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) = Unit
         override suspend fun awaitReadableBeyond(fileId: Int, position: Long) = Unit

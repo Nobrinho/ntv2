@@ -62,6 +62,7 @@ interface AppContainer {
     val playbackCoordinator: PlaybackCoordinator
     val playbackSourceResolver: PlaybackSourceResolver
     val playbackController: PlaybackController
+    val playbackProgressStore: PlaybackProgressStore
 
     val userPreferencesDataStore: UserPreferencesDataStore
     val authSessionStore: AuthSessionStore
@@ -155,11 +156,12 @@ class DefaultAppContainer(
     private val growingFileDataSourceFactory: GrowingFileDataSourceFactory by lazy {
         GrowingFileDataSourceFactory(
             partialFileAccessor = telegramPlaybackDataSource,
-            stallTimeoutMs = playbackTuning.ioStallTimeoutMs
+            stallTimeoutMs = playbackTuning.ioStallTimeoutMs,
+            readAheadBytes = playbackTuning.aheadWindowBytes
         )
     }
 
-    private val playbackProgressStore: PlaybackProgressStore by lazy {
+    override val playbackProgressStore: PlaybackProgressStore by lazy {
         RoomPlaybackProgressStore(appDatabase.playbackProgressDao())
     }
 

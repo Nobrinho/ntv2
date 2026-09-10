@@ -80,6 +80,12 @@ class TdlibTelegramPlaybackDataSource(
 
     override fun isComplete(fileId: Int): Boolean = states[fileId]?.value?.isDownloadComplete ?: false
 
+    override fun contiguousReadableStart(fileId: Int): Long {
+        val state = states[fileId]?.value ?: return 0L
+        // Concluído: o arquivo todo está no disco, região começa em 0.
+        return if (state.isDownloadComplete) 0L else state.downloadOffset
+    }
+
     override fun contiguousReadableEnd(fileId: Int): Long {
         val state = states[fileId]?.value ?: return 0L
         val prefixEnd = state.downloadOffset + state.downloadedPrefixBytes
@@ -101,9 +107,12 @@ class TdlibTelegramPlaybackDataSource(
             delay(200L)
             return
         }
+        // Espera até que [position] esteja DENTRO da região contígua baixada (início <= position < fim),
+        // ou o download concluir. Só checar o fim causava leitura de lixo quando o offset estava à
+        // frente da posição (após seek); e loop ocupado quando a região não cobria a posição.
         flow.first { state ->
             state.isDownloadComplete ||
-                (state.downloadOffset + state.downloadedPrefixBytes) > position
+                (state.downloadOffset <= position && position < state.downloadOffset + state.downloadedPrefixBytes)
         }
     }
 

@@ -71,7 +71,8 @@ fun AppNavHost(
                 factory = MediaLibraryViewModelFactory(
                     mediaRepository = appContainer.mediaRepository,
                     channelRepository = appContainer.channelRepository,
-                    settingsRepository = appContainer.settingsRepository
+                    settingsRepository = appContainer.settingsRepository,
+                    progressStore = appContainer.playbackProgressStore
                 )
             )
             MediaLibraryScreen(

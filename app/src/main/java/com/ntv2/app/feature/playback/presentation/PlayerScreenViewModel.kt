@@ -62,6 +62,7 @@ class PlayerScreenViewModel(
 
     val player: Player? get() = playbackController.player
     private var prepareJob: Job? = null
+    private var preparingFileId: Int = 0
 
     init {
         observeJob = viewModelScope.launch {
@@ -74,6 +75,7 @@ class PlayerScreenViewModel(
     fun onAction(action: PlayerScreenAction) {
         when (action) {
             is PlayerScreenAction.Prepare -> {
+                preparingFileId = action.fileId
                 _uiState.update {
                     it.copy(
                         title = action.title,
@@ -121,6 +123,9 @@ class PlayerScreenViewModel(
         observeJob?.cancel()
         prepareJob?.cancel()
         playbackController.release()
+        // Garante o cancelamento do download mesmo se a reprodução nunca iniciou (evita downloads
+        // órfãos que acumulam e travam os próximos vídeos).
+        playbackController.discardMedia(preparingFileId)
         super.onCleared()
     }
 

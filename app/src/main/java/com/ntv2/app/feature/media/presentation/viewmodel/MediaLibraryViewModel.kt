@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ntv2.app.feature.channels.domain.ChannelRepository
 import com.ntv2.app.feature.channels.domain.ChannelSummary
 import com.ntv2.app.feature.media.domain.MediaItemSummary
+import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.feature.media.domain.MediaRepository
 import com.ntv2.app.feature.media.presentation.state.ChannelMediaSectionUi
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
@@ -45,6 +46,7 @@ class MediaLibraryViewModel(
     private val mediaRepository: MediaRepository,
     private val channelRepository: ChannelRepository,
     private val settingsRepository: SettingsRepository,
+    private val progressStore: PlaybackProgressStore,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
@@ -107,6 +109,8 @@ class MediaLibraryViewModel(
                 if (_uiState.value.lastFocusedMediaId != null) {
                     _uiState.update { it.copy(focusRestoreNonce = it.focusRestoreNonce + 1) }
                 }
+                // Atualiza o indicador de progresso após voltar da reprodução.
+                projectSections()
             }
 
             MediaLibraryAction.ClearError -> {
@@ -236,6 +240,8 @@ class MediaLibraryViewModel(
             val hasQuery = currentQuery().isNotBlank()
 
             val sections = withContext(ioDispatcher) {
+                val visibleIds = channelOrder.flatMap { id -> channelItems[id].orEmpty().map { it.mediaId } }
+                val savedPositions = progressStore.savedPositions(visibleIds)
                 channelOrder.mapNotNull { id ->
                     val items = channelItems[id] ?: return@mapNotNull null
                     val filtered = items.filter { it.durationSeconds >= minSeconds }
@@ -243,7 +249,7 @@ class MediaLibraryViewModel(
                     ChannelMediaSectionUi(
                         channelId = id,
                         channelName = channelTitles[id] ?: "",
-                        items = filtered.map { it.toCard() },
+                        items = filtered.map { it.toCard(savedPositions[it.mediaId] ?: 0L) },
                         hasMore = (channelCursors[id] ?: 0L) != 0L
                     )
                 }
@@ -270,23 +276,33 @@ class MediaLibraryViewModel(
         loadingMore.clear()
     }
 
-    private fun MediaItemSummary.toCard(): MediaCardUi = MediaCardUi(
-        mediaId = mediaId,
-        channelId = channelId,
-        channelName = channelTitle,
-        title = title,
-        caption = caption,
-        fileName = fileName,
-        durationSeconds = durationSeconds,
-        thumbnailPath = thumbnailPath,
-        fileId = fileId
-    )
+    private fun MediaItemSummary.toCard(savedPositionMs: Long): MediaCardUi {
+        val totalMs = durationSeconds * 1_000L
+        val progress = if (totalMs > 0L && savedPositionMs > 0L) {
+            (savedPositionMs.toFloat() / totalMs).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+        return MediaCardUi(
+            mediaId = mediaId,
+            channelId = channelId,
+            channelName = channelTitle,
+            title = title,
+            caption = caption,
+            fileName = fileName,
+            durationSeconds = durationSeconds,
+            thumbnailPath = thumbnailPath,
+            fileId = fileId,
+            progress = progress
+        )
+    }
 }
 
 class MediaLibraryViewModelFactory(
     private val mediaRepository: MediaRepository,
     private val channelRepository: ChannelRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val progressStore: PlaybackProgressStore
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -294,7 +310,8 @@ class MediaLibraryViewModelFactory(
             return MediaLibraryViewModel(
                 mediaRepository = mediaRepository,
                 channelRepository = channelRepository,
-                settingsRepository = settingsRepository
+                settingsRepository = settingsRepository,
+                progressStore = progressStore
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

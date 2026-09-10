@@ -4,6 +4,7 @@ import com.ntv2.app.feature.channels.domain.ChannelRepository
 import com.ntv2.app.feature.channels.domain.ChannelSummary
 import com.ntv2.app.feature.media.domain.MediaItemSummary
 import com.ntv2.app.feature.media.domain.MediaPage
+import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.feature.media.domain.MediaRepository
 import com.ntv2.app.feature.settings.domain.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -78,10 +79,22 @@ class MediaLibraryViewModelTest {
         fileId = fileId
     )
 
-    private fun buildViewModel(media: MediaRepository) = MediaLibraryViewModel(
+    private class FakeProgressStore(private val positions: Map<String, Long> = emptyMap()) : PlaybackProgressStore {
+        override suspend fun resumePositionMs(mediaId: String, durationMs: Long): Long = 0L
+        override suspend fun onProgress(mediaId: String, positionMs: Long, durationMs: Long) = Unit
+        override suspend fun clear(mediaId: String) = Unit
+        override suspend fun savedPositions(mediaIds: List<String>): Map<String, Long> =
+            positions.filterKeys { it in mediaIds }
+    }
+
+    private fun buildViewModel(
+        media: MediaRepository,
+        progressStore: PlaybackProgressStore = FakeProgressStore()
+    ) = MediaLibraryViewModel(
         mediaRepository = media,
         channelRepository = FakeChannelRepo(channelsFlow),
         settingsRepository = FakeSettingsRepo(minDurationFlow),
+        progressStore = progressStore,
         ioDispatcher = dispatcher
     )
 
@@ -144,6 +157,19 @@ class MediaLibraryViewModelTest {
         val section = vm.uiState.value.sections[0]
         assertEquals(2, section.items.size)
         assertFalse(section.hasMore)
+    }
+
+    @Test
+    fun `card reflete o progresso salvo`() = runTest(dispatcher) {
+        val media = FakeMediaRepo().apply {
+            listPages = { channelId, _ -> MediaPage(listOf(item("a", channelId, 600, 1)), nextCursor = 0L) }
+        }
+        // 600s de vídeo, 300s assistidos => 0.5
+        val vm = buildViewModel(media, FakeProgressStore(mapOf("a" to 300_000L)))
+        channelsFlow.value = listOf(ChannelSummary(1, "C1", null))
+        advanceUntilIdle()
+
+        assertEquals(0.5f, vm.uiState.value.sections[0].items[0].progress, 0.001f)
     }
 
     @Test

@@ -9,7 +9,9 @@ data class MediaCardUi(
     val fileName: String?,
     val durationSeconds: Int,
     val thumbnailPath: String?,
-    val fileId: Int
+    val fileId: Int,
+    /** Fração assistida (0f..1f) para o indicador de progresso; 0 se não houver. */
+    val progress: Float = 0f
 )
 
 data class ChannelMediaSectionUi(

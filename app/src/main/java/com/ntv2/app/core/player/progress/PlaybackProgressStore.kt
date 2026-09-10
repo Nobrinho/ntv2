@@ -13,6 +13,9 @@ interface PlaybackProgressStore {
 
     /** Remove o progresso salvo (ex.: assistido até o fim). */
     suspend fun clear(mediaId: String)
+
+    /** Posição salva (ms) por mídia, apenas para os ids com progresso. Para exibir nos cards. */
+    suspend fun savedPositions(mediaIds: List<String>): Map<String, Long>
 }
 
 class RoomPlaybackProgressStore(
@@ -40,4 +43,9 @@ class RoomPlaybackProgressStore(
     }
 
     override suspend fun clear(mediaId: String) = dao.delete(mediaId)
+
+    override suspend fun savedPositions(mediaIds: List<String>): Map<String, Long> {
+        if (mediaIds.isEmpty()) return emptyMap()
+        return dao.getAll(mediaIds).associate { it.mediaId to it.positionMs }
+    }
 }

@@ -45,6 +45,7 @@ interface PlaybackController {
     fun onAppStop()
     fun onAppResume()
     fun release()
+    fun discardMedia(fileId: Int)
 }
 
 class DefaultPlaybackController(
@@ -109,4 +110,6 @@ class DefaultPlaybackController(
     override fun onAppResume() = coordinator.onAppResume()
 
     override fun release() = coordinator.release()
+
+    override fun discardMedia(fileId: Int) = coordinator.discardMedia(fileId)
 }

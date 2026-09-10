@@ -57,7 +57,7 @@ class DefaultPlaybackSourceResolver(
     private val telegramPlaybackDataSource: TelegramPlaybackDataSource
 ) : PlaybackSourceResolver {
 
-    private val minBytesForPlayback = 8L * 1024L * 1024L
+    private val minBytesForPlayback = 4L * 1024L * 1024L
 
     override suspend fun resolve(request: PlaybackSourceRequest): PlaybackSourceResolution {
         if (request.mediaId.isBlank() || request.fileId <= 0) {
@@ -84,7 +84,7 @@ class DefaultPlaybackSourceResolver(
                     fileId = request.fileId,
                     offsetBytes = currentBytes,
                     lengthBytes = missingBootstrap,
-                    priority = 2
+                    priority = 32
                 )
             }
             return PlaybackSourceResolution.Missing(

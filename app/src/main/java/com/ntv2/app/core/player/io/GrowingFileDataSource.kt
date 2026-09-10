@@ -1,12 +1,13 @@
 ﻿package com.ntv2.app.core.player.io
 
 import android.net.Uri
-import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import com.ntv2.app.core.player.telegram.PartialFileAccessor
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
@@ -14,17 +15,15 @@ import kotlin.math.min
 
 class GrowingFileDataSourceFactory(
     private val partialFileAccessor: PartialFileAccessor,
-    private val pollIntervalMs: Long,
     private val stallTimeoutMs: Long
 ) : DataSource.Factory {
     override fun createDataSource(): DataSource {
-        return GrowingFileDataSource(partialFileAccessor, pollIntervalMs, stallTimeoutMs)
+        return GrowingFileDataSource(partialFileAccessor, stallTimeoutMs)
     }
 }
 
 private class GrowingFileDataSource(
     private val partialFileAccessor: PartialFileAccessor,
-    private val pollIntervalMs: Long,
     private val stallTimeoutMs: Long
 ) : BaseDataSource(false) {
 
@@ -78,8 +77,6 @@ private class GrowingFileDataSource(
             return C.RESULT_END_OF_INPUT
         }
 
-        var lastReadableEnd = -1L
-        var lastProgressAt = SystemClock.elapsedRealtime()
         while (true) {
             // C2: contiguidade real a partir do downloadOffset, não o downloadedSize (que pode
             // conter regiões esparsas/"garbage" segundo a doc do TDLib).
@@ -111,18 +108,18 @@ private class GrowingFileDataSource(
                 return C.RESULT_END_OF_INPUT
             }
 
-            // Timeout adaptativo: só aborta se o prefixo contíguo não avançar dentro da janela
-            // (rede lenta mas progredindo não é abortada; rede parada é).
-            val now = SystemClock.elapsedRealtime()
-            if (readableEnd > lastReadableEnd) {
-                lastReadableEnd = readableEnd
-                lastProgressAt = now
+            // A4: espera reativa — suspende até o prefixo contíguo avançar (sinalizado pelo
+            // StateFlow do download), em vez de fazer polling com sleep na thread do loader.
+            // Timeout adaptativo: aborta apenas se NÃO houver nenhum avanço dentro do stallTimeout.
+            val progressed = runBlocking {
+                withTimeoutOrNull(stallTimeoutMs) {
+                    partialFileAccessor.awaitReadableBeyond(fileId, readableEnd)
+                    true
+                }
             }
-            if (now - lastProgressAt > stallTimeoutMs) {
+            if (progressed == null) {
                 throw IOException("Timeout aguardando bytes do arquivo parcial")
             }
-
-            SystemClock.sleep(pollIntervalMs)
         }
     }
 

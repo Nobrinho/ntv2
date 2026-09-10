@@ -2,24 +2,40 @@
 
 import com.ntv2.app.core.telegram.media.TdlibMediaGateway
 import com.ntv2.app.feature.media.domain.MediaItemSummary
+import com.ntv2.app.feature.media.domain.MediaPage
 
 class TdlibTelegramMediaDataSource(
     private val tdlibMediaGateway: TdlibMediaGateway
 ) : TelegramMediaDataSource {
 
-    override suspend fun listChannelVideos(channelId: Long, channelTitle: String): List<MediaItemSummary> {
-        return tdlibMediaGateway.listVideoMessages(chatId = channelId, limit = 300).map { video ->
-            MediaItemSummary(
-                mediaId = video.mediaId,
-                channelId = channelId,
-                channelTitle = channelTitle,
-                title = video.title,
-                caption = video.caption,
-                fileName = video.fileName,
-                durationSeconds = video.durationSeconds,
-                thumbnailPath = video.thumbnailPath,
-                fileId = video.fileId
-            )
-        }
+    override suspend fun listChannelVideos(channelId: Long, channelTitle: String, fromMessageId: Long, limit: Int): MediaPage {
+        val page = tdlibMediaGateway.listVideoMessages(chatId = channelId, fromMessageId = fromMessageId, limit = limit)
+        return MediaPage(
+            items = page.videos.map { video -> video.toSummary(channelId, channelTitle) },
+            nextCursor = page.nextFromMessageId
+        )
     }
+
+    override suspend fun searchChannelVideos(channelId: Long, channelTitle: String, query: String, fromMessageId: Long, limit: Int): MediaPage {
+        val page = tdlibMediaGateway.searchVideoMessages(chatId = channelId, query = query, fromMessageId = fromMessageId, limit = limit)
+        return MediaPage(
+            items = page.videos.map { video -> video.toSummary(channelId, channelTitle) },
+            nextCursor = page.nextFromMessageId
+        )
+    }
+
+    private fun com.ntv2.app.core.telegram.media.TelegramVideoMessage.toSummary(
+        channelId: Long,
+        channelTitle: String
+    ): MediaItemSummary = MediaItemSummary(
+        mediaId = mediaId,
+        channelId = channelId,
+        channelTitle = channelTitle,
+        title = title,
+        caption = caption,
+        fileName = fileName,
+        durationSeconds = durationSeconds,
+        thumbnailPath = thumbnailPath,
+        fileId = fileId
+    )
 }

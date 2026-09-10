@@ -15,11 +15,13 @@ import com.ntv2.app.feature.media.presentation.state.MediaNavigationPayload
 import com.ntv2.app.feature.settings.domain.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
@@ -32,6 +34,7 @@ sealed interface MediaLibraryAction {
     data class SearchChanged(val query: String) : MediaLibraryAction
     data class VideoFocused(val mediaId: String) : MediaLibraryAction
     data class OpenVideo(val media: MediaCardUi) : MediaLibraryAction
+    data class LoadMoreChannel(val channelId: Long) : MediaLibraryAction
     data object ConsumeNavigation : MediaLibraryAction
     data object ScreenResumed : MediaLibraryAction
     data object ClearError : MediaLibraryAction
@@ -46,10 +49,16 @@ class MediaLibraryViewModel(
     private val _uiState = MutableStateFlow(MediaLibraryUiState(isLoading = true))
     val uiState: StateFlow<MediaLibraryUiState> = _uiState.asStateFlow()
 
-    private var rawItems: List<MediaItemSummary> = emptyList()
+    // Paginação por canal: cada canal acumula suas páginas e mantém seu cursor.
+    private val channelOrder = mutableListOf<Long>()
+    private val channelTitles = mutableMapOf<Long, String>()
+    private val channelItems = mutableMapOf<Long, List<MediaItemSummary>>()
+    private val channelCursors = mutableMapOf<Long, Long>() // nextFromMessageId; 0 => fim
+    private val loadingMore = mutableSetOf<Long>()
     private var currentChannelsCount: Int = 0
-    private var reloadJob: Job? = null
-    private var searchJob: Job? = null
+    private var loadJob: Job? = null
+    private var searchDebounceJob: Job? = null
+    private val pageSize = 40
 
     init {
         observeSelectionAndFilter()
@@ -58,12 +67,14 @@ class MediaLibraryViewModel(
     fun onAction(action: MediaLibraryAction) {
         when (action) {
             MediaLibraryAction.Load,
-            MediaLibraryAction.Refresh -> reload()
+            MediaLibraryAction.Refresh -> loadFirstPages()
 
             is MediaLibraryAction.SearchChanged -> {
                 _uiState.update { it.copy(searchQuery = action.query) }
-                scheduleProjection()
+                scheduleReload()
             }
+
+            is MediaLibraryAction.LoadMoreChannel -> loadMore(action.channelId)
 
             is MediaLibraryAction.VideoFocused -> {
                 _uiState.update { it.copy(lastFocusedMediaId = action.mediaId) }
@@ -103,18 +114,12 @@ class MediaLibraryViewModel(
     }
 
     private fun observeSelectionAndFilter() {
+        // Seleção de canais dispara (re)carga; mudança de duração mínima apenas re-projeta.
         viewModelScope.launch {
-            combine(
-                channelRepository.observeSelectedChannels(),
-                settingsRepository.minDurationMinutes
-            ) { channels, minDuration ->
-                channels to minDuration
-            }.collect { (channels, minDuration) ->
+            channelRepository.observeSelectedChannels().collect { channels ->
                 currentChannelsCount = channels.size
-                _uiState.update { it.copy(minDurationMinutes = minDuration) }
-
                 if (channels.isEmpty()) {
-                    rawItems = emptyList()
+                    clearChannelData()
                     _uiState.update {
                         it.copy(
                             isLoading = false,
@@ -124,18 +129,33 @@ class MediaLibraryViewModel(
                         )
                     }
                 } else {
-                    reload(channelsOverride = channels)
+                    loadFirstPages(channels)
                 }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.minDurationMinutes.collect { minDuration ->
+                _uiState.update { it.copy(minDurationMinutes = minDuration) }
+                projectSections()
             }
         }
     }
 
-    private fun reload(channelsOverride: List<ChannelSummary>? = null) {
-        reloadJob?.cancel()
-        reloadJob = viewModelScope.launch {
+    private fun scheduleReload() {
+        searchDebounceJob?.cancel()
+        searchDebounceJob = viewModelScope.launch {
+            delay(300L)
+            loadFirstPages()
+        }
+    }
+
+    /** Carrega a primeira página de cada canal (modo lista ou busca, conforme a query atual). */
+    private fun loadFirstPages(channelsOverride: List<ChannelSummary>? = null) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             val channels = channelsOverride ?: channelRepository.observeSelectedChannels().first()
             if (channels.isEmpty()) {
-                rawItems = emptyList()
+                clearChannelData()
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -147,99 +167,118 @@ class MediaLibraryViewModel(
                 return@launch
             }
 
+            clearChannelData()
+            channels.sortedBy { it.title }.forEach { channelOrder += it.id }
+            channels.forEach { channelTitles[it.id] = it.title }
+
             _uiState.update { it.copy(isLoading = true, errorMessage = null, emptyState = null) }
+            val query = currentQuery()
             runCatching {
                 withContext(Dispatchers.IO) {
-                    val merged = mutableListOf<MediaItemSummary>()
-                    channels.forEach { channel ->
-                        merged += mediaRepository.fetchChannelVideos(channel.id, channel.title)
+                    coroutineScope {
+                        channels.map { channel ->
+                            async { channel.id to fetchPage(channel.id, channel.title, query, fromMessageId = 0L) }
+                        }.awaitAll()
                     }
-                    merged
                 }
-            }.onSuccess { result ->
-                rawItems = result
+            }.onSuccess { results ->
+                results.forEach { (id, page) ->
+                    channelItems[id] = page.items
+                    channelCursors[id] = page.nextCursor
+                }
                 _uiState.update { it.copy(isLoading = false) }
-                scheduleProjection(immediate = true)
+                projectSections()
             }.onFailure { error ->
                 _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = error.message ?: "Falha ao carregar biblioteca"
-                    )
+                    it.copy(isLoading = false, errorMessage = error.message ?: "Falha ao carregar biblioteca")
                 }
             }
         }
     }
 
-    private fun scheduleProjection(immediate: Boolean = false) {
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch {
-            if (!immediate) {
-                delay(250L)
+    /** Carrega a próxima página de um canal específico e a acrescenta. */
+    private fun loadMore(channelId: Long) {
+        val cursor = channelCursors[channelId] ?: 0L
+        if (cursor == 0L || channelId in loadingMore) return
+        val title = channelTitles[channelId] ?: return
+        loadingMore += channelId
+        viewModelScope.launch {
+            val query = currentQuery()
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    fetchPage(channelId, title, query, fromMessageId = cursor)
+                }
+            }.onSuccess { page ->
+                val existing = channelItems[channelId].orEmpty()
+                val seen = existing.mapTo(HashSet()) { it.mediaId }
+                channelItems[channelId] = existing + page.items.filter { seen.add(it.mediaId) }
+                channelCursors[channelId] = page.nextCursor
+                projectSections()
+            }.onFailure { error ->
+                _uiState.update { it.copy(errorMessage = error.message ?: "Falha ao carregar mais") }
             }
-            applyUiProjection()
+            loadingMore -= channelId
         }
     }
 
-    private fun applyUiProjection() {
+    private suspend fun fetchPage(channelId: Long, channelTitle: String, query: String, fromMessageId: Long) =
+        if (query.isBlank()) {
+            mediaRepository.fetchChannelVideos(channelId, channelTitle, fromMessageId, pageSize)
+        } else {
+            mediaRepository.searchChannelVideos(channelId, channelTitle, query, fromMessageId, pageSize)
+        }
+
+    private fun projectSections() {
         viewModelScope.launch {
-            val state = _uiState.value
-            val minSeconds = state.minDurationMinutes * 60
-            val query = state.searchQuery.trim().lowercase()
+            val minSeconds = _uiState.value.minDurationMinutes * 60
+            val hasQuery = currentQuery().isNotBlank()
 
             val sections = withContext(Dispatchers.Default) {
-                val filteredByDuration = rawItems.asSequence()
-                    .filter { item -> item.durationSeconds >= minSeconds }
-
-                val filtered = if (query.isBlank()) {
-                    filteredByDuration.toList()
-                } else {
-                    filteredByDuration.filter { item ->
-                        item.title.lowercase().contains(query) ||
-                            (item.caption?.lowercase()?.contains(query) == true) ||
-                            (item.fileName?.lowercase()?.contains(query) == true)
-                    }.toList()
+                channelOrder.mapNotNull { id ->
+                    val items = channelItems[id] ?: return@mapNotNull null
+                    val filtered = items.filter { it.durationSeconds >= minSeconds }
+                    if (filtered.isEmpty()) return@mapNotNull null
+                    ChannelMediaSectionUi(
+                        channelId = id,
+                        channelName = channelTitles[id] ?: "",
+                        items = filtered.map { it.toCard() },
+                        hasMore = (channelCursors[id] ?: 0L) != 0L
+                    )
                 }
-
-                filtered
-                    .groupBy { it.channelId to it.channelTitle }
-                    .map { (channel, items) ->
-                        ChannelMediaSectionUi(
-                            channelId = channel.first,
-                            channelName = channel.second,
-                            items = items.map { summary ->
-                                MediaCardUi(
-                                    mediaId = summary.mediaId,
-                                    channelId = summary.channelId,
-                                    channelName = summary.channelTitle,
-                                    title = summary.title,
-                                    caption = summary.caption,
-                                    fileName = summary.fileName,
-                                    durationSeconds = summary.durationSeconds,
-                                    thumbnailPath = summary.thumbnailPath,
-                                    fileId = summary.fileId
-                                )
-                            }
-                        )
-                    }
-                    .sortedBy { it.channelName }
             }
 
             val emptyState = when {
                 currentChannelsCount == 0 -> MediaLibraryEmptyState.NoChannelsSelected
-                sections.isEmpty() && query.isNotBlank() -> MediaLibraryEmptyState.NoSearchResults
+                sections.isEmpty() && hasQuery -> MediaLibraryEmptyState.NoSearchResults
                 sections.isEmpty() -> MediaLibraryEmptyState.NoVideosFound
                 else -> null
             }
 
-            _uiState.update {
-                it.copy(
-                    sections = sections,
-                    emptyState = emptyState
-                )
-            }
+            _uiState.update { it.copy(sections = sections, emptyState = emptyState) }
         }
     }
+
+    private fun currentQuery(): String = _uiState.value.searchQuery.trim()
+
+    private fun clearChannelData() {
+        channelOrder.clear()
+        channelTitles.clear()
+        channelItems.clear()
+        channelCursors.clear()
+        loadingMore.clear()
+    }
+
+    private fun MediaItemSummary.toCard(): MediaCardUi = MediaCardUi(
+        mediaId = mediaId,
+        channelId = channelId,
+        channelName = channelTitle,
+        title = title,
+        caption = caption,
+        fileName = fileName,
+        durationSeconds = durationSeconds,
+        thumbnailPath = thumbnailPath,
+        fileId = fileId
+    )
 }
 
 class MediaLibraryViewModelFactory(

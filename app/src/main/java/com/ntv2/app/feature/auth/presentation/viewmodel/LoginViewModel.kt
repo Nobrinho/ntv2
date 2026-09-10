@@ -21,6 +21,7 @@ class LoginViewModel(
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+    private var qrRequested = false
 
     init {
         viewModelScope.launch {
@@ -33,6 +34,15 @@ class LoginViewModel(
                         errorMessage = authState.errorMessage,
                         isAuthorized = authState.step is AuthStep.Authorized
                     )
+                }
+                // Em modo QR, ao TDLib passar a aguardar credenciais, solicita o QR uma vez.
+                if (authState.step is AuthStep.WaitingPhoneNumber &&
+                    _uiState.value.loginMode == LoginMode.QrCode &&
+                    authState.qrCodePayload == null &&
+                    !qrRequested
+                ) {
+                    qrRequested = true
+                    authRepository.requestQrLogin()
                 }
             }
         }
@@ -57,22 +67,11 @@ class LoginViewModel(
 
     private fun initialize() {
         viewModelScope.launch {
-            val session = authRepository.restoreSession()
-            if (session.isLoggedIn) {
-                _uiState.update {
-                    it.copy(
-                        isAuthorized = true,
-                        authStep = AuthStep.Authorized,
-                        errorMessage = null
-                    )
-                }
-                return@launch
-            }
-
+            // O flag persistido (DataStore) NÃO recria a sessão do TDLib. É preciso sempre
+            // inicializar o TDLib: ele restaura a sessão salva e emite Authorized, ou volta a
+            // pedir login. A navegação passa a depender do estado real (Authorized), evitando
+            // entrar na biblioteca com o cliente ainda não pronto (canais vazios).
             authRepository.initialize()
-            if (_uiState.value.loginMode == LoginMode.QrCode) {
-                authRepository.requestQrLogin()
-            }
         }
     }
 

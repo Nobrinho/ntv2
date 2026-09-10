@@ -177,11 +177,45 @@ fun MediaLibraryScreen(
                                         }
                                     )
                                 }
+                                if (section.hasMore) {
+                                    item(key = "load_more_${section.channelId}") {
+                                        LoadMoreCard(
+                                            onClick = {
+                                                viewModel.onAction(
+                                                    MediaLibraryAction.LoadMoreChannel(section.channelId)
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LoadMoreCard(
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .width(160.dp)
+            .border(1.dp, Color(0x44FFFFFF)),
+        onClick = onClick
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(12.dp)
+                .height(220.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+        ) {
+            Text("Carregar mais")
         }
     }
 }

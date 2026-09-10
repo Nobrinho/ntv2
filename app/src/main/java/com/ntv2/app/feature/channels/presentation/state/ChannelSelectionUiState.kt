@@ -20,7 +20,8 @@ data class ChannelSelectionUiState(
     val errorMessage: String? = null,
     val emptyState: ChannelSelectionEmptyState? = null,
     val canContinue: Boolean = false,
-    val navigateToLibrary: Boolean = false
+    val navigateToLibrary: Boolean = false,
+    val navigateToLogin: Boolean = false
 )
 
 fun ChannelSummary.toUi(isSelected: Boolean): ChannelItemUi {

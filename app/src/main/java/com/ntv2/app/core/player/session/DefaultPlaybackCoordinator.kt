@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 
 class DefaultPlaybackCoordinator(
@@ -150,29 +149,11 @@ class DefaultPlaybackCoordinator(
     }
 
     override fun seekTo(positionMs: Long) {
-        val media = currentMedia ?: return
         val playerInstance = exoPlayer ?: return
-
         playerInstance.seekTo(positionMs)
         snapshotState.update { it.copy(state = PlaybackState.Buffering) }
-
-        val expectedBytes = snapshot.value.expectedBytes ?: return
-        val targetEnd = planner.computeTargetEndBytes(
-            currentPositionMs = positionMs,
-            durationMs = media.durationMs,
-            expectedBytes = expectedBytes
-        )
-        val downloaded = playbackDataSource.downloadedBytes(media.fileId)
-        if (downloaded < targetEnd) {
-            scope.launch {
-                playbackDataSource.requestChunk(
-                    fileId = media.fileId,
-                    offsetBytes = downloaded,
-                    lengthBytes = targetEnd - downloaded,
-                    priority = 3
-                )
-            }
-        }
+        // O ExoPlayer reabre a fonte na nova posição e a GrowingFileDataSource solicita o range
+        // necessário. Não emitimos DownloadFile aqui para não competir pelo offset único do TDLib.
     }
 
     override fun retry() {
@@ -199,7 +180,7 @@ class DefaultPlaybackCoordinator(
     }
 
     override fun release() {
-        stopInternal(closeSession = true)
+        stopInternal(closeSession = true, deleteFile = true)
         exoPlayer?.removeListener(playerListener)
         exoPlayer = null
         resourceManager.release()
@@ -224,39 +205,19 @@ class DefaultPlaybackCoordinator(
     private fun startProgressiveLoop(media: PlaybackMedia) {
         downloadJob?.cancel()
         downloadJob = scope.launch {
+            // A GrowingFileDataSource é a ÚNICA a emitir DownloadFile (segue exatamente o que o
+            // ExoPlayer lê). O TDLib com DownloadFile(offset, limit=0) já baixa adiante sozinho.
+            // Não emitimos requisições concorrentes aqui: um DownloadFile com outro offset move o
+            // offset único do TDLib e picota o download — era o que travava MKV (índice no fim),
+            // pois o loop puxava o começo enquanto o player esperava o fim.
             while (true) {
-                val expected = playbackDataSource.expectedBytes(media.fileId) ?: 0L
-                if (expected <= 0L) {
-                    kotlinx.coroutines.delay(planner.checkIntervalMs())
-                    continue
-                }
-
-                val position = withContext(Dispatchers.Main.immediate) {
-                    exoPlayer?.currentPosition ?: 0L
-                }
-                val targetEnd = planner.computeTargetEndBytes(
-                    currentPositionMs = position,
-                    durationMs = media.durationMs,
-                    expectedBytes = expected
-                )
-                val downloaded = playbackDataSource.downloadedBytes(media.fileId)
-                if (downloaded < targetEnd) {
-                    val missing = targetEnd - downloaded
-                    playbackDataSource.requestChunk(
-                        fileId = media.fileId,
-                        offsetBytes = downloaded,
-                        lengthBytes = minOf(planner.chunkSize(), missing),
-                        priority = 1
-                    )
-                }
-
                 cacheManager.trimIfNeeded()
                 kotlinx.coroutines.delay(planner.checkIntervalMs())
             }
         }
     }
 
-    private fun stopInternal(closeSession: Boolean) {
+    private fun stopInternal(closeSession: Boolean, deleteFile: Boolean = false) {
         observeJob?.cancel()
         observeJob = null
         downloadJob?.cancel()
@@ -267,8 +228,15 @@ class DefaultPlaybackCoordinator(
 
         val media = currentMedia
         if (closeSession && media != null) {
+            val fileId = media.fileId
             scope.launch {
-                playbackDataSource.close(media.fileId)
+                // Ao sair da reprodução, remove o arquivo do TDLib para não acumular no
+                // armazenamento (o Fire TV tem pouco espaço). Nas demais paradas, apenas fecha.
+                if (deleteFile) {
+                    playbackDataSource.deleteFile(fileId)
+                } else {
+                    playbackDataSource.close(fileId)
+                }
             }
             currentMedia = null
         }

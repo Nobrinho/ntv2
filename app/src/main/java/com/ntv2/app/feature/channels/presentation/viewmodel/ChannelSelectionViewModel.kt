@@ -3,6 +3,7 @@
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.ntv2.app.feature.auth.domain.AuthRepository
 import com.ntv2.app.feature.channels.domain.ChannelRepository
 import com.ntv2.app.feature.channels.domain.ChannelSummary
 import com.ntv2.app.feature.channels.presentation.state.ChannelSelectionEmptyState
@@ -25,10 +26,13 @@ sealed interface ChannelSelectionAction {
     data object Retry : ChannelSelectionAction
     data object Continue : ChannelSelectionAction
     data object NavigationConsumed : ChannelSelectionAction
+    data object Logout : ChannelSelectionAction
+    data object LogoutNavigationConsumed : ChannelSelectionAction
 }
 
 class ChannelSelectionViewModel(
-    private val channelRepository: ChannelRepository
+    private val channelRepository: ChannelRepository,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChannelSelectionUiState(isLoading = true))
@@ -69,6 +73,24 @@ class ChannelSelectionViewModel(
                 _uiState.update { it.copy(navigateToLibrary = false) }
                 false
             }
+
+            ChannelSelectionAction.Logout -> {
+                logout()
+                false
+            }
+
+            ChannelSelectionAction.LogoutNavigationConsumed -> {
+                _uiState.update { it.copy(navigateToLogin = false) }
+                false
+            }
+        }
+    }
+
+    private fun logout() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            runCatching { authRepository.logout() }
+            _uiState.update { it.copy(isLoading = false, navigateToLogin = true) }
         }
     }
 
@@ -178,12 +200,13 @@ class ChannelSelectionViewModel(
 }
 
 class ChannelSelectionViewModelFactory(
-    private val channelRepository: ChannelRepository
+    private val channelRepository: ChannelRepository,
+    private val authRepository: AuthRepository
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ChannelSelectionViewModel::class.java)) {
-            return ChannelSelectionViewModel(channelRepository) as T
+            return ChannelSelectionViewModel(channelRepository, authRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

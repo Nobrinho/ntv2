@@ -15,7 +15,8 @@ data class MediaCardUi(
 data class ChannelMediaSectionUi(
     val channelId: Long,
     val channelName: String,
-    val items: List<MediaCardUi>
+    val items: List<MediaCardUi>,
+    val hasMore: Boolean = false
 )
 
 sealed interface MediaLibraryEmptyState {

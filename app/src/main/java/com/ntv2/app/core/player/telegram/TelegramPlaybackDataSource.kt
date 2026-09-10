@@ -20,6 +20,12 @@ interface PartialFileAccessor {
      * Fire-and-forget (a implementação despacha na própria scope de IO).
      */
     fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int)
+
+    /**
+     * Suspende até [contiguousReadableEnd] ultrapassar [position] (qualquer avanço) ou o
+     * download concluir. Permite espera reativa no lugar de polling.
+     */
+    suspend fun awaitReadableBeyond(fileId: Int, position: Long)
 }
 
 data class PlaybackFileHandle(
@@ -36,4 +42,7 @@ interface TelegramPlaybackDataSource : PartialFileAccessor {
     fun observe(fileId: Int): Flow<TdlibPlaybackFileState>
     suspend fun requestChunk(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int)
     suspend fun close(fileId: Int)
+
+    /** Encerra e remove a cópia local do arquivo (libera armazenamento). */
+    suspend fun deleteFile(fileId: Int)
 }

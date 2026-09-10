@@ -1,3 +1,8 @@
 ﻿<resources>
-    <style name="Theme.Ntv2" parent="Theme.Material3.DayNight.NoActionBar" />
+    <!-- App de TV com UI desenhada para fundo escuro (textos em branco). Forçamos o tema
+         escuro para não depender do modo claro/escuro do dispositivo (ex.: Fire TV em modo claro
+         deixava o fundo branco e o texto branco sumia). -->
+    <style name="Theme.Ntv2" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
 </resources>

@@ -11,6 +11,7 @@ import com.ntv2.app.core.player.controller.PlaybackPrepareRequest
 import com.ntv2.app.core.player.controller.PlaybackPrepareResult
 import com.ntv2.app.core.player.source.MediaAvailability
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,6 +61,7 @@ class PlayerScreenViewModel(
     private var observeJob: Job? = null
 
     val player: Player? get() = playbackController.player
+    private var prepareJob: Job? = null
 
     init {
         observeJob = viewModelScope.launch {
@@ -79,54 +81,17 @@ class PlayerScreenViewModel(
                         durationSeconds = action.durationSeconds,
                         fileName = action.fileName,
                         thumbnailPath = action.thumbnailPath,
-                        statusMessage = "reprodução ainda não inicializada"
+                        statusMessage = "preparando reprodução…"
                     )
                 }
-                viewModelScope.launch {
-                    when (
-                        val result = playbackController.prepare(
-                            PlaybackPrepareRequest(
-                                mediaId = action.mediaId,
-                                fileId = action.fileId,
-                                title = action.title,
-                                durationSeconds = action.durationSeconds
-                            )
-                        )
-                    ) {
-                        PlaybackPrepareResult.Started -> {
-                            _uiState.update {
-                                it.copy(
-                                    isPlaceholderMode = false,
-                                    statusMessage = "engine inicializada"
-                                )
-                            }
-                        }
-
-                        is PlaybackPrepareResult.MissingSource -> {
-                            _uiState.update {
-                                it.copy(
-                                    isPlaceholderMode = true,
-                                    statusMessage = messageForMissingSource(result.availability)
-                                )
-                            }
-                        }
-
-                        is PlaybackPrepareResult.Failed -> {
-                            _uiState.update {
-                                it.copy(
-                                    isPlaceholderMode = true,
-                                    statusMessage = result.message,
-                                    snapshot = it.snapshot.copy(
-                                        state = PlaybackState.Error(
-                                            message = result.message,
-                                            recoverable = true
-                                        )
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
+                startPrepareLoop(
+                    PlaybackPrepareRequest(
+                        mediaId = action.mediaId,
+                        fileId = action.fileId,
+                        title = action.title,
+                        durationSeconds = action.durationSeconds
+                    )
+                )
             }
 
             PlayerScreenAction.Play -> if (!uiState.value.isPlaceholderMode) playbackController.play()
@@ -154,8 +119,65 @@ class PlayerScreenViewModel(
 
     override fun onCleared() {
         observeJob?.cancel()
+        prepareJob?.cancel()
         playbackController.release()
         super.onCleared()
+    }
+
+    /**
+     * Tenta preparar a reprodução e, enquanto o arquivo ainda está baixando (fonte indisponível),
+     * reexecuta periodicamente até haver bytes suficientes — assim a tela inicia sozinha sem o
+     * usuário precisar voltar e reabrir o vídeo.
+     */
+    private fun startPrepareLoop(request: PlaybackPrepareRequest) {
+        prepareJob?.cancel()
+        prepareJob = viewModelScope.launch {
+            var attempt = 0
+            val maxAttempts = 60 // ~60s aguardando bytes iniciais
+            while (true) {
+                when (val result = playbackController.prepare(request)) {
+                    PlaybackPrepareResult.Started -> {
+                        _uiState.update {
+                            it.copy(isPlaceholderMode = false, statusMessage = "reproduzindo")
+                        }
+                        return@launch
+                    }
+
+                    is PlaybackPrepareResult.MissingSource -> {
+                        _uiState.update {
+                            it.copy(
+                                isPlaceholderMode = true,
+                                statusMessage = messageForMissingSource(result.availability)
+                            )
+                        }
+                        val retriable = when (result.availability) {
+                            is MediaAvailability.Downloading,
+                            MediaAvailability.LocalFileMissing,
+                            MediaAvailability.TdlibFileUnavailable -> true
+                            else -> false
+                        }
+                        if (!retriable || attempt++ >= maxAttempts) return@launch
+                        delay(1_000L)
+                    }
+
+                    is PlaybackPrepareResult.Failed -> {
+                        _uiState.update {
+                            it.copy(
+                                isPlaceholderMode = true,
+                                statusMessage = result.message,
+                                snapshot = it.snapshot.copy(
+                                    state = PlaybackState.Error(
+                                        message = result.message,
+                                        recoverable = true
+                                    )
+                                )
+                            )
+                        }
+                        return@launch
+                    }
+                }
+            }
+        }
     }
 
     private fun messageForMissingSource(availability: MediaAvailability): String {

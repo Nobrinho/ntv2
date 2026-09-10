@@ -49,12 +49,20 @@ fun AppNavHost(
 
         composable(RoutePath.CHANNEL_SELECTION) {
             val channelViewModel: ChannelSelectionViewModel = viewModel(
-                factory = ChannelSelectionViewModelFactory(appContainer.channelRepository)
+                factory = ChannelSelectionViewModelFactory(
+                    channelRepository = appContainer.channelRepository,
+                    authRepository = appContainer.authRepository
+                )
             )
             ChannelSelectionScreen(
                 viewModel = channelViewModel,
                 onOpenLibrary = { navController.navigate(RoutePath.MEDIA_LIBRARY) },
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onLogout = {
+                    navController.navigate(RoutePath.LOGIN) {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                    }
+                }
             )
         }
 

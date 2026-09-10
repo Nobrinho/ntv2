@@ -14,12 +14,19 @@ data class TelegramVideoMessage(
     val fileId: Int
 )
 
+data class TelegramVideoPage(
+    val videos: List<TelegramVideoMessage>,
+    // fromMessageId da próxima página; 0 => fim.
+    val nextFromMessageId: Long
+)
+
 interface TdlibMediaGateway {
-    suspend fun listVideoMessages(chatId: Long, limit: Int = 200): List<TelegramVideoMessage>
+    suspend fun listVideoMessages(chatId: Long, fromMessageId: Long = 0L, limit: Int = 40): TelegramVideoPage
+    suspend fun searchVideoMessages(chatId: Long, query: String, fromMessageId: Long = 0L, limit: Int = 40): TelegramVideoPage
 }
 
 class FakeTdlibMediaGateway : TdlibMediaGateway {
-    override suspend fun listVideoMessages(chatId: Long, limit: Int): List<TelegramVideoMessage> {
+    override suspend fun listVideoMessages(chatId: Long, fromMessageId: Long, limit: Int): TelegramVideoPage {
         delay(180)
         val base = (chatId * 1000).toInt()
         val items = listOf(
@@ -57,6 +64,20 @@ class FakeTdlibMediaGateway : TdlibMediaGateway {
                 fileId = base + 3
             )
         )
-        return items.take(limit)
+        // Fake: página única, sem cursor.
+        return TelegramVideoPage(videos = items.take(limit), nextFromMessageId = 0L)
+    }
+
+    override suspend fun searchVideoMessages(chatId: Long, query: String, fromMessageId: Long, limit: Int): TelegramVideoPage {
+        val q = query.trim().lowercase()
+        val page = listVideoMessages(chatId, fromMessageId, limit)
+        if (q.isBlank()) return page
+        return page.copy(
+            videos = page.videos.filter { video ->
+                video.title.lowercase().contains(q) ||
+                    (video.caption?.lowercase()?.contains(q) == true) ||
+                    (video.fileName?.lowercase()?.contains(q) == true)
+            }
+        )
     }
 }

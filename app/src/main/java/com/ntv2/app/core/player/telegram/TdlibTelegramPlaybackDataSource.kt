@@ -6,9 +6,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -64,6 +66,12 @@ class TdlibTelegramPlaybackDataSource(
         states.remove(fileId)
     }
 
+    override suspend fun deleteFile(fileId: Int) {
+        observeJobs.remove(fileId)?.cancel()
+        playbackGateway.deleteFile(fileId)
+        states.remove(fileId)
+    }
+
     override fun resolvePath(fileId: Int): String? = states[fileId]?.value?.localPath
 
     override fun downloadedBytes(fileId: Int): Long = states[fileId]?.value?.downloadedBytes ?: 0L
@@ -85,6 +93,17 @@ class TdlibTelegramPlaybackDataSource(
     override fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) {
         scope.launch {
             playbackGateway.requestChunk(fileId, offsetBytes, lengthBytes, priority)
+        }
+    }
+
+    override suspend fun awaitReadableBeyond(fileId: Int, position: Long) {
+        val flow = states[fileId] ?: run {
+            delay(200L)
+            return
+        }
+        flow.first { state ->
+            state.isDownloadComplete ||
+                (state.downloadOffset + state.downloadedPrefixBytes) > position
         }
     }
 

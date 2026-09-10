@@ -153,7 +153,6 @@ class DefaultAppContainer(
     private val growingFileDataSourceFactory: GrowingFileDataSourceFactory by lazy {
         GrowingFileDataSourceFactory(
             partialFileAccessor = telegramPlaybackDataSource,
-            pollIntervalMs = playbackTuning.ioPollIntervalMs,
             stallTimeoutMs = playbackTuning.ioStallTimeoutMs
         )
     }

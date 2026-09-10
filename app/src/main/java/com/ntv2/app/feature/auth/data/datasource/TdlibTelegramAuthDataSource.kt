@@ -102,10 +102,12 @@ class TdlibTelegramAuthDataSource(
                 }
             }
         sessionStore.clear()
+        // Não forçamos WaitingPhoneNumber aqui: o gateway recria o cliente e os updates reais
+        // (WaitTdlibParameters → WaitPhoneNumber) conduzem o estado. Assim o QR só é pedido
+        // quando o cliente novo estiver de fato pronto (evita pedido prematuro no re-login).
         state.update {
             it.copy(
                 isLoading = false,
-                step = AuthStep.WaitingPhoneNumber,
                 qrCodePayload = null,
                 session = AuthSession(isLoggedIn = false, userId = null, displayName = null)
             )
@@ -176,10 +178,12 @@ class TdlibTelegramAuthDataSource(
             }
 
             is TdAuthorizationState.Closed -> {
+                // Cliente fechado (ex.: pós-logout). O gateway recria o cliente; ficamos em
+                // Initializing até o WaitPhoneNumber real chegar, para o QR não ser pedido cedo.
                 state.update {
                     it.copy(
                         isLoading = false,
-                        step = AuthStep.WaitingPhoneNumber,
+                        step = AuthStep.Initializing,
                         qrCodePayload = null,
                         errorMessage = tdState.reason
                     )

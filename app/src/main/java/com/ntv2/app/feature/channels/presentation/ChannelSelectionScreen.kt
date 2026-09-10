@@ -34,7 +34,8 @@ import com.ntv2.app.feature.channels.presentation.viewmodel.ChannelSelectionView
 fun ChannelSelectionScreen(
     viewModel: ChannelSelectionViewModel,
     onOpenLibrary: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onLogout: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
     val firstActionFocusRequester = remember { FocusRequester() }
@@ -46,6 +47,12 @@ fun ChannelSelectionScreen(
         if (state.navigateToLibrary) {
             onOpenLibrary()
             viewModel.onAction(ChannelSelectionAction.NavigationConsumed)
+        }
+    }
+    LaunchedEffect(state.navigateToLogin) {
+        if (state.navigateToLogin) {
+            onLogout()
+            viewModel.onAction(ChannelSelectionAction.LogoutNavigationConsumed)
         }
     }
 
@@ -63,7 +70,8 @@ fun ChannelSelectionScreen(
             onSelectAll = { viewModel.onAction(ChannelSelectionAction.SelectAll) },
             onClearSelection = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
             onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
-            onBack = onBack
+            onBack = onBack,
+            onLogout = { viewModel.onAction(ChannelSelectionAction.Logout) }
         )
 
         when {
@@ -99,7 +107,8 @@ private fun ActionsRow(
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onContinue: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onLogout: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -124,6 +133,10 @@ private fun ActionsRow(
 
         Button(onClick = onBack) {
             Text("Voltar")
+        }
+
+        Button(onClick = onLogout) {
+            Text("Sair")
         }
     }
 }

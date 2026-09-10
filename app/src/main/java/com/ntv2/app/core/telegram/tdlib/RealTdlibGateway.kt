@@ -10,15 +10,21 @@ import com.ntv2.app.core.telegram.channels.TelegramChatSummary
 import com.ntv2.app.core.telegram.channels.TelegramChatType
 import com.ntv2.app.core.telegram.channels.TdlibChannelsGateway
 import com.ntv2.app.core.telegram.media.TelegramVideoMessage
+import com.ntv2.app.core.telegram.media.TelegramVideoPage
 import com.ntv2.app.core.telegram.media.TdlibMediaGateway
 import com.ntv2.app.core.telegram.media.TdlibPlaybackFileState
 import com.ntv2.app.core.telegram.media.TdlibPlaybackGateway
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -99,6 +105,7 @@ class RealTdlibGateway(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val initMutex = Mutex()
 
+    @Volatile
     private var client: Client? = null
     private val auth = MutableStateFlow<TdAuthorizationState>(TdAuthorizationState.Unknown)
     // Acessado pela thread de callback do TDLib (handleUpdate) e por corrotinas.
@@ -106,13 +113,16 @@ class RealTdlibGateway(
 
     override val authorizationState: Flow<TdAuthorizationState> = auth.asStateFlow()
 
+    // Garante que SetTdlibParameters seja enviado uma única vez por cliente.
+    @Volatile
+    private var paramsSent = false
+
     override suspend fun initialize() {
+        // Apenas cria o cliente. O estado inicial (WaitTdlibParameters → Ready/WaitPhoneNumber)
+        // chega pelo update (handleUpdate). NÃO chamamos GetAuthorizationState aqui: isso rodava
+        // mapAuthorizationState em paralelo com o update e disparava SetTdlibParameters duas vezes,
+        // resetando o TDLib (Ready → WaitTdlibParameters → travado).
         ensureConfigured()
-        ensureClient()
-        when (val result = send(TdApi.GetAuthorizationState())) {
-            is TdApi.AuthorizationState -> mapAuthorizationState(result)
-            is TdApi.Error -> auth.value = TdAuthorizationState.Error(result.message)
-        }
     }
 
     override suspend fun requestQrCodeAuthentication() {
@@ -138,7 +148,14 @@ class RealTdlibGateway(
     override suspend fun logout() {
         if (!config.enabled) return
         auth.value = TdAuthorizationState.LoggingOut
-        send(TdApi.LogOut())
+        runCatching { send(TdApi.LogOut()) }
+        // O TDLib exige um cliente NOVO para autenticar após LogOut. Esperamos o fechamento
+        // (LogOut → Closed), zeramos o cliente e criamos um novo, que fluirá para WaitPhoneNumber
+        // via updates — momento em que a UI pede o QR. Sem isso, o re-login não gerava QR.
+        withTimeoutOrNull(5_000L) { auth.first { it is TdAuthorizationState.Closed } }
+        client = null
+        paramsSent = false
+        runCatching { ensureClient() }
     }
 
     override suspend fun close() {
@@ -148,33 +165,53 @@ class RealTdlibGateway(
 
     override suspend fun listChats(limit: Int): List<TelegramChatSummary> {
         ensureConfigured()
+        // GetChats sozinho pode vir vazio numa sessão nova: LoadChats popula a lista principal.
+        loadMainChatList(limit)
+
         val chats = send(TdApi.GetChats(TdApi.ChatListMain(), limit))
         if (chats !is TdApi.Chats) return emptyList()
 
-        val result = mutableListOf<TelegramChatSummary>()
-        chats.chatIds.forEach { chatId ->
-            val chat = send(TdApi.GetChat(chatId)) as? TdApi.Chat ?: return@forEach
-            result += mapChat(chat)
-            if (result.size >= limit) return result
+        // Resolve os chats em paralelo (antes: N+1 serial, ~1 round-trip por chat).
+        return coroutineScope {
+            chats.chatIds.take(limit)
+                .map { chatId -> async { send(TdApi.GetChat(chatId)) as? TdApi.Chat } }
+                .awaitAll()
+                .filterNotNull()
+                .map { mapChat(it) }
         }
-        return result
     }
 
-    override suspend fun listVideoMessages(chatId: Long, limit: Int): List<TelegramVideoMessage> {
+    private suspend fun loadMainChatList(limit: Int) {
+        // LoadChats carrega mais chats por vez e retorna Error 404 quando a lista acaba.
+        // Loop limitado para não bloquear indefinidamente.
+        val chatList = TdApi.ChatListMain()
+        var iterations = (limit / 100) + 1
+        while (iterations-- > 0) {
+            if (send(TdApi.LoadChats(chatList, limit)) is TdApi.Error) break
+        }
+    }
+
+    override suspend fun listVideoMessages(chatId: Long, fromMessageId: Long, limit: Int): TelegramVideoPage =
+        searchVideos(chatId, query = "", fromMessageId = fromMessageId, limit = limit)
+
+    override suspend fun searchVideoMessages(chatId: Long, query: String, fromMessageId: Long, limit: Int): TelegramVideoPage =
+        searchVideos(chatId, query = query, fromMessageId = fromMessageId, limit = limit)
+
+    private suspend fun searchVideos(chatId: Long, query: String, fromMessageId: Long, limit: Int): TelegramVideoPage {
         ensureConfigured()
         val result = send(
             TdApi.SearchChatMessages(
                 chatId,
                 null,
-                "",
+                query,
                 null,
-                0L,
+                fromMessageId,
                 0,
                 limit,
                 TdApi.SearchMessagesFilterVideo()
             )
         )
-        if (result !is TdApi.FoundChatMessages) return emptyList()
+        if (result !is TdApi.FoundChatMessages) return TelegramVideoPage(emptyList(), 0L)
 
         val items = mutableListOf<TelegramVideoMessage>()
         result.messages.orEmpty().forEach { msg ->
@@ -192,9 +229,9 @@ class RealTdlibGateway(
                 thumbnailPath = video.thumbnail?.file?.local?.path?.takeIf { it.isNotBlank() },
                 fileId = tdFile.id
             )
-            if (items.size >= limit) return items
         }
-        return items
+        // nextFromMessageId=0 => fim (doc TDLib).
+        return TelegramVideoPage(videos = items, nextFromMessageId = result.nextFromMessageId)
     }
 
     override suspend fun openFile(fileId: Int): TdlibPlaybackFileState {
@@ -230,6 +267,12 @@ class RealTdlibGateway(
         send(TdApi.CancelDownloadFile(fileId, false))
     }
 
+    override suspend fun deleteFile(fileId: Int) {
+        if (!config.enabled) return
+        runCatching { send(TdApi.DeleteFile(fileId)) }
+        fileStates.remove(fileId)
+    }
+
     private suspend fun ensureClient() {
         if (client != null) return
         initMutex.withLock {
@@ -241,6 +284,8 @@ class RealTdlibGateway(
                 Log.e(TAG, "Inicialização TDLib bloqueada: ${nativeFailureReason()}")
                 throw IllegalStateException("TDLib native library unavailable")
             }
+            // Cliente novo: precisará receber SetTdlibParameters uma vez.
+            paramsSent = false
             client = Client.create(
                 { update -> handleUpdate(update) },
                 { error -> auth.value = TdAuthorizationState.Error(error.message ?: "TDLib error") },
@@ -271,11 +316,15 @@ class RealTdlibGateway(
         when (state) {
             is TdApi.AuthorizationStateWaitTdlibParameters -> {
                 auth.value = TdAuthorizationState.WaitTdlibParameters
-                scope.launch {
-                    runCatching {
-                        send(setTdlibParameters())
-                    }.onFailure {
-                        auth.value = TdAuthorizationState.Error(it.message ?: "Failed to configure TDLib")
+                if (!paramsSent) {
+                    paramsSent = true
+                    scope.launch {
+                        runCatching {
+                            send(setTdlibParameters())
+                        }.onFailure {
+                            paramsSent = false
+                            auth.value = TdAuthorizationState.Error(it.message ?: "Failed to configure TDLib")
+                        }
                     }
                 }
             }
@@ -304,7 +353,12 @@ class RealTdlibGateway(
             }
 
             is TdApi.AuthorizationStateLoggingOut -> auth.value = TdAuthorizationState.LoggingOut
-            is TdApi.AuthorizationStateClosed -> auth.value = TdAuthorizationState.Closed()
+            is TdApi.AuthorizationStateClosed -> {
+                // TDLib fecha o cliente após LogOut/Close; zeramos a referência para que
+                // ensureClient recrie um cliente novo no próximo login (sem reabrir o app).
+                client = null
+                auth.value = TdAuthorizationState.Closed()
+            }
             is TdApi.AuthorizationStateClosing -> auth.value = TdAuthorizationState.Closed("Closing session")
             else -> Unit
         }

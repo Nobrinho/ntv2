@@ -1,13 +1,39 @@
 ﻿package com.ntv2.app.feature.media.data.repository
 
 import com.ntv2.app.feature.media.data.datasource.TelegramMediaDataSource
-import com.ntv2.app.feature.media.domain.MediaItemSummary
+import com.ntv2.app.feature.media.domain.MediaPage
 import com.ntv2.app.feature.media.domain.MediaRepository
 
 class DefaultMediaRepository(
     private val mediaDataSource: TelegramMediaDataSource
 ) : MediaRepository {
-    override suspend fun fetchChannelVideos(channelId: Long, channelTitle: String): List<MediaItemSummary> {
-        return mediaDataSource.listChannelVideos(channelId = channelId, channelTitle = channelTitle)
+    override suspend fun fetchChannelVideos(
+        channelId: Long,
+        channelTitle: String,
+        fromMessageId: Long,
+        limit: Int
+    ): MediaPage {
+        return mediaDataSource.listChannelVideos(
+            channelId = channelId,
+            channelTitle = channelTitle,
+            fromMessageId = fromMessageId,
+            limit = limit
+        )
+    }
+
+    override suspend fun searchChannelVideos(
+        channelId: Long,
+        channelTitle: String,
+        query: String,
+        fromMessageId: Long,
+        limit: Int
+    ): MediaPage {
+        return mediaDataSource.searchChannelVideos(
+            channelId = channelId,
+            channelTitle = channelTitle,
+            query = query,
+            fromMessageId = fromMessageId,
+            limit = limit
+        )
     }
 }

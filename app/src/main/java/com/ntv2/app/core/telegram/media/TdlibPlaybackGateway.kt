@@ -31,6 +31,9 @@ interface TdlibPlaybackGateway {
     fun observeFile(fileId: Int): Flow<TdlibPlaybackFileState>
     suspend fun requestChunk(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int)
     suspend fun cancelFile(fileId: Int)
+
+    /** Remove a cópia local (inclusive o parcial em temp) para liberar armazenamento. */
+    suspend fun deleteFile(fileId: Int)
 }
 
 class FakeTdlibPlaybackGateway(
@@ -99,7 +102,8 @@ class FakeTdlibPlaybackGateway(
 
             val expected = state.expectedBytes
             val start = min(offsetBytes, expected)
-            val end = min(offsetBytes + lengthBytes, expected)
+            // lengthBytes<=0 => baixar até o fim (mesma semântica do DownloadFile real com limit=0).
+            val end = if (lengthBytes <= 0L) expected else min(offsetBytes + lengthBytes, expected)
             if (end <= start) {
                 return@launch
             }
@@ -126,5 +130,13 @@ class FakeTdlibPlaybackGateway(
 
     override suspend fun cancelFile(fileId: Int) {
         writeJobs.remove(fileId)?.cancel()
+    }
+
+    override suspend fun deleteFile(fileId: Int) {
+        writeJobs.remove(fileId)?.cancel()
+        states[fileId]?.value?.localPath?.let { path ->
+            runCatching { File(path).delete() }
+        }
+        states.remove(fileId)
     }
 }

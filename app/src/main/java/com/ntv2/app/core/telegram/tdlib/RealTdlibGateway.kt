@@ -113,9 +113,7 @@ class RealTdlibGateway(
 
     override val authorizationState: Flow<TdAuthorizationState> = auth.asStateFlow()
 
-    // Garante que SetTdlibParameters seja enviado uma única vez por cliente.
-    @Volatile
-    private var paramsSent = false
+    private val authReducer = TdlibAuthReducer()
 
     override suspend fun initialize() {
         // Apenas cria o cliente. O estado inicial (WaitTdlibParameters → Ready/WaitPhoneNumber)
@@ -154,7 +152,7 @@ class RealTdlibGateway(
         // via updates — momento em que a UI pede o QR. Sem isso, o re-login não gerava QR.
         withTimeoutOrNull(5_000L) { auth.first { it is TdAuthorizationState.Closed } }
         client = null
-        paramsSent = false
+        // ensureClient() cria um cliente novo e já reseta o guard de parâmetros (onClientCreated).
         runCatching { ensureClient() }
     }
 
@@ -285,7 +283,7 @@ class RealTdlibGateway(
                 throw IllegalStateException("TDLib native library unavailable")
             }
             // Cliente novo: precisará receber SetTdlibParameters uma vez.
-            paramsSent = false
+            authReducer.onClientCreated()
             client = Client.create(
                 { update -> handleUpdate(update) },
                 { error -> auth.value = TdAuthorizationState.Error(error.message ?: "TDLib error") },
@@ -313,54 +311,55 @@ class RealTdlibGateway(
     }
 
     private fun mapAuthorizationState(state: TdApi.AuthorizationState) {
-        when (state) {
-            is TdApi.AuthorizationStateWaitTdlibParameters -> {
-                auth.value = TdAuthorizationState.WaitTdlibParameters
-                if (!paramsSent) {
-                    paramsSent = true
-                    scope.launch {
-                        runCatching {
-                            send(setTdlibParameters())
-                        }.onFailure {
-                            paramsSent = false
-                            auth.value = TdAuthorizationState.Error(it.message ?: "Failed to configure TDLib")
-                        }
-                    }
+        val update = when (state) {
+            is TdApi.AuthorizationStateWaitTdlibParameters -> TdlibAuthReducer.Update.WaitTdlibParameters
+            is TdApi.AuthorizationStateWaitPhoneNumber -> TdlibAuthReducer.Update.WaitPhoneNumber
+            is TdApi.AuthorizationStateWaitCode -> TdlibAuthReducer.Update.WaitCode
+            is TdApi.AuthorizationStateWaitPassword -> TdlibAuthReducer.Update.WaitPassword
+            is TdApi.AuthorizationStateWaitOtherDeviceConfirmation ->
+                TdlibAuthReducer.Update.WaitOtherDeviceConfirmation(state.link)
+            is TdApi.AuthorizationStateReady -> TdlibAuthReducer.Update.Ready
+            is TdApi.AuthorizationStateLoggingOut -> TdlibAuthReducer.Update.LoggingOut
+            is TdApi.AuthorizationStateClosed -> TdlibAuthReducer.Update.Closed(null)
+            is TdApi.AuthorizationStateClosing -> TdlibAuthReducer.Update.Closing
+            else -> return
+        }
+
+        val result = authReducer.reduce(update)
+        result.state?.let { auth.value = it }
+        result.effects.forEach { effect -> applyAuthEffect(effect) }
+    }
+
+    private fun applyAuthEffect(effect: TdlibAuthReducer.Effect) {
+        when (effect) {
+            TdlibAuthReducer.Effect.SendParameters -> scope.launch {
+                runCatching {
+                    send(setTdlibParameters())
+                }.onFailure {
+                    authReducer.onSendParametersFailed()
+                    auth.value = TdAuthorizationState.Error(it.message ?: "Failed to configure TDLib")
                 }
             }
 
-            is TdApi.AuthorizationStateWaitPhoneNumber -> auth.value = TdAuthorizationState.WaitPhoneNumber
-            is TdApi.AuthorizationStateWaitCode -> auth.value = TdAuthorizationState.WaitCode
-            is TdApi.AuthorizationStateWaitPassword -> auth.value = TdAuthorizationState.WaitPassword
-            is TdApi.AuthorizationStateWaitOtherDeviceConfirmation -> {
-                auth.value = TdAuthorizationState.WaitQrCode(state.link)
-            }
-
-            is TdApi.AuthorizationStateReady -> {
-                scope.launch {
-                    val me = send(TdApi.GetMe()) as? TdApi.User
-                    val display = me?.let {
-                        listOf(it.firstName, it.lastName)
-                            .filter { name -> name.isNotBlank() }
-                            .joinToString(" ")
-                            .ifBlank { null }
-                    }
-                    auth.value = TdAuthorizationState.Ready(
-                        userId = me?.id ?: 0L,
-                        displayName = display
-                    )
+            TdlibAuthReducer.Effect.FetchCurrentUser -> scope.launch {
+                val me = send(TdApi.GetMe()) as? TdApi.User
+                val display = me?.let {
+                    listOf(it.firstName, it.lastName)
+                        .filter { name -> name.isNotBlank() }
+                        .joinToString(" ")
+                        .ifBlank { null }
                 }
+                auth.value = TdAuthorizationState.Ready(
+                    userId = me?.id ?: 0L,
+                    displayName = display
+                )
             }
 
-            is TdApi.AuthorizationStateLoggingOut -> auth.value = TdAuthorizationState.LoggingOut
-            is TdApi.AuthorizationStateClosed -> {
-                // TDLib fecha o cliente após LogOut/Close; zeramos a referência para que
-                // ensureClient recrie um cliente novo no próximo login (sem reabrir o app).
+            // TDLib fecha o cliente após LogOut/Close; zeramos a referência para que ensureClient
+            // recrie um cliente novo no próximo login.
+            TdlibAuthReducer.Effect.ClearClient -> {
                 client = null
-                auth.value = TdAuthorizationState.Closed()
             }
-            is TdApi.AuthorizationStateClosing -> auth.value = TdAuthorizationState.Closed("Closing session")
-            else -> Unit
         }
     }
 

@@ -11,7 +11,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
-import kotlin.math.min
 
 class GrowingFileDataSourceFactory(
     private val partialFileAccessor: PartialFileAccessor,
@@ -79,46 +78,47 @@ private class GrowingFileDataSource(
 
         while (true) {
             // C2: contiguidade real a partir do downloadOffset, não o downloadedSize (que pode
-            // conter regiões esparsas/"garbage" segundo a doc do TDLib).
+            // conter regiões esparsas/"garbage" segundo a doc do TDLib). A decisão fica isolada
+            // em PartialReadPlanner (testável em JVM).
             val readableEnd = partialFileAccessor.contiguousReadableEnd(fileId)
-            val canRead = readableEnd - readPosition
-
-            if (canRead > 0L) {
-                val maxByAvailability = min(canRead, length.toLong()).toInt()
-                val maxToRead = if (bytesRemaining == C.LENGTH_UNSET.toLong()) {
-                    maxByAvailability
-                } else {
-                    min(maxByAvailability.toLong(), bytesRemaining).toInt()
+            when (
+                val plan = PartialReadPlanner.plan(
+                    contiguousReadableEnd = readableEnd,
+                    readPosition = readPosition,
+                    bytesRemaining = bytesRemaining,
+                    requestedLength = length,
+                    isComplete = partialFileAccessor.isComplete(fileId)
+                )
+            ) {
+                is PartialReadPlanner.Plan.Read -> {
+                    val read = raf.read(buffer, offset, plan.maxBytes)
+                    if (read <= 0) {
+                        return C.RESULT_END_OF_INPUT
+                    }
+                    readPosition += read
+                    if (bytesRemaining != C.LENGTH_UNSET.toLong()) {
+                        bytesRemaining -= read
+                    }
+                    bytesTransferred(read)
+                    return read
                 }
 
-                val read = raf.read(buffer, offset, maxToRead)
-                if (read <= 0) {
-                    return C.RESULT_END_OF_INPUT
-                }
+                PartialReadPlanner.Plan.EndOfInput -> return C.RESULT_END_OF_INPUT
 
-                readPosition += read
-                if (bytesRemaining != C.LENGTH_UNSET.toLong()) {
-                    bytesRemaining -= read
+                PartialReadPlanner.Plan.Wait -> {
+                    // A4: espera reativa — suspende até o prefixo contíguo avançar (sinalizado pelo
+                    // StateFlow do download), em vez de polling com sleep na thread do loader.
+                    // Timeout adaptativo: aborta só se NÃO houver avanço dentro do stallTimeout.
+                    val progressed = runBlocking {
+                        withTimeoutOrNull(stallTimeoutMs) {
+                            partialFileAccessor.awaitReadableBeyond(fileId, readableEnd)
+                            true
+                        }
+                    }
+                    if (progressed == null) {
+                        throw IOException("Timeout aguardando bytes do arquivo parcial")
+                    }
                 }
-                bytesTransferred(read)
-                return read
-            }
-
-            if (partialFileAccessor.isComplete(fileId)) {
-                return C.RESULT_END_OF_INPUT
-            }
-
-            // A4: espera reativa — suspende até o prefixo contíguo avançar (sinalizado pelo
-            // StateFlow do download), em vez de fazer polling com sleep na thread do loader.
-            // Timeout adaptativo: aborta apenas se NÃO houver nenhum avanço dentro do stallTimeout.
-            val progressed = runBlocking {
-                withTimeoutOrNull(stallTimeoutMs) {
-                    partialFileAccessor.awaitReadableBeyond(fileId, readableEnd)
-                    true
-                }
-            }
-            if (progressed == null) {
-                throw IOException("Timeout aguardando bytes do arquivo parcial")
             }
         }
     }

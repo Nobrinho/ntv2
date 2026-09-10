@@ -13,6 +13,7 @@ import com.ntv2.app.core.player.PlaybackState
 import com.ntv2.app.core.player.cache.PlaybackCacheManager
 import com.ntv2.app.core.player.download.ProgressiveDownloadPlanner
 import com.ntv2.app.core.player.io.GrowingFileDataSourceFactory
+import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,12 +26,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
+private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
+
 class DefaultPlaybackCoordinator(
     private val playbackDataSource: TelegramPlaybackDataSource,
     private val resourceManager: PlaybackResourceManager,
     private val cacheManager: PlaybackCacheManager,
     private val planner: ProgressiveDownloadPlanner,
-    private val dataSourceFactory: GrowingFileDataSourceFactory
+    private val dataSourceFactory: GrowingFileDataSourceFactory,
+    private val progressStore: PlaybackProgressStore
 ) : PlaybackCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -44,6 +48,7 @@ class DefaultPlaybackCoordinator(
     private var currentMedia: PlaybackMedia? = null
     private var observeJob: Job? = null
     private var downloadJob: Job? = null
+    private var progressJob: Job? = null
     private var wasPlayingBeforeStop: Boolean = false
 
     private val playerListener = object : Player.Listener {
@@ -62,6 +67,10 @@ class DefaultPlaybackCoordinator(
                     currentPositionMs = exoPlayer?.currentPosition ?: it.currentPositionMs,
                     bufferedPositionMs = exoPlayer?.bufferedPosition ?: it.bufferedPositionMs
                 )
+            }
+            if (playbackState == Player.STATE_ENDED) {
+                // Assistido até o fim: limpa o progresso para não retomar no finzinho.
+                currentMedia?.let { media -> scope.launch { progressStore.clear(media.mediaId) } }
             }
         }
 
@@ -133,9 +142,29 @@ class DefaultPlaybackCoordinator(
         playerInstance.playWhenReady = true
 
         observeFileState(media)
+        startProgressSaving(media)
         if (!handle.isDownloadComplete) {
             startProgressiveLoop(media)
         }
+    }
+
+    private fun startProgressSaving(media: PlaybackMedia) {
+        progressJob?.cancel()
+        // Roda na Main (ExoPlayer só pode ser lido na sua thread) e salva periodicamente,
+        // para não perder a posição se o app for encerrado.
+        progressJob = scope.launch(Dispatchers.Main) {
+            while (true) {
+                kotlinx.coroutines.delay(PROGRESS_SAVE_INTERVAL_MS)
+                persistCurrentProgress(media)
+            }
+        }
+    }
+
+    private suspend fun persistCurrentProgress(media: PlaybackMedia) {
+        val player = exoPlayer ?: return
+        val positionMs = player.currentPosition
+        val durationMs = player.duration.takeIf { it > 0L } ?: media.durationMs
+        progressStore.onProgress(media.mediaId, positionMs, durationMs)
     }
 
     override fun play() {
@@ -222,11 +251,20 @@ class DefaultPlaybackCoordinator(
         observeJob = null
         downloadJob?.cancel()
         downloadJob = null
+        progressJob?.cancel()
+        progressJob = null
+
+        val media = currentMedia
+        // Captura a posição ANTES de parar o player (currentPosition zera após stop) e salva.
+        if (media != null) {
+            val positionMs = exoPlayer?.currentPosition ?: 0L
+            val durationMs = exoPlayer?.duration?.takeIf { it > 0L } ?: media.durationMs
+            scope.launch { progressStore.onProgress(media.mediaId, positionMs, durationMs) }
+        }
 
         exoPlayer?.playWhenReady = false
         exoPlayer?.stop()
 
-        val media = currentMedia
         if (closeSession && media != null) {
             val fileId = media.fileId
             scope.launch {

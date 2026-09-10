@@ -4,6 +4,7 @@ import androidx.media3.common.Player
 import com.ntv2.app.core.player.PlaybackCoordinator
 import com.ntv2.app.core.player.PlaybackMedia
 import com.ntv2.app.core.player.PlaybackSnapshot
+import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.source.MediaAvailability
 import com.ntv2.app.core.player.source.PlaybackSource
 import com.ntv2.app.core.player.source.PlaybackSourceResolution
@@ -48,7 +49,8 @@ interface PlaybackController {
 
 class DefaultPlaybackController(
     private val coordinator: PlaybackCoordinator,
-    private val sourceResolver: PlaybackSourceResolver
+    private val sourceResolver: PlaybackSourceResolver,
+    private val progressStore: PlaybackProgressStore
 ) : PlaybackController {
 
     override val player: Player? get() = coordinator.player
@@ -70,13 +72,16 @@ class DefaultPlaybackController(
             }
         }
 
+        val durationMs = request.durationSeconds * 1_000L
         val media = when (source) {
             is PlaybackSource.TelegramFile -> PlaybackMedia(
                 mediaId = source.mediaId,
                 fileId = source.fileId,
                 title = request.title,
-                durationMs = request.durationSeconds * 1_000L,
-                sourceUri = source.playbackUri
+                durationMs = durationMs,
+                sourceUri = source.playbackUri,
+                // Retoma de onde parou (0 se não houver progresso útil salvo).
+                startPositionMs = progressStore.resumePositionMs(source.mediaId, durationMs)
             )
         }
 

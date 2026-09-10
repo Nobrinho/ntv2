@@ -12,6 +12,8 @@ import com.ntv2.app.core.player.download.ProgressiveDownloadPlanner
 import com.ntv2.app.core.player.exoplayer.DefaultExoPlayerProvider
 import com.ntv2.app.core.player.exoplayer.ExoPlayerProvider
 import com.ntv2.app.core.player.io.GrowingFileDataSourceFactory
+import com.ntv2.app.core.player.progress.PlaybackProgressStore
+import com.ntv2.app.core.player.progress.RoomPlaybackProgressStore
 import com.ntv2.app.core.player.session.DefaultPlaybackCoordinator
 import com.ntv2.app.core.player.session.PlaybackResourceManager
 import com.ntv2.app.core.player.source.DefaultPlaybackSourceResolver
@@ -157,13 +159,18 @@ class DefaultAppContainer(
         )
     }
 
+    private val playbackProgressStore: PlaybackProgressStore by lazy {
+        RoomPlaybackProgressStore(appDatabase.playbackProgressDao())
+    }
+
     override val playbackCoordinator: PlaybackCoordinator by lazy {
         DefaultPlaybackCoordinator(
             playbackDataSource = telegramPlaybackDataSource,
             resourceManager = playbackResourceManager,
             cacheManager = playbackCacheManager,
             planner = progressivePlanner,
-            dataSourceFactory = growingFileDataSourceFactory
+            dataSourceFactory = growingFileDataSourceFactory,
+            progressStore = playbackProgressStore
         )
     }
 
@@ -174,7 +181,8 @@ class DefaultAppContainer(
     override val playbackController: PlaybackController by lazy {
         DefaultPlaybackController(
             coordinator = playbackCoordinator,
-            sourceResolver = playbackSourceResolver
+            sourceResolver = playbackSourceResolver,
+            progressStore = playbackProgressStore
         )
     }
 
@@ -187,7 +195,10 @@ class DefaultAppContainer(
             appContext,
             AppDatabase::class.java,
             "ntv2.db"
-        ).fallbackToDestructiveMigration().build()
+        )
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     override val authRepository: AuthRepository by lazy {

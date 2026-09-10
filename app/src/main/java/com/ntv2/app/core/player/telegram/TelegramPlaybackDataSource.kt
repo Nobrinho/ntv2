@@ -32,6 +32,13 @@ interface PartialFileAccessor {
      * download concluir. Permite espera reativa no lugar de polling.
      */
     suspend fun awaitReadableBeyond(fileId: Int, position: Long)
+
+    /**
+     * Bytes contíguos já baixados a partir de [offset], consultando o TDLib diretamente.
+     * Reconhece bytes no disco em QUALQUER região (frente e fim), ao contrário do prefixo
+     * relativo ao offset único de download.
+     */
+    suspend fun downloadedPrefixFrom(fileId: Int, offset: Long): Long
 }
 
 data class PlaybackFileHandle(

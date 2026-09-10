@@ -161,7 +161,14 @@ class PlayerScreenViewModel(
                             MediaAvailability.TdlibFileUnavailable -> true
                             else -> false
                         }
-                        if (!retriable || attempt++ >= maxAttempts) return@launch
+                        if (!retriable) return@launch
+                        if (attempt++ >= maxAttempts) {
+                            // Esgotou as tentativas: aí sim é uma falha real (não o estado transitório).
+                            _uiState.update {
+                                it.copy(statusMessage = "não foi possível preparar o vídeo — tente novamente")
+                            }
+                            return@launch
+                        }
                         delay(1_000L)
                     }
 
@@ -188,9 +195,11 @@ class PlayerScreenViewModel(
     private fun messageForMissingSource(availability: MediaAvailability): String {
         return when (availability) {
             MediaAvailability.MissingRequestData -> "mídia inválida para reprodução"
-            MediaAvailability.TdlibFileUnavailable -> "arquivo indisponível no Telegram"
-            MediaAvailability.LocalFileMissing -> "arquivo local ainda não preparado"
-            is MediaAvailability.Downloading -> "arquivo em preparação (${availability.downloadedBytes / (1024 * 1024)} MB)"
+            // Estados transitórios do início (o TDLib ainda está criando/baixando o arquivo).
+            // Antes diziam "indisponível", o que confundia — o fluxo segue normal e o vídeo roda.
+            MediaAvailability.TdlibFileUnavailable -> "preparando reprodução…"
+            MediaAvailability.LocalFileMissing -> "preparando reprodução…"
+            is MediaAvailability.Downloading -> "baixando… (${availability.downloadedBytes / (1024 * 1024)} MB)"
             is MediaAvailability.Ready -> "reprodução ainda não inicializada"
         }
     }

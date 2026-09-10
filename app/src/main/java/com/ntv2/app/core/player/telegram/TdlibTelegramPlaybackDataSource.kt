@@ -102,6 +102,9 @@ class TdlibTelegramPlaybackDataSource(
         }
     }
 
+    override suspend fun downloadedPrefixFrom(fileId: Int, offset: Long): Long =
+        runCatching { playbackGateway.downloadedPrefixSize(fileId, offset) }.getOrDefault(0L)
+
     override suspend fun awaitReadableBeyond(fileId: Int, position: Long) {
         val flow = states[fileId] ?: run {
             delay(200L)

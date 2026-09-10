@@ -272,6 +272,12 @@ class RealTdlibGateway(
         send(TdApi.CancelDownloadFile(fileId, false))
     }
 
+    override suspend fun downloadedPrefixSize(fileId: Int, offset: Long): Long {
+        if (!config.enabled) return 0L
+        val result = send(TdApi.GetFileDownloadedPrefixSize(fileId, offset))
+        return (result as? TdApi.FileDownloadedPrefixSize)?.size ?: 0L
+    }
+
     override suspend fun deleteFile(fileId: Int) {
         if (!config.enabled) return
         // Cancela o download ativo ANTES de deletar. Sem isso, o download seguia ativo após sair

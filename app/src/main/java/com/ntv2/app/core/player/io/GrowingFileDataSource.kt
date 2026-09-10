@@ -1,13 +1,14 @@
 ﻿package com.ntv2.app.core.player.io
 
 import android.net.Uri
+import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import com.ntv2.app.core.player.telegram.PartialFileAccessor
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
@@ -21,6 +22,8 @@ class GrowingFileDataSourceFactory(
         return GrowingFileDataSource(partialFileAccessor, stallTimeoutMs, readAheadBytes)
     }
 }
+
+private const val NUDGE_INTERVAL_MS = 2_000L
 
 private class GrowingFileDataSource(
     private val partialFileAccessor: PartialFileAccessor,
@@ -40,6 +43,9 @@ private class GrowingFileDataSource(
     // Até onde já pedimos download; mantém uma janela à frente do ponto de leitura em vez de
     // baixar o arquivo inteiro de uma vez (isso enchia o disco e o TDLib abortava por ENOSPC).
     private var lastRequestedEnd: Long = 0L
+    // Cache do prefixo baixado consultado ao TDLib (evita consultar a cada leitura).
+    private var cacheBase: Long = -1L
+    private var cachePrefix: Long = 0L
 
     override fun open(dataSpec: DataSpec): Long {
         this.dataSpec = dataSpec
@@ -71,6 +77,8 @@ private class GrowingFileDataSource(
         // mas LIMITADA a uma janela — não o arquivo inteiro (evita encher o disco). Leituras de
         // tamanho fixo (ex.: índice do MKV) pedem exatamente o solicitado.
         downloadBaseOffset = readPosition
+        cacheBase = -1L
+        cachePrefix = 0L
         val requestLen = if (bytesRemaining == C.LENGTH_UNSET.toLong()) readAheadBytes else bytesRemaining
         partialFileAccessor.requestRange(fileId, readPosition, requestLen, priority = 32)
         lastRequestedEnd = readPosition + requestLen
@@ -89,16 +97,14 @@ private class GrowingFileDataSource(
         }
 
         while (true) {
-            // C2: contiguidade real a partir do downloadOffset, não o downloadedSize (que pode
-            // conter regiões esparsas/"garbage" segundo a doc do TDLib). A decisão fica isolada
-            // em PartialReadPlanner (testável em JVM).
-            val readableStart = partialFileAccessor.contiguousReadableStart(fileId)
-            val readableEnd = partialFileAccessor.contiguousReadableEnd(fileId)
-            maybeRequestAhead()
+            // Legibilidade por POSIÇÃO: pergunta ao TDLib quantos bytes contíguos há a partir de
+            // readPosition (reconhece frente E fim já no disco). Antes usávamos o prefixo relativo
+            // ao offset único, que "esquecia" a frente após buscar o índice no fim (MKV) → travava.
+            val prefix = readablePrefixFrom(readPosition)
             when (
                 val plan = PartialReadPlanner.plan(
-                    contiguousReadableStart = readableStart,
-                    contiguousReadableEnd = readableEnd,
+                    contiguousReadableStart = readPosition,
+                    contiguousReadableEnd = readPosition + prefix,
                     readPosition = readPosition,
                     bytesRemaining = bytesRemaining,
                     requestedLength = length,
@@ -121,21 +127,63 @@ private class GrowingFileDataSource(
                 PartialReadPlanner.Plan.EndOfInput -> return C.RESULT_END_OF_INPUT
 
                 PartialReadPlanner.Plan.Wait -> {
-                    // A4: espera reativa — suspende até o prefixo contíguo avançar (sinalizado pelo
-                    // StateFlow do download), em vez de polling com sleep na thread do loader.
-                    // Timeout adaptativo: aborta só se NÃO houver avanço dentro do stallTimeout.
-                    val progressed = runBlocking {
-                        withTimeoutOrNull(stallTimeoutMs) {
-                            // Espera até que a posição de leitura esteja coberta pela região baixada.
-                            partialFileAccessor.awaitReadableBeyond(fileId, readPosition)
-                            true
-                        }
-                    }
-                    if (progressed == null) {
+                    maybeRequestAhead()
+                    val covered = runBlocking { awaitCoverageOrStall(readPosition) }
+                    if (!covered) {
                         throw IOException("Timeout aguardando bytes do arquivo parcial")
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Bytes contíguos disponíveis a partir de [pos], com cache: só consulta o TDLib quando a
+     * posição sai da região já conhecida (evita uma consulta por leitura).
+     */
+    private fun readablePrefixFrom(pos: Long): Long {
+        if (cacheBase in 0..pos && pos < cacheBase + cachePrefix) {
+            return cacheBase + cachePrefix - pos
+        }
+        val prefix = runBlocking { partialFileAccessor.downloadedPrefixFrom(fileId, pos) }
+        cacheBase = pos
+        cachePrefix = prefix
+        return prefix
+    }
+
+    /**
+     * Aguarda até que [position] esteja coberta pela região contígua baixada, OU o download
+     * conclua. Retorna false apenas se o download ficar TRAVADO (nenhum byte novo) por mais que
+     * [stallTimeoutMs]. Usa progresso real de download (downloadedBytes) para não abortar um
+     * seek lento mas em andamento — ex.: buscar o índice do MKV lá no fim do arquivo, que demora
+     * o TDLib "pular" pela rede e antes causava retry/flip-flop e minutos de buffering.
+     */
+    private suspend fun awaitCoverageOrStall(position: Long): Boolean {
+        var lastDownloaded = partialFileAccessor.downloadedBytes(fileId)
+        var lastProgressAt = SystemClock.elapsedRealtime()
+        var lastNudgeAt = 0L
+        while (true) {
+            if (partialFileAccessor.isComplete(fileId)) return true
+            if (partialFileAccessor.downloadedPrefixFrom(fileId, position) > 0L) return true
+
+            val now = SystemClock.elapsedRealtime()
+            // Re-solicita periodicamente a faixa necessária: sem isso o TDLib conclui a janela
+            // anterior e fica OCIOSO (o pedido do índice no fim do MKV se perdia → stall/erro →
+            // ExoPlayer re-tentava → flip-flop frente/fim, minutos de buffering ou falha).
+            if (now - lastNudgeAt > NUDGE_INTERVAL_MS) {
+                val len = (position - downloadBaseOffset + readAheadBytes).coerceAtLeast(readAheadBytes)
+                partialFileAccessor.requestRange(fileId, downloadBaseOffset, len, priority = 32)
+                lastNudgeAt = now
+            }
+
+            delay(300L)
+
+            val downloaded = partialFileAccessor.downloadedBytes(fileId)
+            if (downloaded > lastDownloaded) {
+                lastDownloaded = downloaded
+                lastProgressAt = SystemClock.elapsedRealtime()
+            }
+            if (SystemClock.elapsedRealtime() - lastProgressAt > stallTimeoutMs) return false
         }
     }
 

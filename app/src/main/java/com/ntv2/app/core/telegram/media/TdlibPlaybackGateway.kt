@@ -34,6 +34,9 @@ interface TdlibPlaybackGateway {
 
     /** Remove a cópia local (inclusive o parcial em temp) para liberar armazenamento. */
     suspend fun deleteFile(fileId: Int)
+
+    /** Bytes contíguos já baixados a partir de [offset] (reconhece qualquer região no disco). */
+    suspend fun downloadedPrefixSize(fileId: Int, offset: Long): Long
 }
 
 class FakeTdlibPlaybackGateway(
@@ -138,5 +141,11 @@ class FakeTdlibPlaybackGateway(
             runCatching { File(path).delete() }
         }
         states.remove(fileId)
+    }
+
+    override suspend fun downloadedPrefixSize(fileId: Int, offset: Long): Long {
+        // Fake baixa contíguo a partir de 0.
+        val downloaded = states[fileId]?.value?.downloadedBytes ?: return 0L
+        return if (offset <= downloaded) downloaded - offset else 0L
     }
 }

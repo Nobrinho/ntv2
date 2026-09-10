@@ -13,6 +13,7 @@ import com.ntv2.app.feature.media.presentation.state.MediaLibraryEmptyState
 import com.ntv2.app.feature.media.presentation.state.MediaLibraryUiState
 import com.ntv2.app.feature.media.presentation.state.MediaNavigationPayload
 import com.ntv2.app.feature.settings.domain.SettingsRepository
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -43,7 +44,8 @@ sealed interface MediaLibraryAction {
 class MediaLibraryViewModel(
     private val mediaRepository: MediaRepository,
     private val channelRepository: ChannelRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MediaLibraryUiState(isLoading = true))
@@ -174,7 +176,7 @@ class MediaLibraryViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null, emptyState = null) }
             val query = currentQuery()
             runCatching {
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     coroutineScope {
                         channels.map { channel ->
                             async { channel.id to fetchPage(channel.id, channel.title, query, fromMessageId = 0L) }
@@ -205,7 +207,7 @@ class MediaLibraryViewModel(
         viewModelScope.launch {
             val query = currentQuery()
             runCatching {
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     fetchPage(channelId, title, query, fromMessageId = cursor)
                 }
             }.onSuccess { page ->
@@ -233,7 +235,7 @@ class MediaLibraryViewModel(
             val minSeconds = _uiState.value.minDurationMinutes * 60
             val hasQuery = currentQuery().isNotBlank()
 
-            val sections = withContext(Dispatchers.Default) {
+            val sections = withContext(ioDispatcher) {
                 channelOrder.mapNotNull { id ->
                     val items = channelItems[id] ?: return@mapNotNull null
                     val filtered = items.filter { it.durationSeconds >= minSeconds }

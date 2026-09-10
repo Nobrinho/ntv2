@@ -18,6 +18,8 @@ coil = "2.7.0"
 material = "1.12.0"
 tdlib = "v1.8.8-20221107"
 zxing = "3.5.3"
+junit = "4.13.2"
+turbine = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -45,6 +47,9 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 google-material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 tdlib = { group = "ca.denisab85", name = "tdlib", version.ref = "tdlib" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

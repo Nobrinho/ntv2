@@ -25,6 +25,25 @@ sealed interface PlaybackState {
     ) : PlaybackState
 }
 
+/** Uma faixa de áudio ou legenda disponível na mídia (detectada pelo ExoPlayer ao abrir). */
+data class MediaTrackOption(
+    /** Identificador interno "grupo:faixa" usado para reaplicar a seleção. */
+    val id: String,
+    val label: String,
+    val isSelected: Boolean
+)
+
+/** Faixas/detalhes da mídia atual, preenchidos após o ExoPlayer parsear o arquivo. */
+data class MediaTracksInfo(
+    val videoWidth: Int = 0,
+    val videoHeight: Int = 0,
+    val audios: List<MediaTrackOption> = emptyList(),
+    val subtitles: List<MediaTrackOption> = emptyList()
+) {
+    /** true se há uma legenda ativa no momento. */
+    val hasSubtitleSelected: Boolean get() = subtitles.any { it.isSelected }
+}
+
 data class PlaybackSnapshot(
     val state: PlaybackState = PlaybackState.Idle,
     val isPlaying: Boolean = false,
@@ -32,7 +51,8 @@ data class PlaybackSnapshot(
     val bufferedPositionMs: Long = 0L,
     val downloadedBytes: Long = 0L,
     val expectedBytes: Long? = null,
-    val activeMediaId: String? = null
+    val activeMediaId: String? = null,
+    val tracks: MediaTracksInfo = MediaTracksInfo()
 )
 
 interface PlaybackCoordinator {
@@ -48,6 +68,12 @@ interface PlaybackCoordinator {
     fun onAppStop()
     fun onAppResume()
     fun release()
+
+    /** Seleciona a faixa de áudio pelo id de [MediaTrackOption]. */
+    fun selectAudioTrack(id: String)
+
+    /** Seleciona a legenda pelo id de [MediaTrackOption]; null desliga a legenda. */
+    fun selectTextTrack(id: String?)
 
     /** Cancela e remove o download de um arquivo, mesmo que a reprodução nunca tenha iniciado. */
     fun discardMedia(fileId: Int)

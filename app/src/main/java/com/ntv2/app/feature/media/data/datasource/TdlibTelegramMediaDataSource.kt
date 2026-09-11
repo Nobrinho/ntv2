@@ -36,6 +36,8 @@ class TdlibTelegramMediaDataSource(
         fileName = fileName,
         durationSeconds = durationSeconds,
         thumbnailPath = thumbnailPath,
-        fileId = fileId
+        fileId = fileId,
+        width = width,
+        height = height
     )
 }

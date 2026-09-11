@@ -45,6 +45,8 @@ interface PlaybackController {
     fun onAppStop()
     fun onAppResume()
     fun release()
+    fun selectAudioTrack(id: String)
+    fun selectTextTrack(id: String?)
     fun discardMedia(fileId: Int)
 }
 
@@ -110,6 +112,10 @@ class DefaultPlaybackController(
     override fun onAppResume() = coordinator.onAppResume()
 
     override fun release() = coordinator.release()
+
+    override fun selectAudioTrack(id: String) = coordinator.selectAudioTrack(id)
+
+    override fun selectTextTrack(id: String?) = coordinator.selectTextTrack(id)
 
     override fun discardMedia(fileId: Int) = coordinator.discardMedia(fileId)
 }

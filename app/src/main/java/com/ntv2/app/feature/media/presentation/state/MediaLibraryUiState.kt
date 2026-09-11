@@ -10,6 +10,8 @@ data class MediaCardUi(
     val durationSeconds: Int,
     val thumbnailPath: String?,
     val fileId: Int,
+    /** Altura do vídeo (px) para exibir a resolução (4K/1080p/...); 0 se desconhecida. */
+    val videoHeight: Int = 0,
     /** Fração assistida (0f..1f) para o indicador de progresso; 0 se não houver. */
     val progress: Float = 0f
 )

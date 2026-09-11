@@ -58,6 +58,7 @@ import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryViewModel
 fun MediaLibraryScreen(
     viewModel: MediaLibraryViewModel,
     onOpenSettings: () -> Unit,
+    onOpenChannels: () -> Unit,
     onOpenPlaybackPlaceholder: (
         mediaId: String,
         fileId: Int,
@@ -144,6 +145,9 @@ fun MediaLibraryScreen(
                 }
                 Button(onClick = { viewModel.onAction(MediaLibraryAction.Refresh) }) {
                     Text("Atualizar")
+                }
+                Button(onClick = onOpenChannels) {
+                    Text("Canais")
                 }
                 Button(onClick = onOpenSettings) {
                     Text("Configurações")
@@ -241,6 +245,16 @@ fun MediaLibraryScreen(
             )
         }
     }
+}
+
+/** Converte a altura do vídeo (px) em rótulo comercial de resolução (null se desconhecida). */
+private fun resolutionLabel(height: Int): String? = when {
+    height <= 0 -> null
+    height >= 2000 -> "4K"
+    height >= 1000 -> "1080p"
+    height >= 700 -> "720p"
+    height >= 460 -> "480p"
+    else -> "SD"
 }
 
 private val KEYBOARD_ROWS = listOf(
@@ -495,6 +509,24 @@ private fun MediaCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text("🎬", style = MaterialTheme.typography.headlineMedium)
+                    }
+                }
+
+                // Selo de resolução no canto superior esquerdo (4K/1080p/...).
+                resolutionLabel(media.videoHeight)?.let { label ->
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xCC000000))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            label,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall
+                        )
                     }
                 }
 

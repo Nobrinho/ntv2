@@ -1,10 +1,17 @@
 ﻿package com.ntv2.app.core.player.session
 
 import android.net.Uri
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
+import com.ntv2.app.core.player.MediaTrackOption
+import com.ntv2.app.core.player.MediaTracksInfo
+import java.util.Locale
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.ntv2.app.core.player.PlaybackCoordinator
 import com.ntv2.app.core.player.PlaybackMedia
@@ -45,6 +52,8 @@ class DefaultPlaybackCoordinator(
         get() = exoPlayer
 
     private var exoPlayer: ExoPlayer? = null
+    // Última lista de faixas do ExoPlayer, para reaplicar seleção de áudio/legenda.
+    private var lastTracks: Tracks? = null
     private var currentMedia: PlaybackMedia? = null
     private var observeJob: Job? = null
     private var downloadJob: Job? = null
@@ -72,6 +81,11 @@ class DefaultPlaybackCoordinator(
                 // Assistido até o fim: limpa o progresso para não retomar no finzinho.
                 currentMedia?.let { media -> scope.launch { progressStore.clear(media.mediaId) } }
             }
+        }
+
+        override fun onTracksChanged(tracks: Tracks) {
+            lastTracks = tracks
+            snapshotState.update { it.copy(tracks = buildTracksInfo(tracks)) }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -208,6 +222,35 @@ class DefaultPlaybackCoordinator(
         }
     }
 
+    override fun selectAudioTrack(id: String) {
+        val player = exoPlayer ?: return
+        val override = overrideFor(id) ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(override)
+            .build()
+    }
+
+    override fun selectTextTrack(id: String?) {
+        val player = exoPlayer ?: return
+        val builder = player.trackSelectionParameters.buildUpon()
+        if (id == null) {
+            builder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        } else {
+            val override = overrideFor(id) ?: return
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(override)
+        }
+        player.trackSelectionParameters = builder.build()
+    }
+
+    /** Constrói o override de seleção a partir do id "grupo:faixa" sobre a última lista de faixas. */
+    private fun overrideFor(id: String): TrackSelectionOverride? {
+        val (groupIndex, trackIndex) = parseTrackId(id) ?: return null
+        val group = lastTracks?.groups?.getOrNull(groupIndex) ?: return null
+        return TrackSelectionOverride(group.mediaTrackGroup, listOf(trackIndex))
+    }
+
     override fun discardMedia(fileId: Int) {
         if (fileId <= 0) return
         scope.launch { playbackDataSource.deleteFile(fileId) }
@@ -251,6 +294,74 @@ class DefaultPlaybackCoordinator(
         }
     }
 
+    private fun buildTracksInfo(tracks: Tracks): MediaTracksInfo {
+        var videoWidth = 0
+        var videoHeight = 0
+        val audios = mutableListOf<MediaTrackOption>()
+        val subtitles = mutableListOf<MediaTrackOption>()
+
+        tracks.groups.forEachIndexed { groupIndex, group ->
+            for (trackIndex in 0 until group.length) {
+                val format = group.getTrackFormat(trackIndex)
+                val selected = group.isTrackSelected(trackIndex)
+                when (group.type) {
+                    C.TRACK_TYPE_VIDEO -> if (selected || videoHeight == 0) {
+                        if (format.width > 0) videoWidth = format.width
+                        if (format.height > 0) videoHeight = format.height
+                    }
+                    C.TRACK_TYPE_AUDIO -> if (group.isTrackSupported(trackIndex)) {
+                        audios += MediaTrackOption(
+                            id = "$groupIndex:$trackIndex",
+                            label = audioLabel(format, audios.size),
+                            isSelected = selected
+                        )
+                    }
+                    C.TRACK_TYPE_TEXT -> if (group.isTrackSupported(trackIndex)) {
+                        subtitles += MediaTrackOption(
+                            id = "$groupIndex:$trackIndex",
+                            label = trackLabel(format, subtitles.size, "Legenda"),
+                            isSelected = selected
+                        )
+                    }
+                }
+            }
+        }
+        return MediaTracksInfo(videoWidth, videoHeight, audios, subtitles)
+    }
+
+    private fun audioLabel(format: Format, index: Int): String {
+        val base = trackLabel(format, index, "Áudio")
+        val channels = when {
+            format.channelCount >= 6 -> "5.1"
+            format.channelCount == 2 -> "estéreo"
+            format.channelCount == 1 -> "mono"
+            else -> null
+        }
+        return if (channels != null) "$base · $channels" else base
+    }
+
+    private fun trackLabel(format: Format, index: Int, fallbackPrefix: String): String {
+        format.label?.takeIf { it.isNotBlank() }?.let { return it }
+        languageDisplay(format.language)?.let { return it }
+        return "$fallbackPrefix ${index + 1}"
+    }
+
+    private fun languageDisplay(code: String?): String? {
+        if (code.isNullOrBlank() || code == "und") return null
+        val display = Locale(code).getDisplayLanguage(Locale("pt", "BR"))
+        return display.takeIf { it.isNotBlank() && it != code }
+            ?.replaceFirstChar { it.uppercase() }
+            ?: code.uppercase()
+    }
+
+    private fun parseTrackId(id: String): Pair<Int, Int>? {
+        val parts = id.split(":")
+        if (parts.size != 2) return null
+        val g = parts[0].toIntOrNull() ?: return null
+        val t = parts[1].toIntOrNull() ?: return null
+        return g to t
+    }
+
     private fun stopInternal(closeSession: Boolean, deleteFile: Boolean = false) {
         observeJob?.cancel()
         observeJob = null
@@ -284,11 +395,13 @@ class DefaultPlaybackCoordinator(
             currentMedia = null
         }
         cacheManager.markActivePlaybackFile(null)
+        lastTracks = null
 
         snapshotState.update {
             it.copy(
                 state = PlaybackState.Idle,
-                isPlaying = false
+                isPlaying = false,
+                tracks = MediaTracksInfo()
             )
         }
     }

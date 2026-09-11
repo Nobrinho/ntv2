@@ -11,7 +11,9 @@ data class TelegramVideoMessage(
     val fileName: String?,
     val durationSeconds: Int,
     val thumbnailPath: String?,
-    val fileId: Int
+    val fileId: Int,
+    val width: Int = 0,
+    val height: Int = 0
 )
 
 data class TelegramVideoPage(

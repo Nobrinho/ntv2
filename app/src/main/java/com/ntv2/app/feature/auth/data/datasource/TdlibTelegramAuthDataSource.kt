@@ -35,7 +35,18 @@ class TdlibTelegramAuthDataSource(
     }
 
     override suspend fun initialize() {
-        state.update { it.copy(isLoading = true, step = AuthStep.Initializing, errorMessage = null) }
+        // Este data source é singleton (vive enquanto o processo vive). initialize() é chamado
+        // toda vez que a LoginScreen é composta (nova LoginViewModel a cada recriação da Activity).
+        // NÃO podemos sobrescrever um estado já resolvido (ex.: Authorized) com Initializing: se o
+        // cliente TDLib já existe, ele não reemite o estado atual e a tela travava em "Initializing"
+        // pedindo QR pra sempre. Só mostramos Initializing quando ainda não há estado definido.
+        val current = state.value.step
+        val alreadyResolved = current != AuthStep.Idle &&
+            current != AuthStep.Initializing &&
+            current !is AuthStep.Failed
+        if (!alreadyResolved) {
+            state.update { it.copy(isLoading = true, step = AuthStep.Initializing, errorMessage = null) }
+        }
         runCatching {
             tdlibGateway.initialize()
         }.onFailure { error ->

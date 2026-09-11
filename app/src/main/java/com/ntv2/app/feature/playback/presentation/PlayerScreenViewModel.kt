@@ -46,6 +46,9 @@ sealed interface PlayerScreenAction {
     data object Pause : PlayerScreenAction
     data object Retry : PlayerScreenAction
     data class SeekBy(val deltaMs: Long) : PlayerScreenAction
+    data class SelectAudio(val id: String) : PlayerScreenAction
+    /** id null desliga a legenda. */
+    data class SelectSubtitle(val id: String?) : PlayerScreenAction
     data object OnAppStop : PlayerScreenAction
     data object OnAppResume : PlayerScreenAction
     data object Release : PlayerScreenAction
@@ -104,6 +107,13 @@ class PlayerScreenViewModel(
                 val current = playbackController.player?.currentPosition
                     ?: uiState.value.snapshot.currentPositionMs
                 playbackController.seekTo((current + action.deltaMs).coerceAtLeast(0L))
+            }
+
+            is PlayerScreenAction.SelectAudio -> if (!uiState.value.isPlaceholderMode) {
+                playbackController.selectAudioTrack(action.id)
+            }
+            is PlayerScreenAction.SelectSubtitle -> if (!uiState.value.isPlaceholderMode) {
+                playbackController.selectTextTrack(action.id)
             }
 
             PlayerScreenAction.OnAppStop -> if (!uiState.value.isPlaceholderMode) playbackController.onAppStop()

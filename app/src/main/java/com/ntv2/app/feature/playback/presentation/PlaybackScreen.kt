@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +37,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -47,11 +49,19 @@ import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import coil.compose.AsyncImage
+import com.ntv2.app.core.player.MediaTrackOption
+import com.ntv2.app.core.player.MediaTracksInfo
 import com.ntv2.app.core.player.PlaybackState
 import kotlinx.coroutines.delay
 
 private const val DPAD_SEEK_MS = 10_000L
+
+private enum class TrackPicker { Audio, Subtitle }
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -70,6 +80,16 @@ fun PlaybackScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val videoFocusRequester = remember { FocusRequester() }
     val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+
+    // Mantém a tela ligada durante a reprodução. Sem isso o Fire TV entra em protetor de tela /
+    // apaga o display por inatividade mesmo com o vídeo tocando (o áudio continua, só a tela dorme);
+    // apertar OK acordava e o vídeo estava rodando o tempo todo. Solta o flag ao pausar/sair.
+    val view = LocalView.current
+    val keepScreenOn = !state.isPlaceholderMode && state.snapshot.isPlaying
+    DisposableEffect(keepScreenOn) {
+        view.keepScreenOn = keepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
 
     LaunchedEffect(mediaId, fileId) {
         viewModel.onAction(
@@ -139,12 +159,17 @@ fun PlaybackScreen(
         }
     }
 
+    // Seletor de faixa (áudio/legenda) aberto sobre o player.
+    var trackPicker by remember { mutableStateOf<TrackPicker?>(null) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
         VideoSurface(
+            tracks = state.snapshot.tracks,
             heightDp = screenHeightDp,
             focusRequester = videoFocusRequester,
             isPlaceholderMode = state.isPlaceholderMode,
@@ -205,6 +230,16 @@ fun PlaybackScreen(
                     Button(onClick = { viewModel.onAction(PlayerScreenAction.SeekBy(5 * 60_000L)) }) {
                         Text("+5 min")
                     }
+                    if (state.snapshot.tracks.audios.size > 1) {
+                        Button(onClick = { trackPicker = TrackPicker.Audio }) {
+                            Text("Áudio")
+                        }
+                    }
+                    if (state.snapshot.tracks.subtitles.isNotEmpty()) {
+                        Button(onClick = { trackPicker = TrackPicker.Subtitle }) {
+                            Text("Legenda")
+                        }
+                    }
                 }
             }
 
@@ -239,6 +274,112 @@ fun PlaybackScreen(
             }
         }
     }
+
+        trackPicker?.let { picker ->
+            val tracks = state.snapshot.tracks
+            TrackPickerOverlay(
+                title = if (picker == TrackPicker.Audio) "Áudio" else "Legenda",
+                options = if (picker == TrackPicker.Audio) tracks.audios else tracks.subtitles,
+                allowOff = picker == TrackPicker.Subtitle,
+                onSelect = { id ->
+                    when (picker) {
+                        TrackPicker.Audio -> id?.let { viewModel.onAction(PlayerScreenAction.SelectAudio(it)) }
+                        TrackPicker.Subtitle -> viewModel.onAction(PlayerScreenAction.SelectSubtitle(id))
+                    }
+                    trackPicker = null
+                },
+                onDismiss = { trackPicker = null }
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrackPickerOverlay(
+    title: String,
+    options: List<MediaTrackOption>,
+    allowOff: Boolean,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xE6000000)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .width(460.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF1E1E1E))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(title, style = MaterialTheme.typography.titleLarge, color = Color.White)
+            Column(
+                modifier = Modifier.focusGroup(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (allowOff) {
+                    val noneSelected = options.none { it.isSelected }
+                    TrackRow(
+                        label = "Desligar",
+                        selected = noneSelected,
+                        modifier = Modifier.focusRequester(firstFocus),
+                        onClick = { onSelect(null) }
+                    )
+                }
+                options.forEachIndexed { index, option ->
+                    val mod = if (!allowOff && index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                    TrackRow(
+                        label = option.label,
+                        selected = option.isSelected,
+                        modifier = mod,
+                        onClick = { onSelect(option.id) }
+                    )
+                }
+            }
+            Button(onClick = onDismiss) {
+                Text("Fechar")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackRow(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(if (focused) Color(0x33FFFFFF) else Color(0x14FFFFFF))
+            .border(
+                width = if (focused) 2.dp else 1.dp,
+                color = if (focused) Color.White else Color(0x33FFFFFF),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text = if (selected) "● $label" else label,
+            color = if (selected) Color.White else Color(0xFFCFCFCF),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @OptIn(UnstableApi::class)
@@ -249,6 +390,7 @@ private fun VideoSurface(
     isPlaceholderMode: Boolean,
     thumbnailPath: String?,
     title: String,
+    tracks: MediaTracksInfo,
     playbackState: PlaybackState,
     statusMessage: String,
     player: () -> Player?,
@@ -333,15 +475,17 @@ private fun VideoSurface(
                     )
                 }
             }
-            // Overlay da timeline (aparece ao apertar ↑).
+            // Overlay da timeline (aparece ao apertar ↑) com selos de resolução/áudio/legenda.
             if (showTimeline) {
-                Box(
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                         .background(Color(0xCC000000))
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    MediaInfoChips(tracks)
                     PlaybackProgress(
                         positionMs = positionMs,
                         bufferedMs = bufferedMs,
@@ -378,6 +522,49 @@ private fun VideoSurface(
             }
         }
     }
+}
+
+/** Selos de resolução, áudio e legenda exibidos junto da timeline. */
+@Composable
+private fun MediaInfoChips(tracks: MediaTracksInfo) {
+    val chips = buildList {
+        resolutionLabel(tracks.videoHeight)?.let { add(it) }
+        if (tracks.audios.isNotEmpty()) {
+            val langs = tracks.audios.joinToString("/") { it.label.substringBefore(" ·") }
+            add(if (tracks.audios.size > 1) "🔊 ${tracks.audios.size} · $langs" else "🔊 $langs")
+        }
+        val selectedSub = tracks.subtitles.firstOrNull { it.isSelected }
+        when {
+            selectedSub != null -> add("CC ${selectedSub.label}")
+            tracks.subtitles.isNotEmpty() -> add("CC disponível")
+        }
+    }
+    if (chips.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        chips.forEach { InfoChip(it) }
+    }
+}
+
+@Composable
+private fun InfoChip(text: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0x33FFFFFF))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    ) {
+        Text(text, color = Color.White, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+/** Converte a altura do vídeo em rótulo comercial de resolução. */
+private fun resolutionLabel(height: Int): String? = when {
+    height <= 0 -> null
+    height >= 2000 -> "4K"
+    height >= 1000 -> "1080p"
+    height >= 700 -> "720p"
+    height >= 460 -> "480p"
+    else -> "SD"
 }
 
 /** Rótulo do estado exibido junto do loading durante a reprodução (null = não mostrar). */

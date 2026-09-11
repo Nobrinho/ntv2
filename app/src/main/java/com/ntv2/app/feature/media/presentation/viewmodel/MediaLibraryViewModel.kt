@@ -293,6 +293,7 @@ class MediaLibraryViewModel(
             durationSeconds = durationSeconds,
             thumbnailPath = thumbnailPath,
             fileId = fileId,
+            videoHeight = height,
             progress = progress
         )
     }

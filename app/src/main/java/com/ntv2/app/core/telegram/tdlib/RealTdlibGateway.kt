@@ -274,7 +274,9 @@ class RealTdlibGateway(
                         fileName = video.fileName.ifBlank { null },
                         durationSeconds = video.duration,
                         thumbnailPath = resolveThumbnailPath(video),
-                        fileId = tdFile.id
+                        fileId = tdFile.id,
+                        width = video.width,
+                        height = video.height
                     )
                 }
             }.awaitAll()

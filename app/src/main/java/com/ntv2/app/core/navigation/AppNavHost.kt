@@ -1,8 +1,42 @@
 ﻿package com.ntv2.app.core.navigation
 
+import android.app.Activity
 import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.tv.material3.Button
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,7 +62,16 @@ fun AppNavHost(
     appContainer: AppContainer
 ) {
     val navController = rememberNavController()
+    val context = LocalContext.current
+    var showExitDialog by remember { mutableStateOf(false) }
 
+    // O app não deve fechar direto no "Voltar" quando está na raiz (sem tela anterior).
+    // Nesse caso, pedimos confirmação. Fora da raiz, o Voltar navega normalmente (callback desabilitado).
+    val currentEntry by navController.currentBackStackEntryAsState()
+    val atRoot = currentEntry != null && navController.previousBackStackEntry == null
+    BackHandler(enabled = atRoot) { showExitDialog = true }
+
+  Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
         startDestination = RoutePath.LOGIN
@@ -37,11 +80,23 @@ fun AppNavHost(
             val loginViewModel: LoginViewModel = viewModel(
                 factory = LoginViewModelFactory(appContainer.authRepository)
             )
+            val scope = rememberCoroutineScope()
             LoginScreen(
                 viewModel = loginViewModel,
                 onLoginSuccess = {
-                    navController.navigate(RoutePath.CHANNEL_SELECTION) {
-                        popUpTo(RoutePath.LOGIN) { inclusive = true }
+                    // Já logado: se já há canais escolhidos, pula a seleção e vai direto para a
+                    // biblioteca; só mostra a seleção de canais na primeira vez (nenhum selecionado).
+                    scope.launch {
+                        val hasChannels = appContainer.channelRepository
+                            .observeSelectedChannelIds().first().isNotEmpty()
+                        val destination = if (hasChannels) {
+                            RoutePath.MEDIA_LIBRARY
+                        } else {
+                            RoutePath.CHANNEL_SELECTION
+                        }
+                        navController.navigate(destination) {
+                            popUpTo(RoutePath.LOGIN) { inclusive = true }
+                        }
                     }
                 }
             )
@@ -56,7 +111,14 @@ fun AppNavHost(
             )
             ChannelSelectionScreen(
                 viewModel = channelViewModel,
-                onOpenLibrary = { navController.navigate(RoutePath.MEDIA_LIBRARY) },
+                onOpenLibrary = {
+                    // Vai para a biblioteca sem empilhar a seleção de canais (evita duplicatas
+                    // ao abrir "Canais" pela própria biblioteca).
+                    navController.navigate(RoutePath.MEDIA_LIBRARY) {
+                        popUpTo(RoutePath.CHANNEL_SELECTION) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 onBack = { navController.popBackStack() },
                 onLogout = {
                     navController.navigate(RoutePath.LOGIN) {
@@ -78,6 +140,7 @@ fun AppNavHost(
             MediaLibraryScreen(
                 viewModel = mediaViewModel,
                 onOpenSettings = { navController.navigate(RoutePath.SETTINGS) },
+                onOpenChannels = { navController.navigate(RoutePath.CHANNEL_SELECTION) },
                 onOpenPlaybackPlaceholder = { mediaId, fileId, title, channelName, durationSeconds, fileName, thumbnailPath ->
                     navController.navigate(
                         RoutePath.playbackPlaceholder(
@@ -132,6 +195,62 @@ fun AppNavHost(
                 viewModel = playerViewModel,
                 onBack = { navController.popBackStack() }
             )
+        }
+    }
+
+    if (showExitDialog) {
+        ExitConfirmDialog(
+            onConfirm = { (context as? Activity)?.finish() },
+            onDismiss = { showExitDialog = false }
+        )
+    }
+  }
+}
+
+@Composable
+private fun ExitConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val dismissFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { dismissFocus.requestFocus() } }
+    // Voltar dentro do diálogo = cancelar (não fecha o app).
+    BackHandler(enabled = true) { onDismiss() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xC0000000)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .width(420.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF1E1E1E))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text(
+                "Deseja fechar o aplicativo?",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White
+            )
+            Row(
+                modifier = Modifier.focusGroup(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    modifier = Modifier.focusRequester(dismissFocus),
+                    onClick = onDismiss
+                ) {
+                    Text("Não")
+                }
+                Button(onClick = onConfirm) {
+                    Text("Sim, sair")
+                }
+            }
         }
     }
 }

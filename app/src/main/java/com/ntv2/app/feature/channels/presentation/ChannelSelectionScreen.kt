@@ -1,34 +1,50 @@
-﻿package com.ntv2.app.feature.channels.presentation
+package com.ntv2.app.feature.channels.presentation
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
-import androidx.tv.material3.Card
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
+import com.ntv2.app.feature.channels.presentation.state.ChannelItemUi
 import com.ntv2.app.feature.channels.presentation.state.ChannelSelectionEmptyState
 import com.ntv2.app.feature.channels.presentation.state.ChannelSelectionUiState
 import com.ntv2.app.feature.channels.presentation.viewmodel.ChannelSelectionAction
 import com.ntv2.app.feature.channels.presentation.viewmodel.ChannelSelectionViewModel
+import kotlin.math.abs
 
 @Composable
 fun ChannelSelectionScreen(
@@ -62,7 +78,21 @@ fun ChannelSelectionScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Seleção de Canais", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text("Seleção de Canais", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            if (state.channels.isNotEmpty()) {
+                Text(
+                    "${state.selectedChannelIds.size} de ${state.channels.size} selecionados",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFB0B0B0),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+        }
 
         ActionsRow(
             state = state,
@@ -155,17 +185,112 @@ private fun ChannelsGrid(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(state.channels, key = { it.id }) { item ->
-            Card(onClick = { onToggle(item.id) }) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(item.title, maxLines = 2)
-                    Text(if (item.isSelected) "Selecionado" else "Não selecionado")
+            ChannelCard(item = item, onToggle = { onToggle(item.id) })
+        }
+    }
+}
+
+@Composable
+private fun ChannelCard(
+    item: ChannelItemUi,
+    onToggle: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val selected = item.isSelected
+    val accent = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onToggle)
+            .background(
+                when {
+                    focused -> Color(0x33FFFFFF)
+                    selected -> Color(0x22000000)
+                    else -> Color(0x11FFFFFF)
                 }
+            )
+            .border(
+                width = if (focused || selected) 2.dp else 1.dp,
+                color = when {
+                    focused -> Color.White
+                    selected -> accent
+                    else -> Color(0x44FFFFFF)
+                },
+                shape = RoundedCornerShape(10.dp)
+            )
+            .padding(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ChannelAvatar(avatarPath = item.avatarPath, title = item.title)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    item.title,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Text(
+                    text = if (selected) "✓ Selecionado" else "Selecionar",
+                    color = if (selected) accent else Color(0xFF9A9A9A),
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
     }
+}
+
+@Composable
+private fun ChannelAvatar(
+    avatarPath: String?,
+    title: String
+) {
+    val avatarSize = 48.dp
+    if (avatarPath != null) {
+        AsyncImage(
+            model = avatarPath,
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(avatarSize)
+                .clip(CircleShape)
+        )
+    } else {
+        // Sem foto: círculo colorido (estável por título) com a inicial.
+        Box(
+            modifier = Modifier
+                .size(avatarSize)
+                .clip(CircleShape)
+                .background(colorForTitle(title)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = initialFor(title),
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+    }
+}
+
+private val AVATAR_COLORS = listOf(
+    Color(0xFF5C6BC0), Color(0xFF26A69A), Color(0xFFEF5350), Color(0xFFAB47BC),
+    Color(0xFF42A5F5), Color(0xFFFFA726), Color(0xFF66BB6A), Color(0xFFEC407A)
+)
+
+private fun colorForTitle(title: String): Color =
+    AVATAR_COLORS[abs(title.hashCode()) % AVATAR_COLORS.size]
+
+private fun initialFor(title: String): String {
+    val firstLetter = title.trim().firstOrNull { it.isLetterOrDigit() }
+    return firstLetter?.uppercaseChar()?.toString() ?: "#"
 }

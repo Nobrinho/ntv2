@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -48,6 +50,8 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.ntv2.app.core.player.PlaybackState
 import kotlinx.coroutines.delay
+
+private const val DPAD_SEEK_MS = 10_000L
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -125,6 +129,16 @@ fun PlaybackScreen(
         }
     }
 
+    // Feedback central de seek (segundos acumulados na "rajada" de ← / →); some após ~1s.
+    var seekFeedbackMs by remember { mutableStateOf(0L) }
+    var seekNonce by remember { mutableStateOf(0) }
+    LaunchedEffect(seekNonce) {
+        if (seekNonce > 0) {
+            delay(900)
+            seekFeedbackMs = 0L
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -143,7 +157,15 @@ fun PlaybackScreen(
             positionMs = positionMs,
             bufferedMs = state.snapshot.bufferedPositionMs,
             durationMs = durationMs,
+            seekFeedbackMs = seekFeedbackMs,
             onShowTimeline = { timelineNonce++ },
+            onSeek = { delta ->
+                if (!state.isPlaceholderMode) {
+                    viewModel.onAction(PlayerScreenAction.SeekBy(delta))
+                    seekFeedbackMs += delta
+                    seekNonce++
+                }
+            },
             onToggle = {
                 if (!state.isPlaceholderMode) {
                     viewModel.onAction(
@@ -177,10 +199,10 @@ fun PlaybackScreen(
                     ) {
                         Text(if (isPlaying) "Pausar" else "Reproduzir")
                     }
-                    Button(onClick = { viewModel.onAction(PlayerScreenAction.SeekBack) }) {
+                    Button(onClick = { viewModel.onAction(PlayerScreenAction.SeekBy(-5 * 60_000L)) }) {
                         Text("-5 min")
                     }
-                    Button(onClick = { viewModel.onAction(PlayerScreenAction.SeekForward) }) {
+                    Button(onClick = { viewModel.onAction(PlayerScreenAction.SeekBy(5 * 60_000L)) }) {
                         Text("+5 min")
                     }
                 }
@@ -234,7 +256,9 @@ private fun VideoSurface(
     positionMs: Long,
     bufferedMs: Long,
     durationMs: Long,
+    seekFeedbackMs: Long,
     onShowTimeline: () -> Unit,
+    onSeek: (Long) -> Unit,
     onToggle: () -> Unit
 ) {
     Box(
@@ -244,12 +268,25 @@ private fun VideoSurface(
             .background(Color.Black)
             .focusRequester(focusRequester)
             .onKeyEvent { event ->
-                // ↑ com o vídeo em foco (tela cheia) revela a timeline sobre o vídeo.
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
-                    onShowTimeline()
-                    true
-                } else {
-                    false
+                // Com o vídeo em foco (tela cheia): ↑ mostra a timeline; ← / → dão seek de 10s
+                // (e também revelam a timeline). ↓ deixa o foco descer para os controles.
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (event.key) {
+                    Key.DirectionUp -> {
+                        onShowTimeline()
+                        true
+                    }
+                    Key.DirectionLeft -> {
+                        onSeek(-DPAD_SEEK_MS)
+                        onShowTimeline()
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        onSeek(DPAD_SEEK_MS)
+                        onShowTimeline()
+                        true
+                    }
+                    else -> false
                 }
             }
             .clickable { onToggle() },
@@ -278,6 +315,24 @@ private fun VideoSurface(
                     Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
                 }
             }
+            // Título do filme no canto superior esquerdo (com a timeline), estilo YouTube.
+            if (showTimeline && title.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
+                        .background(Color(0xCC000000))
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                ) {
+                    Text(
+                        text = title,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
             // Overlay da timeline (aparece ao apertar ↑).
             if (showTimeline) {
                 Box(
@@ -292,6 +347,18 @@ private fun VideoSurface(
                         bufferedMs = bufferedMs,
                         durationMs = durationMs
                     )
+                }
+            }
+            // Feedback central de seek: seta + segundos acumulados.
+            if (seekFeedbackMs != 0L) {
+                val seconds = kotlin.math.abs(seekFeedbackMs) / 1000
+                val label = if (seekFeedbackMs < 0L) "◀◀  ${seconds}s" else "${seconds}s  ▶▶"
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xB3000000), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                ) {
+                    Text(label, color = Color.White, style = MaterialTheme.typography.titleLarge)
                 }
             }
         } else {

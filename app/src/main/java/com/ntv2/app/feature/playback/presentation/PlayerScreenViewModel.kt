@@ -45,8 +45,7 @@ sealed interface PlayerScreenAction {
     data object Play : PlayerScreenAction
     data object Pause : PlayerScreenAction
     data object Retry : PlayerScreenAction
-    data object SeekForward : PlayerScreenAction
-    data object SeekBack : PlayerScreenAction
+    data class SeekBy(val deltaMs: Long) : PlayerScreenAction
     data object OnAppStop : PlayerScreenAction
     data object OnAppResume : PlayerScreenAction
     data object Release : PlayerScreenAction
@@ -99,18 +98,12 @@ class PlayerScreenViewModel(
             PlayerScreenAction.Play -> if (!uiState.value.isPlaceholderMode) playbackController.play()
             PlayerScreenAction.Pause -> if (!uiState.value.isPlaceholderMode) playbackController.pause()
             PlayerScreenAction.Retry -> if (!uiState.value.isPlaceholderMode) playbackController.retry()
-            PlayerScreenAction.SeekForward -> {
+            is PlayerScreenAction.SeekBy -> {
                 if (uiState.value.isPlaceholderMode) return
-                val current = uiState.value.snapshot.currentPositionMs
-                val seek = uiState.value.seekMinutes * 60_000L
-                playbackController.seekTo(current + seek)
-            }
-
-            PlayerScreenAction.SeekBack -> {
-                if (uiState.value.isPlaceholderMode) return
-                val current = uiState.value.snapshot.currentPositionMs
-                val seek = uiState.value.seekMinutes * 60_000L
-                playbackController.seekTo((current - seek).coerceAtLeast(0L))
+                // Usa a posição REAL do player (o snapshot só atualiza em mudanças de estado).
+                val current = playbackController.player?.currentPosition
+                    ?: uiState.value.snapshot.currentPositionMs
+                playbackController.seekTo((current + action.deltaMs).coerceAtLeast(0L))
             }
 
             PlayerScreenAction.OnAppStop -> if (!uiState.value.isPlaceholderMode) playbackController.onAppStop()

@@ -2,6 +2,7 @@
 
 import android.net.Uri
 import android.os.SystemClock
+import android.os.StatFs
 import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
@@ -24,6 +25,8 @@ class GrowingFileDataSourceFactory(
 }
 
 private const val NUDGE_INTERVAL_MS = 2_000L
+// Folga mínima de disco para continuar baixando adiante (evita ENOSPC → abort do TDLib).
+private const val MIN_FREE_SPACE_BYTES = 300L * 1024L * 1024L
 
 private class GrowingFileDataSource(
     private val partialFileAccessor: PartialFileAccessor,
@@ -170,7 +173,8 @@ private class GrowingFileDataSource(
             // Re-solicita periodicamente a faixa necessária: sem isso o TDLib conclui a janela
             // anterior e fica OCIOSO (o pedido do índice no fim do MKV se perdia → stall/erro →
             // ExoPlayer re-tentava → flip-flop frente/fim, minutos de buffering ou falha).
-            if (now - lastNudgeAt > NUDGE_INTERVAL_MS) {
+            // Respeita o guarda de disco (não re-solicita se o espaço livre estiver baixo).
+            if (now - lastNudgeAt > NUDGE_INTERVAL_MS && hasEnoughFreeSpace()) {
                 val len = (position - downloadBaseOffset + readAheadBytes).coerceAtLeast(readAheadBytes)
                 partialFileAccessor.requestRange(fileId, downloadBaseOffset, len, priority = 32)
                 lastNudgeAt = now
@@ -195,6 +199,10 @@ private class GrowingFileDataSource(
     private fun maybeRequestAhead() {
         if (bytesRemaining != C.LENGTH_UNSET.toLong()) return
         if (partialFileAccessor.isComplete(fileId)) return
+        // Guarda de disco: não estende o download se o espaço livre estiver baixo. Sem isso, um
+        // filme grande enche o disco e o TDLib faz abort() (ENOSPC no binlog) → app fecha. Aqui
+        // a reprodução degrada (para de baixar adiante) em vez de derrubar o app.
+        if (!hasEnoughFreeSpace()) return
         val desiredEnd = readPosition + readAheadBytes
         if (desiredEnd > lastRequestedEnd) {
             // Estende o download CONTÍGUO a partir da base (aumenta o tamanho), sem mover o offset
@@ -207,6 +215,12 @@ private class GrowingFileDataSource(
             )
             lastRequestedEnd = desiredEnd
         }
+    }
+
+    /** Espaço livre suficiente na partição do arquivo para continuar baixando com folga. */
+    private fun hasEnoughFreeSpace(): Boolean {
+        val parent = partialFileAccessor.resolvePath(fileId)?.let { File(it).parentFile } ?: return true
+        return runCatching { StatFs(parent.path).availableBytes >= MIN_FREE_SPACE_BYTES }.getOrDefault(true)
     }
 
     override fun getUri(): Uri? = dataSpec?.uri

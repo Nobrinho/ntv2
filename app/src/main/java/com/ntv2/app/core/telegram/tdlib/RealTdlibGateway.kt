@@ -176,11 +176,45 @@ class RealTdlibGateway(
         // Resolve os chats em paralelo (antes: N+1 serial, ~1 round-trip por chat).
         return coroutineScope {
             chats.chatIds.take(limit)
-                .map { chatId -> async { send(TdApi.GetChat(chatId)) as? TdApi.Chat } }
+                .map { chatId ->
+                    async {
+                        val chat = send(TdApi.GetChat(chatId)) as? TdApi.Chat ?: return@async null
+                        val summary = mapChat(chat)
+                        // Baixa a miniatura do avatar (arquivo pequeno) para termos um caminho
+                        // local — sem isso photo.small.local.path fica vazio e nada é exibido.
+                        summary.copy(avatarPath = resolveAvatarPath(chat) ?: summary.avatarPath)
+                    }
+                }
                 .awaitAll()
                 .filterNotNull()
-                .map { mapChat(it) }
         }
+    }
+
+    /**
+     * Garante um caminho local para o avatar (foto pequena) do chat. Se já estiver baixado,
+     * reaproveita; senão dispara um download síncrono — a foto small tem poucos KB, então é
+     * rápido e roda em paralelo por chat. Retorna null quando o chat não tem foto.
+     */
+    private suspend fun resolveAvatarPath(chat: TdApi.Chat): String? {
+        val small = chat.photo?.small ?: return null
+        small.local?.let { local ->
+            if (local.isDownloadingCompleted && local.path.isNotBlank()) return local.path
+        }
+        val file = send(TdApi.DownloadFile(small.id, 16, 0L, 0L, true)) as? TdApi.File ?: return null
+        return file.local?.path?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Garante um caminho local para a miniatura do vídeo (arquivo pequeno). Reaproveita se já
+     * baixada; senão baixa de forma síncrona (roda em paralelo por item). Null se não houver.
+     */
+    private suspend fun resolveThumbnailPath(video: TdApi.Video): String? {
+        val thumb = video.thumbnail?.file ?: return null
+        thumb.local?.let { local ->
+            if (local.isDownloadingCompleted && local.path.isNotBlank()) return local.path
+        }
+        val file = send(TdApi.DownloadFile(thumb.id, 16, 0L, 0L, true)) as? TdApi.File ?: return null
+        return file.local?.path?.takeIf { it.isNotBlank() }
     }
 
     private suspend fun loadMainChatList(limit: Int) {
@@ -215,22 +249,35 @@ class RealTdlibGateway(
         )
         if (result !is TdApi.FoundChatMessages) return TelegramVideoPage(emptyList(), 0L)
 
-        val items = mutableListOf<TelegramVideoMessage>()
-        result.messages.orEmpty().forEach { msg ->
-            val content = msg.content as? TdApi.MessageVideo ?: return@forEach
-            val video = content.video ?: return@forEach
-            val tdFile = video.video ?: return@forEach
-            items += TelegramVideoMessage(
-                mediaId = "${msg.chatId}_${msg.id}",
-                chatId = msg.chatId,
-                messageId = msg.id,
-                title = video.fileName.ifBlank { "Video ${msg.id}" },
-                caption = content.caption?.text,
-                fileName = video.fileName.ifBlank { null },
-                durationSeconds = video.duration,
-                thumbnailPath = video.thumbnail?.file?.local?.path?.takeIf { it.isNotBlank() },
-                fileId = tdFile.id
-            )
+        // Monta os itens em paralelo: cada um baixa sua miniatura (arquivo pequeno) para termos
+        // um caminho local — sem isso thumbnail.file.local.path fica vazio e o card fica cinza.
+        val items = coroutineScope {
+            result.messages.orEmpty().mapNotNull { msg ->
+                val content = msg.content as? TdApi.MessageVideo ?: return@mapNotNull null
+                val video = content.video ?: return@mapNotNull null
+                val tdFile = video.video ?: return@mapNotNull null
+                async {
+                    val captionText = content.caption?.text
+                    // Muitos vídeos não têm fileName (título vinha como "Video <id>"), mas a legenda
+                    // traz o nome real do filme — por isso a busca casava mas o card mostrava o id.
+                    // Fallback: fileName → 1ª linha não vazia da legenda → "Video <id>".
+                    val rawName = video.fileName.ifBlank { null }
+                        ?: captionText?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
+                    // Nome limpo: remove extensão e tags técnicas (HDCAM, DUBLADO, 1080p, x264...).
+                    val displayTitle = rawName?.let { cleanDisplayName(it).ifBlank { it } } ?: "Video ${msg.id}"
+                    TelegramVideoMessage(
+                        mediaId = "${msg.chatId}_${msg.id}",
+                        chatId = msg.chatId,
+                        messageId = msg.id,
+                        title = displayTitle,
+                        caption = captionText,
+                        fileName = video.fileName.ifBlank { null },
+                        durationSeconds = video.duration,
+                        thumbnailPath = resolveThumbnailPath(video),
+                        fileId = tdFile.id
+                    )
+                }
+            }.awaitAll()
         }
         // nextFromMessageId=0 => fim (doc TDLib).
         return TelegramVideoPage(videos = items, nextFromMessageId = result.nextFromMessageId)
@@ -458,4 +505,41 @@ class RealTdlibGateway(
             )
         }
     }
+}
+
+// Tags técnicas comuns em nomes de arquivo/legendas de vídeo (fonte, qualidade, codec, áudio).
+private val VIDEO_TECH_TAGS: Set<String> = setOf(
+    "hdcam", "cam", "ts", "tc", "hdts", "hdtc", "telesync", "telecine",
+    "hdrip", "dvdrip", "dvdscr", "brrip", "bdrip", "bluray", "blu-ray",
+    "webdl", "web-dl", "webrip", "web", "hdtv", "hdr", "sdr",
+    "1080p", "720p", "480p", "2160p", "4k", "uhd", "fullhd",
+    "x264", "x265", "h264", "h265", "hevc", "avc", "10bit",
+    "aac", "ac3", "eac3", "dts", "mp3",
+    "dual", "dualaudio", "remux", "nacional", "dublado", "dub", "legendado", "leg", "extended"
+)
+
+private val VIDEO_EXTENSION_REGEX =
+    Regex("\\.(mp4|mkv|avi|mov|m4v|webm|ts|wmv|flv|mpg|mpeg)$", RegexOption.IGNORE_CASE)
+
+/**
+ * Limpa o nome exibido: remove a extensão de vídeo, troca separadores (._) por espaço e descarta
+ * tokens técnicos (HDCAM, DUBLADO, 1080p, x264...). Mantém separadores como "-" e anos. Retorna
+ * vazio só se sobrar nada — nesse caso o chamador cai de volta para o nome bruto.
+ */
+internal fun cleanDisplayName(raw: String): String {
+    val noExt = VIDEO_EXTENSION_REGEX.replace(raw.trim(), "")
+    val spaced = noExt.replace('_', ' ').replace('.', ' ')
+    val kept = spaced
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+        .filterNot { token ->
+            val normalized = token.trim('(', ')', '[', ']', '{', '}').lowercase()
+            normalized in VIDEO_TECH_TAGS
+        }
+    return kept.joinToString(" ")
+        .replace(Regex("\\(\\s*\\)|\\[\\s*\\]"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .trim('-', '|', '•', '_', ' ')
+        .trim()
 }

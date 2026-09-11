@@ -65,6 +65,9 @@ fun AppNavHost(
     val navController = rememberNavController()
     val context = LocalContext.current
     var showExitDialog by remember { mutableStateOf(false) }
+    // Splash como OVERLAY: o app real (Login → Biblioteca) monta e carrega POR TRÁS enquanto a
+    // intro cobre a tela; ao terminar, ela some (fade) e revela a Biblioteca já pronta.
+    var showSplash by remember { mutableStateOf(true) }
 
     // O app não deve fechar direto no "Voltar" quando está na raiz (sem tela anterior).
     // Nesse caso, pedimos confirmação. Fora da raiz, o Voltar navega normalmente (callback desabilitado).
@@ -75,18 +78,8 @@ fun AppNavHost(
   Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
-        startDestination = RoutePath.SPLASH
+        startDestination = RoutePath.LOGIN
     ) {
-        composable(RoutePath.SPLASH) {
-            SplashScreen(
-                onFinished = {
-                    navController.navigate(RoutePath.LOGIN) {
-                        popUpTo(RoutePath.SPLASH) { inclusive = true }
-                    }
-                }
-            )
-        }
-
         composable(RoutePath.LOGIN) {
             val loginViewModel: LoginViewModel = viewModel(
                 factory = LoginViewModelFactory(appContainer.authRepository)
@@ -207,6 +200,11 @@ fun AppNavHost(
                 onBack = { navController.popBackStack() }
             )
         }
+    }
+
+    // Intro de marca por cima de tudo, enquanto o app carrega por trás.
+    if (showSplash) {
+        SplashScreen(onFinished = { showSplash = false })
     }
 
     if (showExitDialog) {

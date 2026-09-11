@@ -9,6 +9,7 @@ sealed interface AppRoute {
 }
 
 object RoutePath {
+    const val SPLASH = "splash"
     const val LOGIN = "login"
     const val CHANNEL_SELECTION = "channels"
     const val MEDIA_LIBRARY = "media"

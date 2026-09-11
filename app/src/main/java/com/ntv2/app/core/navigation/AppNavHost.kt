@@ -56,6 +56,7 @@ import com.ntv2.app.feature.playback.presentation.PlaybackScreen
 import com.ntv2.app.feature.playback.presentation.PlayerScreenViewModel
 import com.ntv2.app.feature.playback.presentation.PlayerScreenViewModelFactory
 import com.ntv2.app.feature.settings.presentation.SettingsScreenPlaceholder
+import com.ntv2.app.feature.splash.presentation.SplashScreen
 
 @Composable
 fun AppNavHost(
@@ -74,8 +75,18 @@ fun AppNavHost(
   Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
-        startDestination = RoutePath.LOGIN
+        startDestination = RoutePath.SPLASH
     ) {
+        composable(RoutePath.SPLASH) {
+            SplashScreen(
+                onFinished = {
+                    navController.navigate(RoutePath.LOGIN) {
+                        popUpTo(RoutePath.SPLASH) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable(RoutePath.LOGIN) {
             val loginViewModel: LoginViewModel = viewModel(
                 factory = LoginViewModelFactory(appContainer.authRepository)

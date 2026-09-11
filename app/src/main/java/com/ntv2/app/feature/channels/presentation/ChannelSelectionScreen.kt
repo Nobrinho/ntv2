@@ -11,8 +11,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -36,6 +45,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
@@ -150,22 +160,32 @@ private fun ActionsRow(
             modifier = Modifier.focusRequester(firstActionFocusRequester),
             onClick = onSelectAll
         ) {
+            Icon(Icons.Filled.DoneAll, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
             Text("Selecionar todos")
         }
 
         Button(onClick = onClearSelection) {
+            Icon(Icons.Filled.Clear, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
             Text("Limpar seleção")
         }
 
         Button(onClick = onContinue, enabled = state.canContinue) {
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
             Text("Continuar")
         }
 
         Button(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
             Text("Voltar")
         }
 
         Button(onClick = onLogout) {
+            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
             Text("Sair")
         }
     }
@@ -239,11 +259,24 @@ private fun ChannelCard(
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleSmall
                 )
-                Text(
-                    text = if (selected) "✓ Selecionado" else "Selecionar",
-                    color = if (selected) accent else Color(0xFF9A9A9A),
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (selected) {
+                        Icon(
+                            Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Text(
+                        text = if (selected) "Selecionado" else "Selecionar",
+                        color = if (selected) accent else Color(0xFF9A9A9A),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
     }

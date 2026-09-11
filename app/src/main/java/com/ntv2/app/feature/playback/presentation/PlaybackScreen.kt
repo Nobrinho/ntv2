@@ -10,10 +10,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.Forward5
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Replay5
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -47,6 +57,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Button
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.compose.foundation.border
@@ -222,21 +233,34 @@ fun PlaybackScreen(
                             )
                         }
                     ) {
+                        Icon(
+                            if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(8.dp))
                         Text(if (isPlaying) "Pausar" else "Reproduzir")
                     }
                     Button(onClick = { viewModel.onAction(PlayerScreenAction.SeekBy(-5 * 60_000L)) }) {
+                        Icon(Icons.Filled.Replay5, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
                         Text("-5 min")
                     }
                     Button(onClick = { viewModel.onAction(PlayerScreenAction.SeekBy(5 * 60_000L)) }) {
+                        Icon(Icons.Filled.Forward5, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
                         Text("+5 min")
                     }
                     if (state.snapshot.tracks.audios.size > 1) {
                         Button(onClick = { trackPicker = TrackPicker.Audio }) {
+                            Icon(Icons.Filled.Audiotrack, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
                             Text("Áudio")
                         }
                     }
                     if (state.snapshot.tracks.subtitles.isNotEmpty()) {
                         Button(onClick = { trackPicker = TrackPicker.Subtitle }) {
+                            Icon(Icons.Filled.ClosedCaption, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
                             Text("Legenda")
                         }
                     }
@@ -245,6 +269,8 @@ fun PlaybackScreen(
 
             if (state.snapshot.state is PlaybackState.Error) {
                 Button(onClick = { viewModel.onAction(PlayerScreenAction.Retry) }) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
                     Text("Tentar novamente")
                 }
             }
@@ -270,6 +296,8 @@ fun PlaybackScreen(
             }
 
             Button(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
                 Text("Voltar")
             }
         }
@@ -531,7 +559,7 @@ private fun MediaInfoChips(tracks: MediaTracksInfo) {
         resolutionLabel(tracks.videoHeight)?.let { add(it) }
         if (tracks.audios.isNotEmpty()) {
             val langs = tracks.audios.joinToString("/") { it.label.substringBefore(" ·") }
-            add(if (tracks.audios.size > 1) "🔊 ${tracks.audios.size} · $langs" else "🔊 $langs")
+            add(if (tracks.audios.size > 1) "Áudio ${tracks.audios.size} · $langs" else "Áudio $langs")
         }
         val selectedSub = tracks.subtitles.firstOrNull { it.isSelected }
         when {

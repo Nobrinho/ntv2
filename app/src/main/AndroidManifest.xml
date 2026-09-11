@@ -14,12 +14,15 @@
     <application
         android:name=".Ntv2Application"
         android:allowBackup="true"
-        android:icon="@android:drawable/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:banner="@drawable/banner"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Ntv2">
         <activity
             android:name=".MainActivity"
+            android:banner="@drawable/banner"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

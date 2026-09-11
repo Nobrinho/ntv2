@@ -11,9 +11,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -47,6 +55,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import androidx.compose.runtime.DisposableEffect
 import androidx.tv.material3.Button
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
@@ -140,16 +149,24 @@ fun MediaLibraryScreen(
                         viewModel.onAction(MediaLibraryAction.SearchChanged(""))
                         initialActionsFocus.requestFocus()
                     }) {
-                        Text("✕ Limpar")
+                        Icon(Icons.Filled.Close, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Limpar")
                     }
                 }
                 Button(onClick = { viewModel.onAction(MediaLibraryAction.Refresh) }) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
                     Text("Atualizar")
                 }
                 Button(onClick = onOpenChannels) {
+                    Icon(Icons.Filled.Subscriptions, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
                     Text("Canais")
                 }
                 Button(onClick = onOpenSettings) {
+                    Icon(Icons.Filled.Settings, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
                     Text("Configurações")
                 }
             }
@@ -424,7 +441,7 @@ private fun SearchBar(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("🔍")
+            Icon(Icons.Filled.Search, contentDescription = null, tint = Color(0xFFB0B0B0))
             Text(
                 text = query.ifBlank { "Buscar por título, canal ou arquivo" },
                 color = if (query.isBlank()) Color(0xFFB0B0B0) else Color.White,
@@ -508,7 +525,12 @@ private fun MediaCard(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("🎬", style = MaterialTheme.typography.headlineMedium)
+                        Icon(
+                            Icons.Filled.Movie,
+                            contentDescription = null,
+                            tint = Color(0x66FFFFFF),
+                            modifier = Modifier.size(48.dp)
+                        )
                     }
                 }
 

@@ -241,11 +241,30 @@ fun PlaybackScreen(
                     }
                 }
 
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Canal: ${state.channelName}", color = Color.White)
-                    Text("Título: ${state.title}", color = Color.White)
-                    Text("Duração: ${state.durationSeconds / 60} min", color = Color.White)
-                    Text("Arquivo: ${state.fileName ?: "-"}", color = Color.White)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        state.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    // Linha de metadados: Ano • Duração • Gêneros • Áudio.
+                    val d = state.details
+                    val metaLine = listOfNotNull(
+                        d?.year?.toString(),
+                        "${state.durationSeconds / 60} min",
+                        d?.genres,
+                        d?.audio
+                    ).joinToString("  •  ")
+                    if (metaLine.isNotBlank()) {
+                        Text(metaLine, color = Color(0xFFB0B0B0), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    d?.director?.let { Text("Diretor: $it", color = Color(0xFFB0B0B0), style = MaterialTheme.typography.bodyMedium) }
+                    d?.synopsis?.let {
+                        Text(it, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Text("Canal: ${state.channelName}", color = Color(0xFF8A8A8A), style = MaterialTheme.typography.bodySmall)
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

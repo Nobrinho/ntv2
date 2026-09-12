@@ -9,6 +9,8 @@ data class MediaCardUi(
     val fileName: String?,
     val durationSeconds: Int,
     val thumbnailPath: String?,
+    /** Pôster do post (retrato). Capa preferida sobre [thumbnailPath] (frame do vídeo). */
+    val posterPath: String? = null,
     val fileId: Int,
     /** Altura do vídeo (px) para exibir a resolução (4K/1080p/...); 0 se desconhecida. */
     val videoHeight: Int = 0,

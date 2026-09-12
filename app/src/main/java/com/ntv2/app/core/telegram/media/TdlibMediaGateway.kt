@@ -13,7 +13,14 @@ data class TelegramVideoMessage(
     val thumbnailPath: String?,
     val fileId: Int,
     val width: Int = 0,
-    val height: Int = 0
+    val height: Int = 0,
+    /** Pôster (foto do post) baixado; capa preferida sobre o frame do vídeo. */
+    val posterPath: String? = null,
+    val synopsis: String? = null,
+    val year: Int? = null,
+    val director: String? = null,
+    val audio: String? = null,
+    val genres: String? = null
 )
 
 data class TelegramVideoPage(

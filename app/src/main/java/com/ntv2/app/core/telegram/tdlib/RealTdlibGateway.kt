@@ -9,6 +9,7 @@ import com.ntv2.app.core.telegram.auth.TdlibAuthGateway
 import com.ntv2.app.core.telegram.channels.TelegramChatSummary
 import com.ntv2.app.core.telegram.channels.TelegramChatType
 import com.ntv2.app.core.telegram.channels.TdlibChannelsGateway
+import com.ntv2.app.core.telegram.media.MovieMetadataParser
 import com.ntv2.app.core.telegram.media.TelegramVideoMessage
 import com.ntv2.app.core.telegram.media.TelegramVideoPage
 import com.ntv2.app.core.telegram.media.TdlibMediaGateway
@@ -32,6 +33,7 @@ import kotlinx.coroutines.sync.withLock
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import java.io.File
+import java.text.Normalizer
 import kotlin.coroutines.resume
 
 data class TdlibRuntimeConfig(
@@ -217,6 +219,61 @@ class RealTdlibGateway(
         return file.local?.path?.takeIf { it.isNotBlank() }
     }
 
+    /**
+     * Procura, entre as mensagens ANTERIORES ao vídeo, a FOTO (pôster) cujo título CASE com o nome
+     * do vídeo ([videoName]) — evita pegar a capa de outro filme quando o canal intercala posts.
+     * GetChatHistory pode voltar vazio na 1ª chamada enquanto carrega do servidor — 1 retry.
+     */
+    private suspend fun findMatchingPoster(chatId: Long, beforeMessageId: Long, videoName: String): TdApi.Message? {
+        repeat(2) {
+            val res = send(TdApi.GetChatHistory(chatId, beforeMessageId, 0, 4, false)) as? TdApi.Messages
+            val msgs = res?.messages?.filterNotNull().orEmpty()
+            msgs.forEach { m ->
+                val cap = (m.content as? TdApi.MessagePhoto)?.caption?.text
+                if (!cap.isNullOrBlank()) {
+                    val posterTitle = MovieMetadataParser.parse(cap).title
+                        ?: cap.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
+                    if (posterTitle != null && titlesMatch(videoName, posterTitle)) return m
+                }
+            }
+            if (msgs.isNotEmpty()) return null // histórico veio, mas nenhum pôster casou
+        }
+        return null
+    }
+
+    /** Casa dois títulos por conjunto de tokens (ignora acentos, [MKV], stopwords e tags técnicas). */
+    private fun titlesMatch(a: String, b: String): Boolean {
+        val ta = titleTokens(a)
+        val tb = titleTokens(b)
+        if (ta.isEmpty() || tb.isEmpty()) return false
+        if (ta.all { it in tb } || tb.all { it in ta }) return true
+        val inter = ta.intersect(tb).size.toDouble()
+        val union = (ta + tb).size.toDouble()
+        return union > 0 && inter / union >= 0.6
+    }
+
+    private val TITLE_STOPWORDS = setOf("de", "da", "do", "das", "dos", "e", "a", "o", "os", "as", "um", "uma", "the", "of")
+
+    private fun titleTokens(s: String): Set<String> =
+        Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+            .replace(Regex("\\[.*?\\]|\\(.*?\\)"), " ")
+            .replace(Regex("[^a-z0-9 ]"), " ")
+            .split(Regex("\\s+"))
+            .filter { it.length >= 2 && it !in TITLE_STOPWORDS && it !in VIDEO_TECH_TAGS }
+            .toSet()
+
+    /** Baixa o pôster (maior tamanho da foto) e retorna o caminho local; null se não houver. */
+    private suspend fun resolvePosterPath(photo: TdApi.Photo): String? {
+        val size = photo.sizes?.maxByOrNull { it.width * it.height } ?: return null
+        val f = size.photo ?: return null
+        f.local?.let { local ->
+            if (local.isDownloadingCompleted && local.path.isNotBlank()) return local.path
+        }
+        val file = send(TdApi.DownloadFile(f.id, 16, 0L, 0L, true)) as? TdApi.File ?: return null
+        return file.local?.path?.takeIf { it.isNotBlank() }
+    }
+
     private suspend fun loadMainChatList(limit: Int) {
         // LoadChats carrega mais chats por vez e retorna Error 404 quando a lista acaba.
         // Loop limitado para não bloquear indefinidamente.
@@ -257,26 +314,45 @@ class RealTdlibGateway(
                 val video = content.video ?: return@mapNotNull null
                 val tdFile = video.video ?: return@mapNotNull null
                 async {
-                    val captionText = content.caption?.text
-                    // Muitos vídeos não têm fileName (título vinha como "Video <id>"), mas a legenda
-                    // traz o nome real do filme — por isso a busca casava mas o card mostrava o id.
-                    // Fallback: fileName → 1ª linha não vazia da legenda → "Video <id>".
-                    val rawName = video.fileName.ifBlank { null }
-                        ?: captionText?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
-                    // Nome limpo: remove extensão e tags técnicas (HDCAM, DUBLADO, 1080p, x264...).
-                    val displayTitle = rawName?.let { cleanDisplayName(it).ifBlank { it } } ?: "Video ${msg.id}"
+                    val videoCaption = content.caption?.text
+                    val videoMeta = MovieMetadataParser.parse(videoCaption)
+                    // Nome do PRÓPRIO vídeo (fonte da verdade p/ casar com o pôster): título da
+                    // legenda → fileName limpo → 1ª linha da legenda.
+                    val videoName = videoMeta.title
+                        ?: video.fileName.ifBlank { null }?.let { cleanDisplayName(it).ifBlank { it } }
+                        ?: videoCaption?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
+
+                    // Só usa o pôster da foto anterior se o TÍTULO dela BATER com o nome do vídeo —
+                    // canais intercalam posts, então adjacência sozinha pegava capa de outro filme.
+                    val posterMsg = videoName?.let { findMatchingPoster(msg.chatId, msg.id, it) }
+                    val posterContent = posterMsg?.content as? TdApi.MessagePhoto
+                    val posterCaption = posterContent?.caption?.text
+                    // Metadados: da legenda do pôster (casos A/B) quando casou; senão do próprio vídeo (C).
+                    val meta = if (posterCaption != null) MovieMetadataParser.parse(posterCaption) else videoMeta
+
+                    val displayTitle = (meta.title ?: videoName)?.let { cleanDisplayName(it).ifBlank { it } }
+                        ?: "Video ${msg.id}"
+
+                    val posterPath = posterContent?.photo?.let { resolvePosterPath(it) }
+
                     TelegramVideoMessage(
                         mediaId = "${msg.chatId}_${msg.id}",
                         chatId = msg.chatId,
                         messageId = msg.id,
                         title = displayTitle,
-                        caption = captionText,
+                        caption = posterCaption ?: videoCaption,
                         fileName = video.fileName.ifBlank { null },
                         durationSeconds = video.duration,
                         thumbnailPath = resolveThumbnailPath(video),
                         fileId = tdFile.id,
                         width = video.width,
-                        height = video.height
+                        height = video.height,
+                        posterPath = posterPath,
+                        synopsis = meta.synopsis,
+                        year = meta.year,
+                        director = meta.director,
+                        audio = meta.audio,
+                        genres = meta.genres
                     )
                 }
             }.awaitAll()

@@ -10,6 +10,8 @@ import com.ntv2.app.core.player.controller.PlaybackController
 import com.ntv2.app.core.player.controller.PlaybackPrepareRequest
 import com.ntv2.app.core.player.controller.PlaybackPrepareResult
 import com.ntv2.app.core.player.source.MediaAvailability
+import com.ntv2.app.feature.media.domain.MediaDetailsCache
+import com.ntv2.app.feature.media.domain.MovieDetails
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -28,7 +30,9 @@ data class PlayerScreenUiState(
     val thumbnailPath: String? = null,
     val isPlaceholderMode: Boolean = true,
     val statusMessage: String = "reprodução ainda não inicializada",
-    val seekMinutes: Int = 5
+    val seekMinutes: Int = 5,
+    /** Detalhes ricos (pôster/sinopse/metadados) do filme, quando disponíveis. */
+    val details: MovieDetails? = null
 )
 
 sealed interface PlayerScreenAction {
@@ -55,7 +59,8 @@ sealed interface PlayerScreenAction {
 }
 
 class PlayerScreenViewModel(
-    private val playbackController: PlaybackController
+    private val playbackController: PlaybackController,
+    private val mediaDetailsCache: MediaDetailsCache? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlayerScreenUiState())
@@ -78,14 +83,16 @@ class PlayerScreenViewModel(
         when (action) {
             is PlayerScreenAction.Prepare -> {
                 preparingFileId = action.fileId
+                val details = mediaDetailsCache?.get(action.mediaId)
                 _uiState.update {
                     it.copy(
-                        title = action.title,
+                        title = details?.title ?: action.title,
                         channelName = action.channelName,
                         durationSeconds = action.durationSeconds,
                         fileName = action.fileName,
-                        thumbnailPath = action.thumbnailPath,
-                        statusMessage = "preparando reprodução…"
+                        thumbnailPath = details?.posterPath ?: action.thumbnailPath,
+                        statusMessage = "preparando reprodução…",
+                        details = details
                     )
                 }
                 startPrepareLoop(
@@ -209,12 +216,13 @@ class PlayerScreenViewModel(
 }
 
 class PlayerScreenViewModelFactory(
-    private val playbackController: PlaybackController
+    private val playbackController: PlaybackController,
+    private val mediaDetailsCache: MediaDetailsCache? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(PlayerScreenViewModel::class.java)) {
-            return PlayerScreenViewModel(playbackController) as T
+            return PlayerScreenViewModel(playbackController, mediaDetailsCache) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

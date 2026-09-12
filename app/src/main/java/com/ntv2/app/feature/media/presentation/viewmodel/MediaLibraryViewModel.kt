@@ -7,7 +7,9 @@ import com.ntv2.app.feature.channels.domain.ChannelRepository
 import com.ntv2.app.feature.channels.domain.ChannelSummary
 import com.ntv2.app.feature.media.domain.MediaItemSummary
 import com.ntv2.app.core.player.progress.PlaybackProgressStore
+import com.ntv2.app.feature.media.domain.MediaDetailsCache
 import com.ntv2.app.feature.media.domain.MediaRepository
+import com.ntv2.app.feature.media.domain.MovieDetails
 import com.ntv2.app.feature.media.presentation.state.ChannelMediaSectionUi
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import com.ntv2.app.feature.media.presentation.state.MediaLibraryEmptyState
@@ -47,6 +49,7 @@ class MediaLibraryViewModel(
     private val channelRepository: ChannelRepository,
     private val settingsRepository: SettingsRepository,
     private val progressStore: PlaybackProgressStore,
+    private val mediaDetailsCache: MediaDetailsCache,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
@@ -283,6 +286,19 @@ class MediaLibraryViewModel(
         } else {
             0f
         }
+        // Popula o cache de detalhes para a tela de reprodução ler por mediaId.
+        mediaDetailsCache.put(
+            mediaId,
+            MovieDetails(
+                title = title,
+                posterPath = posterPath,
+                synopsis = synopsis,
+                year = year,
+                director = director,
+                audio = audio,
+                genres = genres
+            )
+        )
         return MediaCardUi(
             mediaId = mediaId,
             channelId = channelId,
@@ -292,6 +308,7 @@ class MediaLibraryViewModel(
             fileName = fileName,
             durationSeconds = durationSeconds,
             thumbnailPath = thumbnailPath,
+            posterPath = posterPath,
             fileId = fileId,
             videoHeight = height,
             progress = progress
@@ -303,7 +320,8 @@ class MediaLibraryViewModelFactory(
     private val mediaRepository: MediaRepository,
     private val channelRepository: ChannelRepository,
     private val settingsRepository: SettingsRepository,
-    private val progressStore: PlaybackProgressStore
+    private val progressStore: PlaybackProgressStore,
+    private val mediaDetailsCache: MediaDetailsCache
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -312,7 +330,8 @@ class MediaLibraryViewModelFactory(
                 mediaRepository = mediaRepository,
                 channelRepository = channelRepository,
                 settingsRepository = settingsRepository,
-                progressStore = progressStore
+                progressStore = progressStore,
+                mediaDetailsCache = mediaDetailsCache
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

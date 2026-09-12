@@ -138,7 +138,8 @@ fun AppNavHost(
                     mediaRepository = appContainer.mediaRepository,
                     channelRepository = appContainer.channelRepository,
                     settingsRepository = appContainer.settingsRepository,
-                    progressStore = appContainer.playbackProgressStore
+                    progressStore = appContainer.playbackProgressStore,
+                    mediaDetailsCache = appContainer.mediaDetailsCache
                 )
             )
             MediaLibraryScreen(
@@ -186,7 +187,10 @@ fun AppNavHost(
             )
         ) { backStackEntry ->
             val playerViewModel: PlayerScreenViewModel = viewModel(
-                factory = PlayerScreenViewModelFactory(appContainer.playbackController)
+                factory = PlayerScreenViewModelFactory(
+                    appContainer.playbackController,
+                    appContainer.mediaDetailsCache
+                )
             )
             PlaybackScreen(
                 mediaId = Uri.decode(backStackEntry.arguments?.getString("mediaId").orEmpty()),

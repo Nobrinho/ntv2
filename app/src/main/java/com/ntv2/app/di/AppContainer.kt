@@ -44,6 +44,7 @@ import com.ntv2.app.feature.media.data.datasource.TelegramMediaDataSource
 import com.ntv2.app.feature.media.data.datasource.TdlibTelegramMediaDataSource
 import com.ntv2.app.feature.media.data.repository.DefaultMediaRepository
 import com.ntv2.app.feature.media.domain.MediaRepository
+import com.ntv2.app.feature.media.domain.MediaDetailsCache
 import com.ntv2.app.feature.settings.domain.FakeSettingsRepository
 import com.ntv2.app.feature.settings.domain.SettingsRepository
 import java.io.File
@@ -72,6 +73,7 @@ interface AppContainer {
     val channelRepository: ChannelRepository
     val mediaRepository: MediaRepository
     val settingsRepository: SettingsRepository
+    val mediaDetailsCache: MediaDetailsCache
 }
 
 class DefaultAppContainer(
@@ -221,4 +223,6 @@ class DefaultAppContainer(
     override val settingsRepository: SettingsRepository by lazy {
         FakeSettingsRepository(userPreferencesDataStore)
     }
+
+    override val mediaDetailsCache: MediaDetailsCache by lazy { MediaDetailsCache() }
 }

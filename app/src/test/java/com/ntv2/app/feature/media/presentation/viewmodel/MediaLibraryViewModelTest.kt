@@ -95,6 +95,7 @@ class MediaLibraryViewModelTest {
         channelRepository = FakeChannelRepo(channelsFlow),
         settingsRepository = FakeSettingsRepo(minDurationFlow),
         progressStore = progressStore,
+        mediaDetailsCache = com.ntv2.app.feature.media.domain.MediaDetailsCache(),
         ioDispatcher = dispatcher
     )
 

@@ -38,6 +38,12 @@ class TdlibTelegramMediaDataSource(
         thumbnailPath = thumbnailPath,
         fileId = fileId,
         width = width,
-        height = height
+        height = height,
+        posterPath = posterPath,
+        synopsis = synopsis,
+        year = year,
+        director = director,
+        audio = audio,
+        genres = genres
     )
 }

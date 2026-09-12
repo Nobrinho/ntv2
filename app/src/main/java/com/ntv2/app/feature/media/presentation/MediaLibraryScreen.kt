@@ -490,10 +490,11 @@ private fun MediaCard(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    // Sem escala de foco (que estourava/cortava o card na lista): destaque por borda + fundo.
+    // Card em pôster retrato (2:3), estilo streaming. Capa = pôster do post; fallback ao frame.
+    val cover = media.posterPath ?: media.thumbnailPath
     Box(
         modifier = modifier
-            .width(300.dp)
+            .width(160.dp)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
@@ -505,22 +506,21 @@ private fun MediaCard(
             )
     ) {
         Column {
-            // Miniatura 16:9 com badge de duração e barra de progresso sobrepostos.
+            // Pôster 2:3 com selos de resolução/duração e barra de progresso sobrepostos.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(168.dp)
+                    .height(240.dp)
                     .background(Color(0xFF1C1C1C))
             ) {
-                if (media.thumbnailPath != null) {
+                if (cover != null) {
                     AsyncImage(
-                        model = media.thumbnailPath,
+                        model = cover,
                         contentDescription = media.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    // Sem miniatura ainda: placeholder discreto.
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -534,7 +534,6 @@ private fun MediaCard(
                     }
                 }
 
-                // Selo de resolução no canto superior esquerdo (4K/1080p/...).
                 resolutionLabel(media.videoHeight)?.let { label ->
                     Box(
                         modifier = Modifier
@@ -544,15 +543,10 @@ private fun MediaCard(
                             .background(Color(0xCC000000))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text(
-                            label,
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelSmall
-                        )
+                        Text(label, color = Color.White, style = MaterialTheme.typography.labelSmall)
                     }
                 }
 
-                // Badge de duração no canto inferior direito.
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -568,7 +562,6 @@ private fun MediaCard(
                     )
                 }
 
-                // Barra de progresso sobre a base da miniatura.
                 if (media.progress > 0f) {
                     Box(
                         modifier = Modifier
@@ -594,8 +587,8 @@ private fun MediaCard(
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
-                    .height(48.dp)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .height(44.dp)
             )
         }
     }

@@ -220,25 +220,51 @@ class RealTdlibGateway(
     }
 
     /**
-     * Procura, entre as mensagens ANTERIORES ao vídeo, a FOTO (pôster) cujo título CASE com o nome
-     * do vídeo ([videoName]) — evita pegar a capa de outro filme quando o canal intercala posts.
+     * Anda para trás a partir do vídeo, PULANDO apenas outros vídeos (episódios irmãos), até a 1ª
+     * FOTO com legenda de filme. Aceita esse pôster quando:
+     *  - o título dele CASA com o nome do vídeo (filme A/B), OU
+     *  - o vídeo faz parte da sequência de episódios sob ele (pulou ≥1 vídeo) — SÉRIE, OU
+     *  - o nome do vídeo parece episódio ("Episódio/EP/Cap/Temporada/SxEy").
+     * Para na 1ª mensagem que não seja vídeo nem foto-pôster (fronteira) → evita capa de outro post.
      * GetChatHistory pode voltar vazio na 1ª chamada enquanto carrega do servidor — 1 retry.
      */
     private suspend fun findMatchingPoster(chatId: Long, beforeMessageId: Long, videoName: String): TdApi.Message? {
         repeat(2) {
-            val res = send(TdApi.GetChatHistory(chatId, beforeMessageId, 0, 4, false)) as? TdApi.Messages
+            val res = send(TdApi.GetChatHistory(chatId, beforeMessageId, 0, 12, false)) as? TdApi.Messages
             val msgs = res?.messages?.filterNotNull().orEmpty()
-            msgs.forEach { m ->
-                val cap = (m.content as? TdApi.MessagePhoto)?.caption?.text
-                if (!cap.isNullOrBlank()) {
-                    val posterTitle = MovieMetadataParser.parse(cap).title
-                        ?: cap.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
-                    if (posterTitle != null && titlesMatch(videoName, posterTitle)) return m
+            if (msgs.isEmpty()) return@repeat // provável carregamento — tenta de novo
+            var skipped = 0
+            for (m in msgs) {
+                when (val c = m.content) {
+                    is TdApi.MessageVideo -> {
+                        skipped++
+                        if (skipped > 12) return null
+                    }
+                    is TdApi.MessagePhoto -> {
+                        val cap = c.caption?.text
+                        val posterTitle = cap?.let {
+                            MovieMetadataParser.parse(it).title
+                                ?: it.lineSequence().map { l -> l.trim() }.firstOrNull { l -> l.isNotEmpty() }
+                        } ?: return null // foto sem legenda de filme = fronteira
+                        // Aceita: filme (título casa) OU episódio de série (nome do vídeo parece
+                        // episódio). NÃO aceita só por "pulou vídeos" — evitava capa de outro post.
+                        val accept = titlesMatch(videoName, posterTitle) || looksLikeEpisode(videoName)
+                        return if (accept) m else null
+                    }
+                    else -> return null // fronteira (texto/serviço) — não é o mesmo bloco
                 }
             }
-            if (msgs.isNotEmpty()) return null // histórico veio, mas nenhum pôster casou
+            return null // só vídeos na janela, sem foto
         }
         return null
+    }
+
+    /** Heurística: o nome parece de episódio de série (número no início, "Episódio", "EP", "Cap"…). */
+    private fun looksLikeEpisode(name: String): Boolean {
+        // Número no início: "1. Ausência", "2) ...", "03 - ...".
+        if (Regex("^\\s*\\d{1,3}\\s*[.)\\-]\\s").containsMatchIn(name)) return true
+        val n = Normalizer.normalize(name.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+        return Regex("epis|\\bep\\b|\\bep\\.?\\s*\\d|\\bcap\\b|capitulo|temporada|\\bs\\d+\\s*e\\d+\\b|\\bt\\d+\\b").containsMatchIn(n)
     }
 
     /** Casa dois títulos por conjunto de tokens (ignora acentos, [MKV], stopwords e tags técnicas). */
@@ -322,16 +348,35 @@ class RealTdlibGateway(
                         ?: video.fileName.ifBlank { null }?.let { cleanDisplayName(it).ifBlank { it } }
                         ?: videoCaption?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
 
-                    // Só usa o pôster da foto anterior se o TÍTULO dela BATER com o nome do vídeo —
-                    // canais intercalam posts, então adjacência sozinha pegava capa de outro filme.
+                    // Pareia com a foto-pôster anterior: casa por título (filme A/B) OU compartilha o
+                    // pôster de uma SÉRIE quando o vídeo é um episódio da sequência sob ele.
                     val posterMsg = videoName?.let { findMatchingPoster(msg.chatId, msg.id, it) }
                     val posterContent = posterMsg?.content as? TdApi.MessagePhoto
                     val posterCaption = posterContent?.caption?.text
-                    // Metadados: da legenda do pôster (casos A/B) quando casou; senão do próprio vídeo (C).
-                    val meta = if (posterCaption != null) MovieMetadataParser.parse(posterCaption) else videoMeta
+                    val posterMeta = posterCaption?.let { MovieMetadataParser.parse(it) }
 
-                    val displayTitle = (meta.title ?: videoName)?.let { cleanDisplayName(it).ifBlank { it } }
-                        ?: "Video ${msg.id}"
+                    // Episódio de série: pareou com um pôster cujo título NÃO é o nome do vídeo →
+                    // mostra o nome do episódio (do vídeo) e a sinopse do PRÓPRIO episódio, mas herda
+                    // o pôster e os metadados (ano/gêneros/áudio) da série.
+                    val isSeriesEpisode = posterMeta?.title != null && videoName != null &&
+                        !titlesMatch(videoName, posterMeta.title!!)
+                    val displayTitle = if (isSeriesEpisode) {
+                        // Nome do episódio vem da legenda (já limpo) — não passar pelo cleanDisplayName.
+                        videoName!!.trim()
+                    } else {
+                        ((posterMeta ?: videoMeta).title ?: videoName)
+                            ?.let { cleanDisplayName(it).ifBlank { it } } ?: "Video ${msg.id}"
+                    }
+
+                    val synopsis = if (isSeriesEpisode) {
+                        videoMeta.synopsis ?: posterMeta?.synopsis
+                    } else {
+                        posterMeta?.synopsis ?: videoMeta.synopsis
+                    }
+                    val year = posterMeta?.year ?: videoMeta.year
+                    val director = posterMeta?.director ?: videoMeta.director
+                    val audio = posterMeta?.audio ?: videoMeta.audio
+                    val genres = posterMeta?.genres ?: videoMeta.genres
 
                     val posterPath = posterContent?.photo?.let { resolvePosterPath(it) }
 
@@ -348,11 +393,11 @@ class RealTdlibGateway(
                         width = video.width,
                         height = video.height,
                         posterPath = posterPath,
-                        synopsis = meta.synopsis,
-                        year = meta.year,
-                        director = meta.director,
-                        audio = meta.audio,
-                        genres = meta.genres
+                        synopsis = synopsis,
+                        year = year,
+                        director = director,
+                        audio = audio,
+                        genres = genres
                     )
                 }
             }.awaitAll()

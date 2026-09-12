@@ -483,6 +483,12 @@ private fun LoadMoreCard(
     }
 }
 
+// Altura uniforme da capa; largura muda pelo formato (pôster 2:3 vs thumb 16:9), mantendo a
+// mesma altura na fileira — assim o pôster fica completo e a thumb sem corte.
+private val COVER_H = 210.dp
+private val POSTER_W = 140.dp   // 2:3
+private val THUMB_W = 373.dp    // 16:9 na mesma altura
+
 @Composable
 private fun MediaCard(
     media: MediaCardUi,
@@ -490,11 +496,13 @@ private fun MediaCard(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    // Card em pôster retrato (2:3), estilo streaming. Capa = pôster do post; fallback ao frame.
+    // Com pôster → card retrato (2:3). Sem pôster → card horizontal (16:9) na mesma altura,
+    // mostrando o frame inteiro sem corte.
+    val portrait = media.posterPath != null
     val cover = media.posterPath ?: media.thumbnailPath
     Box(
         modifier = modifier
-            .width(160.dp)
+            .width(if (portrait) POSTER_W else THUMB_W)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
@@ -506,11 +514,11 @@ private fun MediaCard(
             )
     ) {
         Column {
-            // Pôster 2:3 com selos de resolução/duração e barra de progresso sobrepostos.
+            // Capa (pôster 2:3 ou frame 16:9) com selos de resolução/duração e progresso.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(240.dp)
+                    .height(COVER_H)
                     .background(Color(0xFF1C1C1C))
             ) {
                 if (cover != null) {

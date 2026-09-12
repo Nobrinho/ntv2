@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tv
@@ -52,6 +53,7 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.ConfirmDialog
 import com.ntv2.app.core.ui.NavRail
 
 private val BRAND = Color(0xFF2BEE34)
@@ -137,7 +139,15 @@ fun SettingsScreen(
         }
 
         if (confirmLogout) {
-            LogoutConfirmDialog(
+            ConfirmDialog(
+                title = "Sair da conta?",
+                message = "Você será desconectado deste dispositivo.",
+                icon = Icons.AutoMirrored.Filled.Logout,
+                confirmLabel = "Sair",
+                confirmIcon = Icons.AutoMirrored.Filled.Logout,
+                cancelLabel = "Cancelar",
+                cancelIcon = Icons.Filled.Close,
+                destructive = true,
                 onConfirm = { confirmLogout = false; onLogout() },
                 onDismiss = { confirmLogout = false }
             )
@@ -286,46 +296,3 @@ private fun SettingCardShell(
     }
 }
 
-@Composable
-private fun LogoutConfirmDialog(
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val cancelFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { cancelFocus.requestFocus() } }
-    BackHandler(enabled = true) { onDismiss() }
-
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xC0000000)),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .width(460.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF1E1E1E))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("Sair da conta?", style = MaterialTheme.typography.titleLarge, color = Color.White)
-            Text(
-                "Você será desconectado deste dispositivo.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFFB0B0B0)
-            )
-            Row(
-                modifier = Modifier.focusGroup(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(modifier = Modifier.focusRequester(cancelFocus), onClick = onDismiss) {
-                    Text("Cancelar")
-                }
-                Button(onClick = onConfirm) {
-                    Text("Sair")
-                }
-            }
-        }
-    }
-}

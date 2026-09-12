@@ -149,7 +149,7 @@ class MediaLibraryViewModel(
             ) { enabled, activePref -> enabled to activePref }
                 .collect { (enabled, activePref) ->
                     currentChannelsCount = enabled.size
-                    val chips = enabled.map { ChannelChipUi(it.id, it.title) }
+                    val chips = enabled.map { ChannelChipUi(it.id, it.title, it.avatarPath) }
                     val active = enabled.firstOrNull { it.id == activePref } ?: enabled.firstOrNull()
                     _uiState.update {
                         it.copy(

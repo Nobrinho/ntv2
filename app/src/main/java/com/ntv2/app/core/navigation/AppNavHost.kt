@@ -23,6 +23,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +39,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.ConfirmDialog
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.navigation.NavType
@@ -248,58 +252,18 @@ fun AppNavHost(
     }
 
     if (showExitDialog) {
-        ExitConfirmDialog(
+        ConfirmDialog(
+            title = "Deseja fechar o aplicativo?",
+            message = null,
+            icon = Icons.Filled.ExitToApp,
+            confirmLabel = "Sim, sair",
+            confirmIcon = Icons.Filled.ExitToApp,
+            cancelLabel = "Não",
+            cancelIcon = Icons.Filled.Close,
+            destructive = true,
             onConfirm = { (context as? Activity)?.finish() },
             onDismiss = { showExitDialog = false }
         )
     }
   }
-}
-
-@Composable
-private fun ExitConfirmDialog(
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val dismissFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { dismissFocus.requestFocus() } }
-    // Voltar dentro do diálogo = cancelar (não fecha o app).
-    BackHandler(enabled = true) { onDismiss() }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xC0000000)),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier
-                .width(420.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF1E1E1E))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            Text(
-                "Deseja fechar o aplicativo?",
-                style = MaterialTheme.typography.titleLarge,
-                color = Color.White
-            )
-            Row(
-                modifier = Modifier.focusGroup(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    modifier = Modifier.focusRequester(dismissFocus),
-                    onClick = onDismiss
-                ) {
-                    Text("Não")
-                }
-                Button(onClick = onConfirm) {
-                    Text("Sim, sair")
-                }
-            }
-        }
-    }
 }

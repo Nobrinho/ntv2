@@ -44,7 +44,8 @@ data class MediaNavigationPayload(
 /** Canal disponível para escolher como ativo (picker do botão Canais). */
 data class ChannelChipUi(
     val id: Long,
-    val title: String
+    val title: String,
+    val avatarPath: String? = null
 )
 
 data class MediaLibraryUiState(

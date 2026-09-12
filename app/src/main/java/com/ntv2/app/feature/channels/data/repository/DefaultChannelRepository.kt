@@ -29,7 +29,7 @@ class DefaultChannelRepository(
                 ChannelSummary(
                     id = entity.channelId,
                     title = entity.title,
-                    avatarPath = null
+                    avatarPath = entity.avatarPath
                 )
             }
         }
@@ -41,7 +41,8 @@ class DefaultChannelRepository(
             selectedChannels.map { channel ->
                 SelectedChannelEntity(
                     channelId = channel.id,
-                    title = channel.title
+                    title = channel.title,
+                    avatarPath = channel.avatarPath
                 )
             }
         )

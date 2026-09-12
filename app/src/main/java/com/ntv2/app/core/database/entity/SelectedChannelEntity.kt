@@ -6,5 +6,6 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "selected_channels")
 data class SelectedChannelEntity(
     @PrimaryKey val channelId: Long,
-    val title: String
+    val title: String,
+    val avatarPath: String? = null
 )

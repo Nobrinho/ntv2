@@ -11,7 +11,7 @@ import com.ntv2.app.core.database.entity.SelectedChannelEntity
 
 @Database(
     entities = [SelectedChannelEntity::class, PlaybackProgressEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,6 +29,13 @@ abstract class AppDatabase : RoomDatabase() {
                         "durationMs INTEGER NOT NULL, " +
                         "updatedAt INTEGER NOT NULL)"
                 )
+            }
+        }
+
+        // Adiciona o caminho do avatar do canal (para exibir a foto no picker).
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE selected_channels ADD COLUMN avatarPath TEXT")
             }
         }
     }

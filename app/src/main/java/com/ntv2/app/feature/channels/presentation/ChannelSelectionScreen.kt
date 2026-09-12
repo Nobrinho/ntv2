@@ -49,6 +49,8 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.ntv2.app.core.ui.RailButton
+import com.ntv2.app.core.ui.RailColumn
 import com.ntv2.app.feature.channels.presentation.state.ChannelItemUi
 import com.ntv2.app.feature.channels.presentation.state.ChannelSelectionEmptyState
 import com.ntv2.app.feature.channels.presentation.state.ChannelSelectionUiState
@@ -82,111 +84,83 @@ fun ChannelSelectionScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            Text("Seleção de Canais", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-            if (state.channels.isNotEmpty()) {
-                Text(
-                    "${state.selectedChannelIds.size} de ${state.channels.size} selecionados",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFB0B0B0),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
+    Row(modifier = Modifier.fillMaxSize()) {
+        // Ações agora no rail lateral (igual à Biblioteca), mantendo todos os botões.
+        RailColumn {
+            RailButton(
+                icon = Icons.Filled.DoneAll,
+                label = "Todos",
+                modifier = Modifier.focusRequester(firstActionFocusRequester),
+                onClick = { viewModel.onAction(ChannelSelectionAction.SelectAll) }
+            )
+            RailButton(
+                icon = Icons.Filled.Clear,
+                label = "Limpar",
+                onClick = { viewModel.onAction(ChannelSelectionAction.ClearSelection) }
+            )
+            RailButton(
+                icon = Icons.AutoMirrored.Filled.ArrowForward,
+                label = "Continuar",
+                enabled = state.canContinue,
+                onClick = { viewModel.onAction(ChannelSelectionAction.Continue) }
+            )
+            RailButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                label = "Voltar",
+                onClick = onBack
+            )
+            RailButton(
+                icon = Icons.AutoMirrored.Filled.Logout,
+                label = "Sair",
+                onClick = { viewModel.onAction(ChannelSelectionAction.Logout) }
+            )
         }
 
-        ActionsRow(
-            state = state,
-            firstActionFocusRequester = firstActionFocusRequester,
-            onSelectAll = { viewModel.onAction(ChannelSelectionAction.SelectAll) },
-            onClearSelection = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
-            onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
-            onBack = onBack,
-            onLogout = { viewModel.onAction(ChannelSelectionAction.Logout) }
-        )
-
-        when {
-            state.isLoading -> {
-                Text("Carregando canais...", color = Color.White)
-            }
-
-            state.errorMessage != null -> {
-                Text("Erro: ${state.errorMessage}", color = Color.White)
-                Button(onClick = { viewModel.onAction(ChannelSelectionAction.Retry) }) {
-                    Text("Tentar novamente")
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Text("Seleção de Canais", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+                if (state.channels.isNotEmpty()) {
+                    Text(
+                        "${state.selectedChannelIds.size} de ${state.channels.size} selecionados",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFB0B0B0),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
                 }
             }
 
-            state.emptyState == ChannelSelectionEmptyState.NoEligibleChannels -> {
-                Text("Nenhum canal elegível encontrado", color = Color.White)
+            when {
+                state.isLoading -> {
+                    Text("Carregando canais...", color = Color.White)
+                }
+
+                state.errorMessage != null -> {
+                    Text("Erro: ${state.errorMessage}", color = Color.White)
+                    Button(onClick = { viewModel.onAction(ChannelSelectionAction.Retry) }) {
+                        Text("Tentar novamente")
+                    }
+                }
+
+                state.emptyState == ChannelSelectionEmptyState.NoEligibleChannels -> {
+                    Text("Nenhum canal elegível encontrado", color = Color.White)
+                }
+
+                else -> {
+                    ChannelsGrid(
+                        state = state,
+                        onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
+                    )
+                }
             }
-
-            else -> {
-                ChannelsGrid(
-                    state = state,
-                    onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ActionsRow(
-    state: ChannelSelectionUiState,
-    firstActionFocusRequester: FocusRequester,
-    onSelectAll: () -> Unit,
-    onClearSelection: () -> Unit,
-    onContinue: () -> Unit,
-    onBack: () -> Unit,
-    onLogout: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .focusGroup(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Button(
-            modifier = Modifier.focusRequester(firstActionFocusRequester),
-            onClick = onSelectAll
-        ) {
-            Icon(Icons.Filled.DoneAll, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Selecionar todos")
-        }
-
-        Button(onClick = onClearSelection) {
-            Icon(Icons.Filled.Clear, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Limpar seleção")
-        }
-
-        Button(onClick = onContinue, enabled = state.canContinue) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Continuar")
-        }
-
-        Button(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Voltar")
-        }
-
-        Button(onClick = onLogout) {
-            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Sair")
         }
     }
 }

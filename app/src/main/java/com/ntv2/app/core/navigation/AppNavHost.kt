@@ -112,6 +112,7 @@ fun AppNavHost(
         }
 
         composable(RoutePath.CHANNEL_SELECTION) {
+            val channelScope = rememberCoroutineScope()
             val channelViewModel: ChannelSelectionViewModel = viewModel(
                 factory = ChannelSelectionViewModelFactory(
                     channelRepository = appContainer.channelRepository,
@@ -130,6 +131,11 @@ fun AppNavHost(
                 },
                 onBack = { navController.popBackStack() },
                 onLogout = {
+                    // A VM já chamou o logout; limpa canais + canal ativo (próximo login = seleção).
+                    channelScope.launch {
+                        runCatching { appContainer.channelRepository.clearSelectedChannels() }
+                        runCatching { appContainer.settingsRepository.updateActiveChannelId(0L) }
+                    }
                     navController.navigate(RoutePath.LOGIN) {
                         popUpTo(navController.graph.id) { inclusive = true }
                     }
@@ -183,8 +189,12 @@ fun AppNavHost(
                 onLogout = {
                     // Aguarda o logout concluir (recria o cliente TDLib) ANTES de ir ao Login —
                     // senão a tela de QR abre com o cliente ainda não pronto e trava em "gerando".
+                    // Limpa canais + canal ativo para que o próximo login seja um "primeiro login"
+                    // (checa canais → seleção quando não houver), sem herdar IDs de outra conta.
                     scope.launch {
                         runCatching { appContainer.authRepository.logout() }
+                        runCatching { appContainer.channelRepository.clearSelectedChannels() }
+                        runCatching { appContainer.settingsRepository.updateActiveChannelId(0L) }
                         navController.navigate(RoutePath.LOGIN) {
                             popUpTo(navController.graph.id) { inclusive = true }
                         }

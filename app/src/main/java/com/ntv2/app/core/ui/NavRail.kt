@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterAltOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -136,7 +137,9 @@ fun NavRail(
     firstItemFocus: FocusRequester? = null,
     searchActive: Boolean = false,
     settingsActive: Boolean = false,
+    showClearFilter: Boolean = false,
     onSearch: () -> Unit,
+    onClearFilter: () -> Unit = {},
     onChannels: () -> Unit,
     onRefresh: () -> Unit,
     onSettings: () -> Unit
@@ -149,6 +152,10 @@ fun NavRail(
             modifier = if (firstItemFocus != null) Modifier.focusRequester(firstItemFocus) else Modifier,
             onClick = onSearch
         )
+        // Só aparece com filtro de texto ativo: limpa sem precisar entrar na busca.
+        if (showClearFilter) {
+            RailButton(Icons.Filled.FilterAltOff, "Limpar", onClick = onClearFilter)
+        }
         RailButton(Icons.Filled.Subscriptions, "Canais", onClick = onChannels)
         RailButton(Icons.Filled.Refresh, "Atualizar", onClick = onRefresh)
         RailButton(Icons.Filled.Settings, "Config", highlighted = settingsActive, onClick = onSettings)

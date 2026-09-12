@@ -57,6 +57,9 @@ data class MediaLibraryUiState(
     /** Grade plana do canal ativo (novo layout). */
     val items: List<MediaCardUi> = emptyList(),
     val hasMore: Boolean = false,
+    /** Incrementa a cada conclusão de "carregar mais" (sucesso ou falha) — sinal p/ a UI reagir
+     *  mesmo quando o tamanho da lista não muda (teto de itens atingido). */
+    val loadMoreNonce: Int = 0,
     val activeChannelId: Long? = null,
     val activeChannelName: String = "",
     val enabledChannels: List<ChannelChipUi> = emptyList(),

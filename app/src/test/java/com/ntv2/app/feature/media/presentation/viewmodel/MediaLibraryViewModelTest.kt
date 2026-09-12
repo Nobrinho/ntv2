@@ -54,6 +54,8 @@ class MediaLibraryViewModelTest {
         override val minDurationMinutes: Flow<Int>
     ) : SettingsRepository {
         override suspend fun updateMinDurationMinutes(value: Int) = Unit
+        override val maxCards: Flow<Int> = MutableStateFlow(150)
+        override suspend fun updateMaxCards(value: Int) = Unit
         override val activeChannelId: Flow<Long> = MutableStateFlow(0L)
         override suspend fun updateActiveChannelId(value: Long) = Unit
         override val showCovers: Flow<Boolean> = MutableStateFlow(true)

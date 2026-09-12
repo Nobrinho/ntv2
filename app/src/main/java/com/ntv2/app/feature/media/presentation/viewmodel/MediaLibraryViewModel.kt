@@ -70,6 +70,8 @@ class MediaLibraryViewModel(
     private var searchDebounceJob: Job? = null
     // Página enxuta: menos cards compostos/decodificados por vez na grade (não-lazy).
     private val pageSize = 24
+    // Teto de itens mantidos por canal (grade não-lazy). Configurável nas Configurações.
+    private var maxRetainedItems = 150
 
     init {
         observeSelectionAndFilter()
@@ -189,6 +191,21 @@ class MediaLibraryViewModel(
                 _uiState.update { it.copy(showCovers = show) }
             }
         }
+        viewModelScope.launch {
+            settingsRepository.maxCards.collect { max ->
+                maxRetainedItems = max
+                // Aplica o novo teto imediatamente ao canal ativo (apara o excedente do topo).
+                var changed = false
+                channelItems.keys.toList().forEach { id ->
+                    val items = channelItems[id] ?: return@forEach
+                    if (items.size > max) {
+                        channelItems[id] = items.takeLast(max)
+                        changed = true
+                    }
+                }
+                if (changed) projectSections()
+            }
+        }
     }
 
     /** Carrega a 1ª página do canal ativo (grade plana). */
@@ -270,11 +287,30 @@ class MediaLibraryViewModel(
             }.onSuccess { page ->
                 val existing = channelItems[channelId].orEmpty()
                 val seen = existing.mapTo(HashSet()) { it.mediaId }
-                channelItems[channelId] = existing + page.items.filter { seen.add(it.mediaId) }
+                val merged = existing + page.items.filter { seen.add(it.mediaId) }
+                // Teto de memória: grade é não-lazy, então limitamos os itens mantidos, descartando
+                // os mais antigos (do topo) e preservando os recém-carregados (do fim).
+                channelItems[channelId] =
+                    if (merged.size > maxRetainedItems) merged.takeLast(maxRetainedItems) else merged
                 channelCursors[channelId] = page.nextCursor
-                projectSections()
+                // Atualização atômica com o nonce: a UI reage mesmo se o tamanho não mudar (teto).
+                val sections = computeSections()
+                _uiState.update {
+                    it.copy(
+                        sections = sections,
+                        items = sections.flatMap { s -> s.items },
+                        hasMore = sections.firstOrNull()?.hasMore ?: false,
+                        emptyState = emptyStateFor(sections),
+                        loadMoreNonce = it.loadMoreNonce + 1
+                    )
+                }
             }.onFailure { error ->
-                _uiState.update { it.copy(errorMessage = error.message ?: "Falha ao carregar mais") }
+                _uiState.update {
+                    it.copy(
+                        errorMessage = error.message ?: "Falha ao carregar mais",
+                        loadMoreNonce = it.loadMoreNonce + 1
+                    )
+                }
             }
             loadingMore -= channelId
         }

@@ -123,7 +123,9 @@ fun MediaLibraryScreen(
     // e o foco se perde (direcional depois "pula" pro último). Movemos o foco de forma explícita.
     val loadMoreFocus = remember { FocusRequester() }
     var loadMoreRequested by remember { mutableStateOf(false) }
-    var sizeBeforeLoadMore by remember { mutableStateOf(0) }
+    // Identidade da fronteira antes do load (robusto ao corte do topo pelo teto de itens).
+    var lastIdBeforeLoad by remember { mutableStateOf<String?>(null) }
+    var firstIdBeforeLoad by remember { mutableStateOf<String?>(null) }
     val gridScroll = rememberScrollState()
     // Suprime o bringIntoView SÓ no momento do "carregar mais": ao focar o 1º item novo, o Compose
     // rolaria a tela para enquadrá-lo; suprimindo, a viewport fica 100% parada. Reativado logo após
@@ -172,19 +174,27 @@ fun MediaLibraryScreen(
         cardFocusRequesters[mediaId]?.requestFocus()
     }
 
-    // Após "Carregar mais": foca o 1º item novo (que assume o lugar do botão) e ANCORA o scroll
-    // na posição anterior — os itens novos surgem sem a tela rolar.
-    LaunchedEffect(state.items.size, state.hasMore) {
+    // Após "Carregar mais": foca o 1º item novo (fronteira, achado por identidade). Se o topo NÃO
+    // foi cortado pelo teto, suprime o bringIntoView (viewport parada). Se foi cortado, deixa o
+    // bringIntoView reancorar na fronteira (evita salto — só ocorre ao passar do teto).
+    LaunchedEffect(state.loadMoreNonce) {
         if (!loadMoreRequested) return@LaunchedEffect
+        val lastOldIndex = state.items.indexOfFirst { it.mediaId == lastIdBeforeLoad }
+        val firstNew = if (lastOldIndex >= 0) state.items.getOrNull(lastOldIndex + 1) else null
         when {
-            state.items.size > sizeBeforeLoadMore -> {
-                val firstNew = state.items.getOrNull(sizeBeforeLoadMore)
-                // Foca o 1º item novo com o bringIntoView suprimido → nenhum scroll acontece.
-                suppressBringIntoView = true
-                runCatching { firstNew?.mediaId?.let { cardFocusRequesters[it]?.requestFocus() } }
-                withFrameNanos { }
-                withFrameNanos { }
-                suppressBringIntoView = false
+            firstNew != null -> {
+                val trimmed = state.items.firstOrNull()?.mediaId != firstIdBeforeLoad
+                if (trimmed) {
+                    // Topo cortado: reancora suavemente na fronteira.
+                    runCatching { cardFocusRequesters[firstNew.mediaId]?.requestFocus() }
+                } else {
+                    // Nada cortado: mantém a viewport 100% parada.
+                    suppressBringIntoView = true
+                    runCatching { cardFocusRequesters[firstNew.mediaId]?.requestFocus() }
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    suppressBringIntoView = false
+                }
                 loadMoreRequested = false
             }
             // Sem itens novos e sem mais páginas: foca o último item existente.
@@ -206,7 +216,9 @@ fun MediaLibraryScreen(
             NavRail(
                 firstItemFocus = initialActionsFocus,
                 searchActive = state.searchQuery.isNotBlank(),
+                showClearFilter = state.searchQuery.isNotBlank(),
                 onSearch = { searching = true },
+                onClearFilter = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
                 onChannels = { channelPicker = true },
                 onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
                 onSettings = onOpenSettings
@@ -306,7 +318,8 @@ fun MediaLibraryScreen(
                                             loading = loadMoreRequested,
                                             focusRequester = loadMoreFocus,
                                             onClick = {
-                                                sizeBeforeLoadMore = state.items.size
+                                                lastIdBeforeLoad = state.items.lastOrNull()?.mediaId
+                                                firstIdBeforeLoad = state.items.firstOrNull()?.mediaId
                                                 loadMoreRequested = true
                                                 viewModel.onAction(MediaLibraryAction.LoadMore)
                                             }

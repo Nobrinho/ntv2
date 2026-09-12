@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,9 +64,11 @@ fun SettingsScreen(
     showCovers: Boolean,
     animationsEnabled: Boolean,
     minDurationMinutes: Int,
+    maxCards: Int,
     onToggleCovers: (Boolean) -> Unit,
     onToggleAnimations: (Boolean) -> Unit,
     onChangeMinDuration: (Int) -> Unit,
+    onChangeMaxCards: (Int) -> Unit,
     onManageChannels: () -> Unit,
     onLogout: () -> Unit,
     onOpenLibrary: () -> Unit
@@ -118,6 +121,10 @@ fun SettingsScreen(
                     DurationCard(
                         value = minDurationMinutes,
                         onChange = onChangeMinDuration
+                    )
+                    MaxCardsCard(
+                        value = maxCards,
+                        onChange = onChangeMaxCards
                     )
                     NavCard(
                         icon = Icons.Filled.Tv,
@@ -232,6 +239,62 @@ private fun DurationCard(
                 textAlign = TextAlign.Center
             )
             Text("►", color = if (idx < DURATION_STEPS.lastIndex) Color.White else Color(0x44FFFFFF), style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
+private val MAX_CARDS_STEPS = listOf(60, 90, 120, 150, 200, 250, 300)
+
+@Composable
+private fun MaxCardsCard(
+    value: Int,
+    onChange: (Int) -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val idx = MAX_CARDS_STEPS.indexOfFirst { it >= value }.let { if (it < 0) MAX_CARDS_STEPS.lastIndex else it }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent { e ->
+                if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (e.key) {
+                    Key.DirectionLeft -> {
+                        if (idx > 0) onChange(MAX_CARDS_STEPS[idx - 1]); true
+                    }
+                    Key.DirectionRight -> {
+                        if (idx < MAX_CARDS_STEPS.lastIndex) onChange(MAX_CARDS_STEPS[idx + 1]); true
+                    }
+                    else -> false
+                }
+            }
+            .focusable()
+            .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
+            .border(
+                width = if (focused) 2.dp else 1.dp,
+                color = if (focused) Color.White else Color(0x33FFFFFF),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.ViewModule, contentDescription = null, tint = BRAND, modifier = Modifier.size(28.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Máximo de cards na grade", color = Color.White, style = MaterialTheme.typography.titleMedium)
+            Text("Limita a memória ao carregar mais (← / →)", color = Color(0xFFB0B0B0), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("◄", color = if (idx > 0) Color.White else Color(0x44FFFFFF), style = MaterialTheme.typography.titleMedium)
+            Text(
+                "$value",
+                color = BRAND,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.width(72.dp),
+                textAlign = TextAlign.Center
+            )
+            Text("►", color = if (idx < MAX_CARDS_STEPS.lastIndex) Color.White else Color(0x44FFFFFF), style = MaterialTheme.typography.titleMedium)
         }
     }
 }

@@ -6,8 +6,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
@@ -40,6 +43,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
@@ -87,6 +91,7 @@ import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryAction
 import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryViewModel
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaLibraryScreen(
     viewModel: MediaLibraryViewModel,
@@ -113,9 +118,20 @@ fun MediaLibraryScreen(
     val loadMoreFocus = remember { FocusRequester() }
     var loadMoreRequested by remember { mutableStateOf(false) }
     var sizeBeforeLoadMore by remember { mutableStateOf(0) }
-    // Scroll da grade hoisteado para conseguirmos ancorar a posição ao carregar mais.
     val gridScroll = rememberScrollState()
-    var scrollAnchor by remember { mutableStateOf(0) }
+    // Suprime o bringIntoView SÓ no momento do "carregar mais": ao focar o 1º item novo, o Compose
+    // rolaria a tela para enquadrá-lo; suprimindo, a viewport fica 100% parada. Reativado logo após
+    // (a navegação normal por D-pad continua rolando a grade ao seguir o foco).
+    var suppressBringIntoView by remember { mutableStateOf(false) }
+    val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
+    val gridBringIntoViewSpec = remember(defaultBringIntoViewSpec) {
+        object : BringIntoViewSpec {
+            override val scrollAnimationSpec get() = defaultBringIntoViewSpec.scrollAnimationSpec
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+                if (suppressBringIntoView) 0f
+                else defaultBringIntoViewSpec.calculateScrollDistance(offset, size, containerSize)
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -158,11 +174,12 @@ fun MediaLibraryScreen(
         when {
             state.items.size > sizeBeforeLoadMore -> {
                 val firstNew = state.items.getOrNull(sizeBeforeLoadMore)
+                // Foca o 1º item novo com o bringIntoView suprimido → nenhum scroll acontece.
+                suppressBringIntoView = true
                 runCatching { firstNew?.mediaId?.let { cardFocusRequesters[it]?.requestFocus() } }
-                // Deixa o foco disparar seu bringIntoView e, no frame seguinte, volta à âncora
-                // para cancelar o pequeno deslocamento — a viewport fica parada.
                 withFrameNanos { }
-                runCatching { gridScroll.scrollTo(scrollAnchor) }
+                withFrameNanos { }
+                suppressBringIntoView = false
                 loadMoreRequested = false
             }
             // Sem itens novos e sem mais páginas: foca o último item existente.
@@ -247,31 +264,32 @@ fun MediaLibraryScreen(
                     }
 
                     else -> {
-                        MasonryMediaGrid(
-                            items = state.items,
-                            showCovers = state.showCovers,
-                            hasMore = state.hasMore,
-                            focusRequesterFor = { id ->
-                                cardFocusRequesters.getOrPut(id) { FocusRequester() }
-                            },
-                            onCardFocused = { id ->
-                                viewModel.onAction(MediaLibraryAction.VideoFocused(id))
-                            },
-                            onCardClick = { media ->
-                                viewModel.onAction(MediaLibraryAction.OpenVideo(media))
-                            },
-                            onLoadMore = {
-                                sizeBeforeLoadMore = state.items.size
-                                scrollAnchor = gridScroll.value
-                                loadMoreRequested = true
-                                viewModel.onAction(MediaLibraryAction.LoadMore)
-                            },
-                            loadMoreFocus = loadMoreFocus,
-                            loadMoreLoading = loadMoreRequested,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(gridScroll)
-                        )
+                        CompositionLocalProvider(LocalBringIntoViewSpec provides gridBringIntoViewSpec) {
+                            MasonryMediaGrid(
+                                items = state.items,
+                                showCovers = state.showCovers,
+                                hasMore = state.hasMore,
+                                focusRequesterFor = { id ->
+                                    cardFocusRequesters.getOrPut(id) { FocusRequester() }
+                                },
+                                onCardFocused = { id ->
+                                    viewModel.onAction(MediaLibraryAction.VideoFocused(id))
+                                },
+                                onCardClick = { media ->
+                                    viewModel.onAction(MediaLibraryAction.OpenVideo(media))
+                                },
+                                onLoadMore = {
+                                    sizeBeforeLoadMore = state.items.size
+                                    loadMoreRequested = true
+                                    viewModel.onAction(MediaLibraryAction.LoadMore)
+                                },
+                                loadMoreFocus = loadMoreFocus,
+                                loadMoreLoading = loadMoreRequested,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(gridScroll)
+                            )
+                        }
                     }
                 }
             }

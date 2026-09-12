@@ -38,8 +38,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -106,6 +108,14 @@ fun MediaLibraryScreen(
     // Teclado de busca próprio (D-pad) e picker de canal ativo — overlays na tela.
     var searching by remember { mutableStateOf(false) }
     var channelPicker by remember { mutableStateOf(false) }
+    // Controle de foco do "Carregar mais": ao clicar, o card sai da árvore quando os itens chegam
+    // e o foco se perde (direcional depois "pula" pro último). Movemos o foco de forma explícita.
+    val loadMoreFocus = remember { FocusRequester() }
+    var loadMoreRequested by remember { mutableStateOf(false) }
+    var sizeBeforeLoadMore by remember { mutableStateOf(0) }
+    // Scroll da grade hoisteado para conseguirmos ancorar a posição ao carregar mais.
+    val gridScroll = rememberScrollState()
+    var scrollAnchor by remember { mutableStateOf(0) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -139,6 +149,33 @@ fun MediaLibraryScreen(
     LaunchedEffect(state.focusRestoreNonce, state.lastFocusedMediaId) {
         val mediaId = state.lastFocusedMediaId ?: return@LaunchedEffect
         cardFocusRequesters[mediaId]?.requestFocus()
+    }
+
+    // Após "Carregar mais": foca o 1º item novo (que assume o lugar do botão) e ANCORA o scroll
+    // na posição anterior — os itens novos surgem sem a tela rolar.
+    LaunchedEffect(state.items.size, state.hasMore) {
+        if (!loadMoreRequested) return@LaunchedEffect
+        when {
+            state.items.size > sizeBeforeLoadMore -> {
+                val firstNew = state.items.getOrNull(sizeBeforeLoadMore)
+                runCatching { firstNew?.mediaId?.let { cardFocusRequesters[it]?.requestFocus() } }
+                // Deixa o foco disparar seu bringIntoView e, no frame seguinte, volta à âncora
+                // para cancelar o pequeno deslocamento — a viewport fica parada.
+                withFrameNanos { }
+                runCatching { gridScroll.scrollTo(scrollAnchor) }
+                loadMoreRequested = false
+            }
+            // Sem itens novos e sem mais páginas: foca o último item existente.
+            !state.hasMore -> {
+                runCatching { state.items.lastOrNull()?.mediaId?.let { cardFocusRequesters[it]?.requestFocus() } }
+                loadMoreRequested = false
+            }
+            // Sem novos mas ainda há botão: mantém o foco no próprio "Carregar mais".
+            else -> {
+                runCatching { loadMoreFocus.requestFocus() }
+                loadMoreRequested = false
+            }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -223,10 +260,17 @@ fun MediaLibraryScreen(
                             onCardClick = { media ->
                                 viewModel.onAction(MediaLibraryAction.OpenVideo(media))
                             },
-                            onLoadMore = { viewModel.onAction(MediaLibraryAction.LoadMore) },
+                            onLoadMore = {
+                                sizeBeforeLoadMore = state.items.size
+                                scrollAnchor = gridScroll.value
+                                loadMoreRequested = true
+                                viewModel.onAction(MediaLibraryAction.LoadMore)
+                            },
+                            loadMoreFocus = loadMoreFocus,
+                            loadMoreLoading = loadMoreRequested,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
+                                .verticalScroll(gridScroll)
                         )
                     }
                 }
@@ -468,15 +512,18 @@ private fun SearchBar(
 
 @Composable
 private fun LoadMoreCard(
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    loading: Boolean = false,
+    focusRequester: FocusRequester? = null
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
+            .clickable(enabled = !loading, onClick = onClick)
             .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
             .border(
                 width = if (focused) 2.dp else 1.dp,
@@ -485,7 +532,21 @@ private fun LoadMoreCard(
             ),
         contentAlignment = Alignment.Center
     ) {
-        Text("Carregar mais", color = Color.White, textAlign = TextAlign.Center)
+        if (loading) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                CircularProgressIndicator(
+                    color = Color(0xFF2BEE34),
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(28.dp)
+                )
+                Text("Carregando…", color = Color(0xFFB0B0B0), textAlign = TextAlign.Center)
+            }
+        } else {
+            Text("Carregar mais", color = Color.White, textAlign = TextAlign.Center)
+        }
     }
 }
 
@@ -600,6 +661,8 @@ private fun MasonryMediaGrid(
     onCardFocused: (String) -> Unit,
     onCardClick: (MediaCardUi) -> Unit,
     onLoadMore: () -> Unit,
+    loadMoreFocus: FocusRequester? = null,
+    loadMoreLoading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Layout(
@@ -616,7 +679,11 @@ private fun MasonryMediaGrid(
                     onClick = { onCardClick(media) }
                 )
             }
-            if (hasMore) LoadMoreCard(onClick = onLoadMore)
+            if (hasMore) LoadMoreCard(
+                loading = loadMoreLoading,
+                focusRequester = loadMoreFocus,
+                onClick = onLoadMore
+            )
         }
     ) { measurables, constraints ->
         val gapPx = GRID_GAP.roundToPx()

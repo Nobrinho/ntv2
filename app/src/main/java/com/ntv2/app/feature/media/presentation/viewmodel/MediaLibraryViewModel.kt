@@ -10,6 +10,7 @@ import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.feature.media.domain.MediaDetailsCache
 import com.ntv2.app.feature.media.domain.MediaRepository
 import com.ntv2.app.feature.media.domain.MovieDetails
+import com.ntv2.app.feature.media.presentation.state.ChannelChipUi
 import com.ntv2.app.feature.media.presentation.state.ChannelMediaSectionUi
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import com.ntv2.app.feature.media.presentation.state.MediaLibraryEmptyState
@@ -39,6 +40,8 @@ sealed interface MediaLibraryAction {
     data class VideoFocused(val mediaId: String) : MediaLibraryAction
     data class OpenVideo(val media: MediaCardUi) : MediaLibraryAction
     data class LoadMoreChannel(val channelId: Long) : MediaLibraryAction
+    data object LoadMore : MediaLibraryAction
+    data class SelectActiveChannel(val channelId: Long) : MediaLibraryAction
     data object ConsumeNavigation : MediaLibraryAction
     data object ScreenResumed : MediaLibraryAction
     data object ClearError : MediaLibraryAction
@@ -83,6 +86,12 @@ class MediaLibraryViewModel(
 
             is MediaLibraryAction.LoadMoreChannel -> loadMore(action.channelId)
 
+            MediaLibraryAction.LoadMore -> _uiState.value.activeChannelId?.let { loadMore(it) }
+
+            is MediaLibraryAction.SelectActiveChannel -> {
+                viewModelScope.launch { settingsRepository.updateActiveChannelId(action.channelId) }
+            }
+
             is MediaLibraryAction.VideoFocused -> {
                 _uiState.update { it.copy(lastFocusedMediaId = action.mediaId) }
             }
@@ -112,8 +121,14 @@ class MediaLibraryViewModel(
                 if (_uiState.value.lastFocusedMediaId != null) {
                     _uiState.update { it.copy(focusRestoreNonce = it.focusRestoreNonce + 1) }
                 }
-                // Atualiza o indicador de progresso após voltar da reprodução.
-                projectSections()
+                // Se o canal ativo ficou vazio (ex.: carregou antes do histórico do login), recarrega.
+                val s = _uiState.value
+                if (!s.isLoading && s.items.isEmpty() && s.searchQuery.isBlank() && s.activeChannelId != null) {
+                    loadFirstPages()
+                } else {
+                    // Atualiza o indicador de progresso após voltar da reprodução.
+                    projectSections()
+                }
             }
 
             MediaLibraryAction.ClearError -> {
@@ -122,31 +137,95 @@ class MediaLibraryViewModel(
         }
     }
 
+    private var loadedChannelId: Long? = null
+
     private fun observeSelectionAndFilter() {
-        // Seleção de canais dispara (re)carga; mudança de duração mínima apenas re-projeta.
+        // Novo modelo: UM canal ativo por vez. Canais habilitados vêm da seleção (Configurações);
+        // o canal ativo é uma preferência (botão Canais). Carrega só o canal ativo.
         viewModelScope.launch {
-            channelRepository.observeSelectedChannels().collect { channels ->
-                currentChannelsCount = channels.size
-                if (channels.isEmpty()) {
-                    clearChannelData()
+            kotlinx.coroutines.flow.combine(
+                channelRepository.observeSelectedChannels(),
+                settingsRepository.activeChannelId
+            ) { enabled, activePref -> enabled to activePref }
+                .collect { (enabled, activePref) ->
+                    currentChannelsCount = enabled.size
+                    val chips = enabled.map { ChannelChipUi(it.id, it.title) }
+                    val active = enabled.firstOrNull { it.id == activePref } ?: enabled.firstOrNull()
                     _uiState.update {
                         it.copy(
-                            isLoading = false,
-                            sections = emptyList(),
-                            emptyState = MediaLibraryEmptyState.NoChannelsSelected,
-                            errorMessage = null
+                            enabledChannels = chips,
+                            activeChannelId = active?.id,
+                            activeChannelName = active?.title ?: ""
                         )
                     }
-                } else {
-                    loadFirstPages(channels)
+                    if (enabled.isEmpty()) {
+                        clearChannelData()
+                        loadedChannelId = null
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                sections = emptyList(),
+                                items = emptyList(),
+                                hasMore = false,
+                                emptyState = MediaLibraryEmptyState.NoChannelsSelected,
+                                errorMessage = null
+                            )
+                        }
+                    } else if (active != null && active.id != loadedChannelId) {
+                        loadedChannelId = active.id
+                        loadActiveChannel(active)
+                    }
                 }
-            }
         }
         viewModelScope.launch {
             settingsRepository.minDurationMinutes.collect { minDuration ->
                 _uiState.update { it.copy(minDurationMinutes = minDuration) }
                 projectSections()
             }
+        }
+        viewModelScope.launch {
+            settingsRepository.showCovers.collect { show ->
+                _uiState.update { it.copy(showCovers = show) }
+            }
+        }
+    }
+
+    /** Carrega a 1ª página do canal ativo (grade plana). */
+    private fun loadActiveChannel(channel: ChannelSummary) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            clearChannelData()
+            channelOrder += channel.id
+            channelTitles[channel.id] = channel.title
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, emptyState = null) }
+            val query = currentQuery()
+            // Logo após o login o histórico do canal ainda pode não ter carregado no TDLib e a 1ª
+            // busca volta vazia — tenta de novo algumas vezes com um pequeno intervalo.
+            var page: com.ntv2.app.feature.media.domain.MediaPage? = null
+            var attempt = 0
+            while (attempt < 4) {
+                val result = runCatching {
+                    withContext(ioDispatcher) { fetchPage(channel.id, channel.title, query, fromMessageId = 0L) }
+                }.getOrElse { error ->
+                    if (attempt == 3) {
+                        _uiState.update {
+                            it.copy(isLoading = false, errorMessage = error.message ?: "Falha ao carregar biblioteca")
+                        }
+                        return@launch
+                    }
+                    null
+                }
+                if (result != null) {
+                    page = result
+                    if (result.items.isNotEmpty() || query.isNotBlank()) break
+                }
+                attempt++
+                if (attempt < 4) delay(1_200L)
+            }
+            channelItems[channel.id] = page?.items.orEmpty()
+            channelCursors[channel.id] = page?.nextCursor ?: 0L
+            _uiState.update { it.copy(isLoading = false) }
+            projectSections()
         }
     }
 
@@ -158,51 +237,11 @@ class MediaLibraryViewModel(
         }
     }
 
-    /** Carrega a primeira página de cada canal (modo lista ou busca, conforme a query atual). */
-    private fun loadFirstPages(channelsOverride: List<ChannelSummary>? = null) {
-        loadJob?.cancel()
-        loadJob = viewModelScope.launch {
-            val channels = channelsOverride ?: channelRepository.observeSelectedChannels().first()
-            if (channels.isEmpty()) {
-                clearChannelData()
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        sections = emptyList(),
-                        emptyState = MediaLibraryEmptyState.NoChannelsSelected,
-                        errorMessage = null
-                    )
-                }
-                return@launch
-            }
-
-            clearChannelData()
-            channels.sortedBy { it.title }.forEach { channelOrder += it.id }
-            channels.forEach { channelTitles[it.id] = it.title }
-
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, emptyState = null) }
-            val query = currentQuery()
-            runCatching {
-                withContext(ioDispatcher) {
-                    coroutineScope {
-                        channels.map { channel ->
-                            async { channel.id to fetchPage(channel.id, channel.title, query, fromMessageId = 0L) }
-                        }.awaitAll()
-                    }
-                }
-            }.onSuccess { results ->
-                results.forEach { (id, page) ->
-                    channelItems[id] = page.items
-                    channelCursors[id] = page.nextCursor
-                }
-                _uiState.update { it.copy(isLoading = false) }
-                projectSections()
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(isLoading = false, errorMessage = error.message ?: "Falha ao carregar biblioteca")
-                }
-            }
-        }
+    /** Recarrega a 1ª página do canal ativo (Atualizar / busca). */
+    private fun loadFirstPages() {
+        val activeId = _uiState.value.activeChannelId ?: return
+        val title = channelTitles[activeId] ?: _uiState.value.activeChannelName
+        loadActiveChannel(ChannelSummary(id = activeId, title = title, avatarPath = null))
     }
 
     /** Carrega a próxima página de um canal específico e a acrescenta. */
@@ -265,7 +304,12 @@ class MediaLibraryViewModel(
                 else -> null
             }
 
-            _uiState.update { it.copy(sections = sections, emptyState = emptyState) }
+            // Grade plana do canal ativo (novo layout).
+            val items = sections.flatMap { it.items }
+            val hasMore = sections.firstOrNull()?.hasMore ?: false
+            _uiState.update {
+                it.copy(sections = sections, items = items, hasMore = hasMore, emptyState = emptyState)
+            }
         }
     }
 

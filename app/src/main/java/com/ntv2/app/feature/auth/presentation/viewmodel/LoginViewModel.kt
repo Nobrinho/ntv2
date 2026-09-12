@@ -35,6 +35,14 @@ class LoginViewModel(
                         isAuthorized = authState.step is AuthStep.Authorized
                     )
                 }
+                // Reseta o gatilho quando sai do estado de aguardar credenciais — assim, se o
+                // cliente for recriado (ex.: após logout: Closed → Initializing → WaitPhoneNumber),
+                // o QR é solicitado de novo em vez de ficar "gerando" para sempre.
+                if (authState.step !is AuthStep.WaitingPhoneNumber &&
+                    authState.step !is AuthStep.WaitingQrScan
+                ) {
+                    qrRequested = false
+                }
                 // Em modo QR, ao TDLib passar a aguardar credenciais, solicita o QR uma vez.
                 if (authState.step is AuthStep.WaitingPhoneNumber &&
                     _uiState.value.loginMode == LoginMode.QrCode &&

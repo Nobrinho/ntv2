@@ -6,6 +6,16 @@ import kotlinx.coroutines.flow.Flow
 interface SettingsRepository {
     val minDurationMinutes: Flow<Int>
     suspend fun updateMinDurationMinutes(value: Int)
+
+    /** Canal ativo exibido na biblioteca (0 = escolher o primeiro habilitado). */
+    val activeChannelId: Flow<Long>
+    suspend fun updateActiveChannelId(value: Long)
+
+    val showCovers: Flow<Boolean>
+    suspend fun updateShowCovers(value: Boolean)
+
+    val animationsEnabled: Flow<Boolean>
+    suspend fun updateAnimationsEnabled(value: Boolean)
 }
 
 class FakeSettingsRepository(
@@ -15,5 +25,23 @@ class FakeSettingsRepository(
 
     override suspend fun updateMinDurationMinutes(value: Int) {
         dataStore.setMinDurationMinutes(value)
+    }
+
+    override val activeChannelId: Flow<Long> = dataStore.activeChannelId
+
+    override suspend fun updateActiveChannelId(value: Long) {
+        dataStore.setActiveChannelId(value)
+    }
+
+    override val showCovers: Flow<Boolean> = dataStore.showCovers
+
+    override suspend fun updateShowCovers(value: Boolean) {
+        dataStore.setShowCovers(value)
+    }
+
+    override val animationsEnabled: Flow<Boolean> = dataStore.animationsEnabled
+
+    override suspend fun updateAnimationsEnabled(value: Boolean) {
+        dataStore.setAnimationsEnabled(value)
     }
 }

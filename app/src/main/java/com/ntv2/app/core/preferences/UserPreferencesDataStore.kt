@@ -2,8 +2,10 @@
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -14,6 +16,9 @@ class UserPreferencesDataStore(
     private val context: Context
 ) {
     private val minDurationKey = intPreferencesKey("min_duration_minutes")
+    private val activeChannelKey = longPreferencesKey("active_channel_id")
+    private val showCoversKey = booleanPreferencesKey("show_covers")
+    private val animationsKey = booleanPreferencesKey("animations_enabled")
 
     val minDurationMinutes: Flow<Int> = context.dataStore.data.map { prefs: Preferences ->
         prefs[minDurationKey] ?: 15
@@ -23,5 +28,30 @@ class UserPreferencesDataStore(
         context.dataStore.edit { prefs ->
             prefs[minDurationKey] = value
         }
+    }
+
+    /** Canal atualmente exibido na biblioteca (0 = nenhum/escolher o primeiro habilitado). */
+    val activeChannelId: Flow<Long> = context.dataStore.data.map { prefs: Preferences ->
+        prefs[activeChannelKey] ?: 0L
+    }
+
+    suspend fun setActiveChannelId(value: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[activeChannelKey] = value
+        }
+    }
+
+    /** Exibir capas (pôsteres/thumbs) na interface. */
+    val showCovers: Flow<Boolean> = context.dataStore.data.map { it[showCoversKey] ?: true }
+
+    suspend fun setShowCovers(value: Boolean) {
+        context.dataStore.edit { prefs -> prefs[showCoversKey] = value }
+    }
+
+    /** Animações e transições da interface (ex.: intro/splash). */
+    val animationsEnabled: Flow<Boolean> = context.dataStore.data.map { it[animationsKey] ?: true }
+
+    suspend fun setAnimationsEnabled(value: Boolean) {
+        context.dataStore.edit { prefs -> prefs[animationsKey] = value }
     }
 }

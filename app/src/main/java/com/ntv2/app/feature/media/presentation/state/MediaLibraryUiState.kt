@@ -41,10 +41,24 @@ data class MediaNavigationPayload(
     val thumbnailPath: String?
 )
 
+/** Canal disponível para escolher como ativo (picker do botão Canais). */
+data class ChannelChipUi(
+    val id: Long,
+    val title: String
+)
+
 data class MediaLibraryUiState(
     val searchQuery: String = "",
     val minDurationMinutes: Int = 15,
     val sections: List<ChannelMediaSectionUi> = emptyList(),
+    /** Grade plana do canal ativo (novo layout). */
+    val items: List<MediaCardUi> = emptyList(),
+    val hasMore: Boolean = false,
+    val activeChannelId: Long? = null,
+    val activeChannelName: String = "",
+    val enabledChannels: List<ChannelChipUi> = emptyList(),
+    /** Exibir capas (pôsteres/thumbs) — toggle das Configurações. */
+    val showCovers: Boolean = true,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val emptyState: MediaLibraryEmptyState? = null,

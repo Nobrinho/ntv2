@@ -105,7 +105,9 @@ class TdlibTelegramAuthDataSource(
     }
 
     override suspend fun logout() {
-        state.update { it.copy(isLoading = true, errorMessage = null) }
+        // Zera o estado autorizado IMEDIATAMENTE: sem isso a tela de Login (recriada logo após o
+        // logout) enxergava um Authorized obsoleto e re-navegava para a biblioteca/seleção.
+        state.update { it.copy(isLoading = true, step = AuthStep.Initializing, errorMessage = null) }
         runCatching { tdlibGateway.logout() }
             .onFailure { error ->
                 state.update {

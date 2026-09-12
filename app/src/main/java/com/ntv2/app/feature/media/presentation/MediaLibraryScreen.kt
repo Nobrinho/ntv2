@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.media.presentation
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,7 +8,9 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,6 +18,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Movie
@@ -41,7 +46,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -58,16 +65,18 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.NavRail
+import com.ntv2.app.feature.media.presentation.state.ChannelChipUi
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import com.ntv2.app.feature.media.presentation.state.MediaLibraryEmptyState
 import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryAction
 import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryViewModel
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun MediaLibraryScreen(
     viewModel: MediaLibraryViewModel,
     onOpenSettings: () -> Unit,
-    onOpenChannels: () -> Unit,
     onOpenPlaybackPlaceholder: (
         mediaId: String,
         fileId: Int,
@@ -82,9 +91,9 @@ fun MediaLibraryScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val initialActionsFocus = remember { FocusRequester() }
     val cardFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
-    // Busca no estilo TV do YouTube: a barra é apenas um botão; ao apertar OK abre um teclado
-    // próprio (grade de teclas navegável por D-pad). Sem teclado do sistema, sem disputa de foco.
+    // Teclado de busca próprio (D-pad) e picker de canal ativo — overlays na tela.
     var searching by remember { mutableStateOf(false) }
+    var channelPicker by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -121,121 +130,95 @@ fun MediaLibraryScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text("Biblioteca", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+        Row(modifier = Modifier.fillMaxSize()) {
+            // Rail lateral de navegação (logo + ações), estilo TV.
+            NavRail(
+                firstItemFocus = initialActionsFocus,
+                searchActive = state.searchQuery.isNotBlank(),
+                onSearch = { searching = true },
+                onChannels = { channelPicker = true },
+                onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
+                onSettings = onOpenSettings
+            )
 
-            Row(
+            // Conteúdo do canal ativo (grade plana de aspecto misto).
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .focusGroup(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                SearchBar(
-                    query = state.searchQuery,
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(initialActionsFocus),
-                    onClick = { searching = true }
-                )
-                // Só aparece com busca ativa: limpa o filtro sem reabrir o teclado e devolve o
-                // foco à barra (o botão some ao limpar, então precisa realocar o foco).
-                if (state.searchQuery.isNotBlank()) {
-                    Button(onClick = {
-                        viewModel.onAction(MediaLibraryAction.SearchChanged(""))
-                        initialActionsFocus.requestFocus()
-                    }) {
-                        Icon(Icons.Filled.Close, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Limpar")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        state.activeChannelName.ifBlank { "Biblioteca" },
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (state.searchQuery.isNotBlank()) {
+                        Text(
+                            "• busca: ${state.searchQuery}",
+                            color = Color(0xFFB0B0B0),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
-                Button(onClick = { viewModel.onAction(MediaLibraryAction.Refresh) }) {
-                    Icon(Icons.Filled.Refresh, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Atualizar")
-                }
-                Button(onClick = onOpenChannels) {
-                    Icon(Icons.Filled.Subscriptions, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Canais")
-                }
-                Button(onClick = onOpenSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Configurações")
-                }
-            }
 
-            Text("Filtro mínimo: ${state.minDurationMinutes} min", color = Color.White)
+                when {
+                    state.isLoading -> Text("Carregando…", color = Color.White)
 
-            when {
-                state.isLoading -> {
-                    Text("Carregando biblioteca...", color = Color.White)
-                }
-
-                state.errorMessage != null -> {
-                    Text("Erro: ${state.errorMessage}", color = Color.White)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onClick = { viewModel.onAction(MediaLibraryAction.Refresh) }) {
-                            Text("Tentar novamente")
-                        }
-                        Button(onClick = { viewModel.onAction(MediaLibraryAction.ClearError) }) {
-                            Text("Fechar")
+                    state.errorMessage != null -> {
+                        Text("Erro: ${state.errorMessage}", color = Color.White)
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(onClick = { viewModel.onAction(MediaLibraryAction.Refresh) }) {
+                                Text("Tentar novamente")
+                            }
+                            Button(onClick = { viewModel.onAction(MediaLibraryAction.ClearError) }) {
+                                Text("Fechar")
+                            }
                         }
                     }
-                }
 
-                state.emptyState != null -> {
-                    val message = when (val emptyState = state.emptyState) {
-                        MediaLibraryEmptyState.NoChannelsSelected -> "Nenhum canal selecionado"
-                        MediaLibraryEmptyState.NoVideosFound -> "Nenhum vídeo encontrado para o filtro atual"
-                        MediaLibraryEmptyState.NoSearchResults -> "Nenhum resultado para a busca"
-                        null -> ""
+                    state.emptyState != null -> {
+                        val message = when (state.emptyState) {
+                            MediaLibraryEmptyState.NoChannelsSelected -> "Nenhum canal selecionado (use Configurações)"
+                            MediaLibraryEmptyState.NoVideosFound -> "Nenhum vídeo neste canal para o filtro atual"
+                            MediaLibraryEmptyState.NoSearchResults -> "Nenhum resultado para a busca"
+                            null -> ""
+                        }
+                        Text(message, color = Color.White)
                     }
-                    Text(message, color = Color.White)
-                }
 
-                else -> {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        items(state.sections, key = { it.channelId }) { section ->
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(section.channelName, style = MaterialTheme.typography.titleMedium, color = Color.White)
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    items(section.items, key = { it.mediaId }) { media ->
-                                        val requester = cardFocusRequesters.getOrPut(media.mediaId) { FocusRequester() }
-                                        MediaCard(
-                                            media = media,
-                                            modifier = Modifier
-                                                .focusRequester(requester)
-                                                .onFocusChanged { focusState ->
-                                                    if (focusState.isFocused) {
-                                                        viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
-                                                    }
-                                                },
-                                            onClick = {
-                                                viewModel.onAction(MediaLibraryAction.OpenVideo(media))
+                    else -> {
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            state.items.forEach { media ->
+                                val requester = cardFocusRequesters.getOrPut(media.mediaId) { FocusRequester() }
+                                MediaCard(
+                                    media = media,
+                                    showCover = state.showCovers,
+                                    modifier = Modifier
+                                        .focusRequester(requester)
+                                        .onFocusChanged { focusState ->
+                                            if (focusState.isFocused) {
+                                                viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
                                             }
-                                        )
-                                    }
-                                    if (section.hasMore) {
-                                        item(key = "load_more_${section.channelId}") {
-                                            LoadMoreCard(
-                                                onClick = {
-                                                    viewModel.onAction(
-                                                        MediaLibraryAction.LoadMoreChannel(section.channelId)
-                                                    )
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
+                                        },
+                                    onClick = { viewModel.onAction(MediaLibraryAction.OpenVideo(media)) }
+                                )
+                            }
+                            if (state.hasMore) {
+                                LoadMoreCard(onClick = { viewModel.onAction(MediaLibraryAction.LoadMore) })
                             }
                         }
                     }
@@ -243,8 +226,20 @@ fun MediaLibraryScreen(
             }
         }
 
+        if (channelPicker) {
+            ChannelPickerOverlay(
+                channels = state.enabledChannels,
+                activeId = state.activeChannelId,
+                onSelect = { id ->
+                    viewModel.onAction(MediaLibraryAction.SelectActiveChannel(id))
+                    channelPicker = false
+                },
+                onDismiss = { channelPicker = false }
+            )
+        }
+
         if (searching) {
-            val resultCount = state.sections.sumOf { it.items.size }
+            val resultCount = state.items.size
             SearchOverlay(
                 query = state.searchQuery,
                 resultCount = resultCount,
@@ -492,14 +487,15 @@ private val THUMB_W = 373.dp    // 16:9 na mesma altura
 @Composable
 private fun MediaCard(
     media: MediaCardUi,
+    showCover: Boolean,
     modifier: Modifier,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    // Com pôster → card retrato (2:3). Sem pôster → card horizontal (16:9) na mesma altura,
-    // mostrando o frame inteiro sem corte.
-    val portrait = media.posterPath != null
-    val cover = media.posterPath ?: media.thumbnailPath
+    // Com capas OFF: card retrato uniforme só com placeholder + título (sem baixar imagem).
+    // Com pôster → card retrato (2:3). Sem pôster → card horizontal (16:9) na mesma altura.
+    val portrait = !showCover || media.posterPath != null
+    val cover = if (showCover) (media.posterPath ?: media.thumbnailPath) else null
     Box(
         modifier = modifier
             .width(if (portrait) POSTER_W else THUMB_W)
@@ -598,6 +594,72 @@ private fun MediaCard(
                     .padding(horizontal = 8.dp, vertical = 8.dp)
                     .height(44.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun ChannelPickerOverlay(
+    channels: List<ChannelChipUi>,
+    activeId: Long?,
+    onSelect: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xE6000000))
+            .onPreviewKeyEvent { e ->
+                if (e.type == KeyEventType.KeyUp && (e.key == Key.Back || e.key == Key.Escape)) {
+                    onDismiss(); true
+                } else false
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .width(460.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF1E1E1E))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Escolher canal", style = MaterialTheme.typography.titleLarge, color = Color.White)
+            Column(
+                modifier = Modifier.focusGroup(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                channels.forEachIndexed { index, ch ->
+                    val selected = ch.id == activeId
+                    var focused by remember { mutableStateOf(false) }
+                    val mod = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                    Box(
+                        modifier = mod
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .onFocusChanged { focused = it.isFocused }
+                            .clickable { onSelect(ch.id) }
+                            .background(if (focused) Color(0x33FFFFFF) else Color(0x14FFFFFF))
+                            .border(
+                                width = if (focused) 2.dp else 1.dp,
+                                color = if (focused) Color.White else Color(0x33FFFFFF),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = if (selected) "● ${ch.title}" else ch.title,
+                            color = if (selected) Color(0xFF2BEE34) else Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            Button(onClick = onDismiss) { Text("Fechar") }
         }
     }
 }

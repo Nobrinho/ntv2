@@ -1,39 +1,65 @@
-﻿package com.ntv2.app.feature.auth.presentation
+package com.ntv2.app.feature.auth.presentation
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.blur
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.tv.material3.Button
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import com.ntv2.app.R
 import com.ntv2.app.feature.auth.domain.model.AuthStep
 import com.ntv2.app.feature.auth.domain.model.LoginMode
 import com.ntv2.app.feature.auth.presentation.state.LoginAction
 import com.ntv2.app.feature.auth.presentation.viewmodel.LoginViewModel
+
+private val BRAND = Color(0xFF2BEE34)
+private const val CARD_WIDTH_DP = 560
+
+private enum class LoginStep { Qr, Phone, Code, Password, Success }
 
 @Composable
 fun LoginScreen(
@@ -43,117 +69,334 @@ fun LoginScreen(
     val state by viewModel.uiState.collectAsState()
 
     LaunchedEffect(state.isAuthorized) {
-        if (state.isAuthorized) {
-            onLoginSuccess()
-        }
+        if (state.isAuthorized) onLoginSuccess()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(
-            "Login Telegram",
-            style = MaterialTheme.typography.headlineMedium,
-            color = Color.White
+    val step = when {
+        state.isAuthorized -> LoginStep.Success
+        state.authStep is AuthStep.WaitingPassword -> LoginStep.Password
+        state.authStep is AuthStep.WaitingCode -> LoginStep.Code
+        state.loginMode == LoginMode.Phone -> LoginStep.Phone
+        else -> LoginStep.Qr
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0E0E0E))) {
+        // Degradê verde suave no topo (na cor da marca).
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0x242BEE34), Color(0x0A2BEE34), Color(0x00000000))
+                    )
+                )
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }) {
-                Text("QR Code")
-            }
-            Button(onClick = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.Phone)) }) {
-                Text("Telefone")
-            }
-        }
-
-        if (state.loginMode == LoginMode.QrCode) {
-            Text("Modo QR", color = Color.White)
-            val qrBitmap = remember(state.qrCodePayload) {
-                state.qrCodePayload?.let { generateQrBitmap(it, 420) }
-            }
-            if (qrBitmap != null) {
-                Image(
-                    bitmap = qrBitmap.asImageBitmap(),
-                    contentDescription = "QR Code de login",
-                    modifier = Modifier.size(240.dp)
-                )
-            } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically)
+        ) {
+            // Logo maior com glow verde por trás.
+            Box(contentAlignment = Alignment.Center) {
                 Box(
                     modifier = Modifier
-                        .size(240.dp)
-                        .blur(10.dp)
-                        .background(Color.White.copy(alpha = 0.25f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = Color.White
-                    )
-                }
-            }
-            Text(state.qrCodePayload ?: "Gerando QR...", color = Color.White)
-            Button(onClick = { viewModel.onAction(LoginAction.RequestQr) }) {
-                Text("Atualizar QR")
-            }
-        } else {
-            Text("Modo Telefone", color = Color.White)
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = state.phoneNumber,
-                onValueChange = { viewModel.onAction(LoginAction.UpdatePhone(it)) },
-                label = { Text("Telefone", color = Color.White) },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
-                singleLine = true
-            )
-            Button(onClick = { viewModel.onAction(LoginAction.SubmitPhone) }) {
-                Text("Enviar Telefone")
-            }
-
-            if (state.authStep is AuthStep.WaitingCode || state.code.isNotBlank()) {
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = state.code,
-                    onValueChange = { viewModel.onAction(LoginAction.UpdateCode(it)) },
-                    label = { Text("Código", color = Color.White) },
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
-                    singleLine = true
+                        .size(180.dp)
+                        .background(
+                            Brush.radialGradient(listOf(Color(0x552BEE34), Color(0x00000000)))
+                        )
                 )
-                Button(onClick = { viewModel.onAction(LoginAction.SubmitCode) }) {
-                    Text("Validar Código")
-                }
+                Image(
+                    painter = painterResource(R.drawable.ic_splash_logo),
+                    contentDescription = "Nbr PLAY",
+                    colorFilter = ColorFilter.tint(BRAND),
+                    modifier = Modifier.size(124.dp)
+                )
             }
 
-            if (state.authStep is AuthStep.WaitingPassword || state.password.isNotBlank()) {
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
+            Card {
+                when (step) {
+                LoginStep.Success -> SuccessStep()
+                LoginStep.Password -> PasswordStep(
                     value = state.password,
-                    onValueChange = { viewModel.onAction(LoginAction.UpdatePassword(it)) },
-                    label = { Text("Senha 2FA", color = Color.White) },
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation()
+                    loading = state.isLoading,
+                    error = state.errorMessage,
+                    onChange = { viewModel.onAction(LoginAction.UpdatePassword(it)) },
+                    onSubmit = { viewModel.onAction(LoginAction.SubmitPassword) }
                 )
-                Button(onClick = { viewModel.onAction(LoginAction.SubmitPassword) }) {
-                    Text("Validar Senha")
+                LoginStep.Code -> CodeStep(
+                    phone = state.phoneNumber,
+                    value = state.code,
+                    loading = state.isLoading,
+                    error = state.errorMessage,
+                    onChange = { viewModel.onAction(LoginAction.UpdateCode(it)) },
+                    onSubmit = { viewModel.onAction(LoginAction.SubmitCode) },
+                    onResend = { viewModel.onAction(LoginAction.SubmitPhone) },
+                    onBack = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }
+                )
+                LoginStep.Phone -> PhoneStep(
+                    value = state.phoneNumber,
+                    loading = state.isLoading,
+                    error = state.errorMessage,
+                    onChange = { viewModel.onAction(LoginAction.UpdatePhone(it)) },
+                    onSubmit = { viewModel.onAction(LoginAction.SubmitPhone) },
+                    onBack = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }
+                )
+                LoginStep.Qr -> QrStep(
+                    payload = state.qrCodePayload,
+                    error = state.errorMessage,
+                    onUsePhone = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.Phone)) }
+                )
                 }
             }
         }
+    }
+}
 
-        if (state.isLoading) {
-            Text("Carregando...", color = Color.White)
-        }
+@Composable
+private fun Card(content: @Composable () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(CARD_WIDTH_DP.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF1A1A1A))
+            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(16.dp))
+            .padding(horizontal = 28.dp, vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) { content() }
+}
 
-        if (state.errorMessage != null) {
-            Text("Erro: ${state.errorMessage}", color = Color.White)
-            Button(onClick = { viewModel.onAction(LoginAction.ClearError) }) {
-                Text("Limpar Erro")
+@Composable
+private fun QrStep(payload: String?, error: String?, onUsePhone: () -> Unit) {
+    val phoneFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { phoneFocus.requestFocus() } }
+
+    Text("Entre na sua conta", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+    Text(
+        "Método 1 — QR Code (recomendado)",
+        style = MaterialTheme.typography.titleSmall,
+        color = BRAND,
+        textAlign = TextAlign.Center
+    )
+
+    // QR + passo a passo do Telegram lado a lado.
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val qr = remember(payload) { payload?.let { generateQrBitmap(it, 400) } }
+        Box(
+            modifier = Modifier
+                .size(200.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White),
+            contentAlignment = Alignment.Center
+        ) {
+            if (qr != null) {
+                Image(qr.asImageBitmap(), contentDescription = "QR Code", modifier = Modifier.size(180.dp))
+            } else {
+                CircularProgressIndicator(color = Color.Black)
             }
         }
-
-        Text("Estado: ${state.authStep}", color = Color.White)
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                "Escaneie com o Telegram no seu celular:",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White
+            )
+            StepLine("1", "Abra o Telegram")
+            StepLine("2", "Ajustes → Dispositivos")
+            StepLine("3", "Vincular dispositivo (Scan QR)")
+            StepLine("4", "Aponte a câmera para este código")
+            Text(
+                if (qr != null) "● Aguardando conexão…" else "Gerando QR…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (qr != null) BRAND else Color(0xFF8A8A8A)
+            )
+        }
     }
+
+    error?.let { ErrorText(it) }
+
+    Divider("OU")
+
+    Text(
+        "Método 2 — Entrar com o número de telefone",
+        style = MaterialTheme.typography.bodySmall,
+        color = Color(0xFF8A8A8A),
+        textAlign = TextAlign.Center
+    )
+    Button(
+        modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
+        onClick = onUsePhone
+    ) {
+        Text("Entrar com telefone")
+    }
+}
+
+@Composable
+private fun StepLine(number: String, text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(Color(0x332BEE34)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(number, color = BRAND, style = MaterialTheme.typography.labelMedium)
+        }
+        Text(text, color = Color(0xFFD0D0D0), style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun PhoneStep(
+    value: String,
+    loading: Boolean,
+    error: String?,
+    onChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onBack: () -> Unit
+) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    Text("Entrar com telefone", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+    Text("Número de telefone", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
+    OutlinedTextField(
+        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        value = value,
+        onValueChange = onChange,
+        singleLine = true,
+        placeholder = { Text("+55 (11) 99999-9999", color = Color(0xFF6A6A6A)) },
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done)
+    )
+    error?.let { ErrorText(it) }
+    Button(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
+        Text(if (loading) "Enviando…" else "Continuar")
+    }
+    Button(onClick = onBack) { Text("Voltar") }
+}
+
+@Composable
+private fun CodeStep(
+    phone: String,
+    value: String,
+    loading: Boolean,
+    error: String?,
+    onChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onResend: () -> Unit,
+    onBack: () -> Unit
+) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    Text("Confirme o código", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+    Text(
+        "Enviamos um código para ${maskPhone(phone)}",
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color(0xFFB0B0B0),
+        textAlign = TextAlign.Center
+    )
+    OutlinedTextField(
+        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        value = value,
+        onValueChange = onChange,
+        singleLine = true,
+        placeholder = { Text("_ _ _ _ _", color = Color(0xFF6A6A6A)) },
+        textStyle = MaterialTheme.typography.headlineSmall.copy(color = Color.White),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done)
+    )
+    error?.let { ErrorText(it) }
+    Button(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
+        Text(if (loading) "Validando…" else "Confirmar")
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(onClick = onResend) { Text("Reenviar código") }
+        Button(onClick = onBack) { Text("Voltar") }
+    }
+}
+
+@Composable
+private fun PasswordStep(
+    value: String,
+    loading: Boolean,
+    error: String?,
+    onChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    Text("Verificação em duas etapas", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+    Text(
+        "Digite a senha da sua conta Telegram",
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color(0xFFB0B0B0),
+        textAlign = TextAlign.Center
+    )
+    OutlinedTextField(
+        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        value = value,
+        onValueChange = onChange,
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done)
+    )
+    error?.let { ErrorText(it) }
+    Button(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
+        Text(if (loading) "Entrando…" else "Entrar")
+    }
+}
+
+@Composable
+private fun SuccessStep() {
+    Box(
+        modifier = Modifier.size(72.dp).clip(CircleShape).background(BRAND),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Icons.Filled.Check, contentDescription = null, tint = Color.Black, modifier = Modifier.size(44.dp))
+    }
+    Text("Login realizado", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+    Text("Preparando seu conteúdo…", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
+}
+
+@Composable
+private fun Divider(label: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(modifier = Modifier.weight(1f).height(1.dp).background(Color(0x33FFFFFF)))
+        Text(label, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.labelMedium)
+        Box(modifier = Modifier.weight(1f).height(1.dp).background(Color(0x33FFFFFF)))
+    }
+}
+
+@Composable
+private fun ErrorText(message: String) {
+    Text(message, color = Color(0xFFFF6B6B), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+}
+
+private fun maskPhone(phone: String): String {
+    val digits = phone.filter { it.isDigit() }
+    if (digits.length < 4) return phone
+    return "••• ••••-" + digits.takeLast(4)
 }
 
 private fun generateQrBitmap(content: String, size: Int): Bitmap? {

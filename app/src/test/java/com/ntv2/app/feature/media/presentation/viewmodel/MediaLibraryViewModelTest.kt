@@ -54,6 +54,12 @@ class MediaLibraryViewModelTest {
         override val minDurationMinutes: Flow<Int>
     ) : SettingsRepository {
         override suspend fun updateMinDurationMinutes(value: Int) = Unit
+        override val activeChannelId: Flow<Long> = MutableStateFlow(0L)
+        override suspend fun updateActiveChannelId(value: Long) = Unit
+        override val showCovers: Flow<Boolean> = MutableStateFlow(true)
+        override suspend fun updateShowCovers(value: Boolean) = Unit
+        override val animationsEnabled: Flow<Boolean> = MutableStateFlow(true)
+        override suspend fun updateAnimationsEnabled(value: Boolean) = Unit
     }
 
     private class FakeMediaRepo : MediaRepository {

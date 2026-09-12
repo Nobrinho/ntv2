@@ -318,6 +318,9 @@ class RealTdlibGateway(
 
     private suspend fun searchVideos(chatId: Long, query: String, fromMessageId: Long, limit: Int): TelegramVideoPage {
         ensureConfigured()
+        // Garante que o TDLib conheça o chat (logo após o login a lista de diálogos pode não ter
+        // carregado e SearchChatMessages volta vazio). GetChat força o carregamento do chat.
+        runCatching { send(TdApi.GetChat(chatId)) }
         val result = send(
             TdApi.SearchChatMessages(
                 chatId,

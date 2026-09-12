@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,7 +56,7 @@ import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryViewModelFa
 import com.ntv2.app.feature.playback.presentation.PlaybackScreen
 import com.ntv2.app.feature.playback.presentation.PlayerScreenViewModel
 import com.ntv2.app.feature.playback.presentation.PlayerScreenViewModelFactory
-import com.ntv2.app.feature.settings.presentation.SettingsScreenPlaceholder
+import com.ntv2.app.feature.settings.presentation.SettingsScreen
 import com.ntv2.app.feature.splash.presentation.SplashScreen
 
 @Composable
@@ -67,7 +68,11 @@ fun AppNavHost(
     var showExitDialog by remember { mutableStateOf(false) }
     // Splash como OVERLAY: o app real (Login → Biblioteca) monta e carrega POR TRÁS enquanto a
     // intro cobre a tela; ao terminar, ela some (fade) e revela a Biblioteca já pronta.
+    // Respeita o toggle "Animações" das Configurações (off → pula a intro).
     var showSplash by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        if (!appContainer.settingsRepository.animationsEnabled.first()) showSplash = false
+    }
 
     // O app não deve fechar direto no "Voltar" quando está na raiz (sem tela anterior).
     // Nesse caso, pedimos confirmação. Fora da raiz, o Voltar navega normalmente (callback desabilitado).
@@ -145,7 +150,6 @@ fun AppNavHost(
             MediaLibraryScreen(
                 viewModel = mediaViewModel,
                 onOpenSettings = { navController.navigate(RoutePath.SETTINGS) },
-                onOpenChannels = { navController.navigate(RoutePath.CHANNEL_SELECTION) },
                 onOpenPlaybackPlaceholder = { mediaId, fileId, title, channelName, durationSeconds, fileName, thumbnailPath ->
                     navController.navigate(
                         RoutePath.playbackPlaceholder(
@@ -163,8 +167,30 @@ fun AppNavHost(
         }
 
         composable(RoutePath.SETTINGS) {
-            SettingsScreenPlaceholder(
-                onBackToLibrary = { navController.popBackStack() }
+            val scope = rememberCoroutineScope()
+            val settings = appContainer.settingsRepository
+            val showCovers by settings.showCovers.collectAsState(initial = true)
+            val animationsEnabled by settings.animationsEnabled.collectAsState(initial = true)
+            val minDuration by settings.minDurationMinutes.collectAsState(initial = 15)
+            SettingsScreen(
+                showCovers = showCovers,
+                animationsEnabled = animationsEnabled,
+                minDurationMinutes = minDuration,
+                onToggleCovers = { scope.launch { settings.updateShowCovers(it) } },
+                onToggleAnimations = { scope.launch { settings.updateAnimationsEnabled(it) } },
+                onChangeMinDuration = { scope.launch { settings.updateMinDurationMinutes(it) } },
+                onManageChannels = { navController.navigate(RoutePath.CHANNEL_SELECTION) },
+                onLogout = {
+                    // Aguarda o logout concluir (recria o cliente TDLib) ANTES de ir ao Login —
+                    // senão a tela de QR abre com o cliente ainda não pronto e trava em "gerando".
+                    scope.launch {
+                        runCatching { appContainer.authRepository.logout() }
+                        navController.navigate(RoutePath.LOGIN) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                    }
+                },
+                onOpenLibrary = { navController.popBackStack() }
             )
         }
 

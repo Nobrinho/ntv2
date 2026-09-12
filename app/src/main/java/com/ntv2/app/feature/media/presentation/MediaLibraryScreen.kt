@@ -1,5 +1,8 @@
 package com.ntv2.app.feature.media.presentation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -26,12 +29,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -65,6 +70,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.input.key.Key
@@ -126,7 +132,6 @@ fun MediaLibraryScreen(
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
     val gridBringIntoViewSpec = remember(defaultBringIntoViewSpec) {
         object : BringIntoViewSpec {
-            override val scrollAnimationSpec get() = defaultBringIntoViewSpec.scrollAnimationSpec
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
                 if (suppressBringIntoView) 0f
                 else defaultBringIntoViewSpec.calculateScrollDistance(offset, size, containerSize)
@@ -265,30 +270,50 @@ fun MediaLibraryScreen(
 
                     else -> {
                         CompositionLocalProvider(LocalBringIntoViewSpec provides gridBringIntoViewSpec) {
-                            MasonryMediaGrid(
-                                items = state.items,
-                                showCovers = state.showCovers,
-                                hasMore = state.hasMore,
-                                focusRequesterFor = { id ->
-                                    cardFocusRequesters.getOrPut(id) { FocusRequester() }
-                                },
-                                onCardFocused = { id ->
-                                    viewModel.onAction(MediaLibraryAction.VideoFocused(id))
-                                },
-                                onCardClick = { media ->
-                                    viewModel.onAction(MediaLibraryAction.OpenVideo(media))
-                                },
-                                onLoadMore = {
-                                    sizeBeforeLoadMore = state.items.size
-                                    loadMoreRequested = true
-                                    viewModel.onAction(MediaLibraryAction.LoadMore)
-                                },
-                                loadMoreFocus = loadMoreFocus,
-                                loadMoreLoading = loadMoreRequested,
+                            Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .verticalScroll(gridScroll)
-                            )
+                                    .verticalScroll(gridScroll),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                MasonryMediaGrid(
+                                    items = state.items,
+                                    showCovers = state.showCovers,
+                                    focusRequesterFor = { id ->
+                                        cardFocusRequesters.getOrPut(id) { FocusRequester() }
+                                    },
+                                    onCardFocused = { id ->
+                                        viewModel.onAction(MediaLibraryAction.VideoFocused(id))
+                                    },
+                                    onCardClick = { media ->
+                                        viewModel.onAction(MediaLibraryAction.OpenVideo(media))
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                // Botão único de carregar mais, centralizado; some suavemente ao fim.
+                                AnimatedVisibility(
+                                    visible = state.hasMore,
+                                    enter = fadeIn(),
+                                    exit = fadeOut()
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        LoadMoreButton(
+                                            loading = loadMoreRequested,
+                                            focusRequester = loadMoreFocus,
+                                            onClick = {
+                                                sizeBeforeLoadMore = state.items.size
+                                                loadMoreRequested = true
+                                                viewModel.onAction(MediaLibraryAction.LoadMore)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -528,42 +553,42 @@ private fun SearchBar(
     }
 }
 
+// Botão único, largo e centralizado no fim da grade. Feedback de foco (verde) e de carregamento
+// (spinner). A visibilidade/fade é controlada por quem o exibe (AnimatedVisibility).
 @Composable
-private fun LoadMoreCard(
+private fun LoadMoreButton(
+    loading: Boolean,
     onClick: () -> Unit,
-    loading: Boolean = false,
-    focusRequester: FocusRequester? = null
+    focusRequester: FocusRequester? = null,
+    modifier: Modifier = Modifier
 ) {
     var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
+    val accent = Color(0xFF2BEE34)
+    val content = if (focused) Color(0xFF0E0E0E) else Color.White
+    Row(
+        modifier = modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .clip(RoundedCornerShape(10.dp))
+            .widthIn(min = 320.dp)
+            .height(56.dp)
+            .clip(RoundedCornerShape(28.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(enabled = !loading, onClick = onClick)
-            .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
+            .background(if (focused) accent else Color(0x1FFFFFFF))
             .border(
                 width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else Color(0x44FFFFFF),
-                shape = RoundedCornerShape(10.dp)
-            ),
-        contentAlignment = Alignment.Center
+                color = if (focused) accent else Color(0x44FFFFFF),
+                shape = RoundedCornerShape(28.dp)
+            )
+            .padding(horizontal = 28.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         if (loading) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                CircularProgressIndicator(
-                    color = Color(0xFF2BEE34),
-                    strokeWidth = 3.dp,
-                    modifier = Modifier.size(28.dp)
-                )
-                Text("Carregando…", color = Color(0xFFB0B0B0), textAlign = TextAlign.Center)
-            }
+            CircularProgressIndicator(color = content, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
+            Text("Carregando…", color = content, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         } else {
-            Text("Carregar mais", color = Color.White, textAlign = TextAlign.Center)
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
+            Text("Carregar mais", color = content, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -674,13 +699,9 @@ private fun MediaGridSkeleton(
 private fun MasonryMediaGrid(
     items: List<MediaCardUi>,
     showCovers: Boolean,
-    hasMore: Boolean,
     focusRequesterFor: (String) -> FocusRequester,
     onCardFocused: (String) -> Unit,
     onCardClick: (MediaCardUi) -> Unit,
-    onLoadMore: () -> Unit,
-    loadMoreFocus: FocusRequester? = null,
-    loadMoreLoading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Layout(
@@ -697,11 +718,6 @@ private fun MasonryMediaGrid(
                     onClick = { onCardClick(media) }
                 )
             }
-            if (hasMore) LoadMoreCard(
-                loading = loadMoreLoading,
-                focusRequester = loadMoreFocus,
-                onClick = onLoadMore
-            )
         }
     ) { measurables, constraints ->
         val gapPx = GRID_GAP.roundToPx()
@@ -712,12 +728,11 @@ private fun MasonryMediaGrid(
         val placed = ArrayList<Triple<Placeable, Int, Int>>(measurables.size)
 
         measurables.forEachIndexed { i, measurable ->
-            val media = items.getOrNull(i)
-            val isLoadMore = media == null // último filho quando hasMore
+            val media = items[i]
 
             // Proporção REAL da capa (largura/altura). Fallbacks quando desconhecida ou capas OFF.
-            val hasPoster = media?.posterPath != null
-            val rawAspect = media?.coverAspectRatio ?: 0f
+            val hasPoster = media.posterPath != null
+            val rawAspect = media.coverAspectRatio
             val aspect = when {
                 !showCovers -> 2f / 3f          // capas OFF: retrato uniforme (placeholder)
                 rawAspect > 0f -> rawAspect     // proporção real da imagem do post
@@ -726,14 +741,10 @@ private fun MasonryMediaGrid(
             }.coerceIn(0.45f, 2.2f)             // guarda contra capas absurdamente extremas
 
             // Card horizontal (2 colunas) quando a capa é claramente paisagem; senão 1 coluna.
-            val landscape = !isLoadMore && showCovers && aspect > 1.15f
+            val landscape = showCovers && aspect > 1.15f
             val span = if (landscape) 2 else 1
             val wPx = if (span == 2) colW * 2 + gapPx else colW
-            val hPx = if (isLoadMore) {
-                colW // bloco compacto para preencher o menor vão do fim
-            } else {
-                (wPx / aspect).roundToInt() + titlePx // altura da capa = largura / (w/h)
-            }
+            val hPx = (wPx / aspect).roundToInt() + titlePx // altura da capa = largura / (w/h)
 
             // Escolhe a posição de menor altura (empata → mais à esquerda), preenchendo vãos.
             val startCol = if (span == 1) {

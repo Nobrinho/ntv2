@@ -2,6 +2,7 @@ package com.ntv2.app.core.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -67,22 +68,36 @@ fun RailColumn(content: @Composable ColumnScope.() -> Unit) {
     }
 }
 
-/** Item de rail (ícone + rótulo), focável, com estados de destaque e desabilitado. */
+/**
+ * Item de rail (ícone + rótulo), focável, com estados de destaque e desabilitado.
+ *
+ * [primary] = ação principal (call-to-action): quando habilitado fica com fundo verde sólido e
+ * conteúdo escuro, deixando evidente que já pode ser clicado (ex.: "Continuar" após selecionar).
+ */
 @Composable
 fun RailButton(
     icon: ImageVector,
     label: String,
     highlighted: Boolean = false,
     enabled: Boolean = true,
+    primary: Boolean = false,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     val active = focused || highlighted
+    val cta = primary && enabled // botão de ação em destaque
+    val onCta = Color(0xFF0E0E0E) // conteúdo escuro sobre o verde
     val tint = when {
         !enabled -> Color(0x44FFFFFF)
+        cta -> onCta
         active -> BRAND
         else -> Color.White
+    }
+    val background = when {
+        cta -> BRAND
+        focused -> Color(0x332BEE34)
+        else -> Color.Transparent
     }
     Column(
         modifier = modifier
@@ -90,7 +105,12 @@ fun RailButton(
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
-            .background(if (focused) Color(0x332BEE34) else Color.Transparent)
+            .background(background)
+            // Foco sobre o CTA verde: borda branca para não "sumir" o realce de foco.
+            .then(
+                if (cta && focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp))
+                else Modifier
+            )
             .padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -98,7 +118,12 @@ fun RailButton(
         Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(26.dp))
         Text(
             label,
-            color = if (active) BRAND else if (enabled) Color(0xFFB0B0B0) else Color(0x44FFFFFF),
+            color = when {
+                !enabled -> Color(0x44FFFFFF)
+                cta -> onCta
+                active -> BRAND
+                else -> Color(0xFFB0B0B0)
+            },
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1
         )

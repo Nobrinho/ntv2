@@ -14,6 +14,8 @@ data class MediaItemSummary(
     val fileId: Int,
     val width: Int = 0,
     val height: Int = 0,
+    /** Proporção (largura/altura) da capa exibida; 0 = desconhecida. */
+    val coverAspectRatio: Float = 0f,
     val posterPath: String? = null,
     val synopsis: String? = null,
     val year: Int? = null,

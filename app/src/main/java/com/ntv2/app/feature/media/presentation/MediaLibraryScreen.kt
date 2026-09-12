@@ -1,5 +1,11 @@
 package com.ntv2.app.feature.media.presentation
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -175,7 +182,10 @@ fun MediaLibraryScreen(
                 }
 
                 when {
-                    state.isLoading -> Text("Carregando…", color = Color.White)
+                    state.isLoading -> MediaGridSkeleton(
+                        showCovers = state.showCovers,
+                        modifier = Modifier.fillMaxSize()
+                    )
 
                     state.errorMessage != null -> {
                         Text("Erro: ${state.errorMessage}", color = Color.White)
@@ -253,6 +263,18 @@ fun MediaLibraryScreen(
                 onClose = { searching = false }
             )
         }
+    }
+}
+
+/** Formata a duração em horas e minutos (ex.: 71 min → "1h11min"; 45 min → "45min"). */
+private fun durationLabel(durationSeconds: Int): String {
+    val totalMinutes = durationSeconds / 60
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h${minutes}min"
+        hours > 0 -> "${hours}h"
+        else -> "${minutes}min"
     }
 }
 
@@ -470,9 +492,104 @@ private fun LoadMoreCard(
 // Layout masonry (empacotamento por altura) otimizado para TV.
 // 5 colunas virtuais: card retrato (9:16) ocupa 1 coluna; card horizontal (16:9) ocupa 2
 // colunas adjacentes. A proporção vem do post (pôster → retrato; só frame → horizontal).
-private const val GRID_COLUMNS = 5
+// 6 colunas: card horizontal (2 col) cabe 3 por linha; retrato (1 col) até 6 por linha.
+private const val GRID_COLUMNS = 6
 private val GRID_GAP = 12.dp
 private val CARD_TITLE_H = 56.dp
+
+// Skeleton do grid: um mosaico de placeholders com pulse suave, usando o MESMO empacotamento
+// do masonry — dá a sensação de que a grade está preenchendo (melhor que um "Carregando…").
+@Composable
+private fun MediaGridSkeleton(
+    showCovers: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.05f,
+        targetValue = 0.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "skeleton-alpha"
+    )
+    val shimmer = Color.White.copy(alpha = alpha)
+    // Mosaico determinístico: mistura paisagem (16:9) e retrato (2:3); capas OFF → tudo retrato.
+    val aspects = remember(showCovers) {
+        if (!showCovers) List(24) { 2f / 3f }
+        else listOf(
+            16f / 9f, 2f / 3f, 2f / 3f, 16f / 9f, 2f / 3f, 16f / 9f,
+            2f / 3f, 16f / 9f, 2f / 3f, 2f / 3f, 16f / 9f, 2f / 3f,
+            16f / 9f, 2f / 3f, 2f / 3f, 16f / 9f, 2f / 3f, 2f / 3f
+        )
+    }
+
+    Layout(
+        modifier = modifier.clipToBounds(),
+        content = {
+            aspects.forEach { _ ->
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(shimmer)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.72f)
+                            .height(12.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(shimmer)
+                    )
+                }
+            }
+        }
+    ) { measurables, constraints ->
+        val gapPx = GRID_GAP.roundToPx()
+        val titlePx = CARD_TITLE_H.roundToPx()
+        val totalW = constraints.maxWidth
+        val colW = ((totalW - gapPx * (GRID_COLUMNS - 1)) / GRID_COLUMNS).coerceAtLeast(1)
+        val colHeights = IntArray(GRID_COLUMNS)
+        val placed = ArrayList<Triple<Placeable, Int, Int>>(measurables.size)
+
+        measurables.forEachIndexed { i, measurable ->
+            val aspect = aspects[i].coerceIn(0.45f, 2.2f)
+            val landscape = showCovers && aspect > 1.15f
+            val span = if (landscape) 2 else 1
+            val wPx = if (span == 2) colW * 2 + gapPx else colW
+            val hPx = (wPx / aspect).roundToInt() + titlePx
+
+            val startCol = if (span == 1) {
+                (0 until GRID_COLUMNS).minByOrNull { colHeights[it] } ?: 0
+            } else {
+                (0 until GRID_COLUMNS - 1).minByOrNull { maxOf(colHeights[it], colHeights[it + 1]) } ?: 0
+            }
+            val y = if (span == 1) colHeights[startCol]
+                    else maxOf(colHeights[startCol], colHeights[startCol + 1])
+            val x = startCol * (colW + gapPx)
+
+            placed.add(Triple(measurable.measure(Constraints.fixed(wPx, hPx)), x, y))
+
+            val bottom = y + hPx + gapPx
+            if (span == 1) {
+                colHeights[startCol] = bottom
+            } else {
+                colHeights[startCol] = bottom
+                colHeights[startCol + 1] = bottom
+            }
+        }
+
+        val maxH = if (constraints.hasBoundedHeight) constraints.maxHeight else (colHeights.maxOrNull() ?: 0)
+        val totalH = (colHeights.maxOrNull() ?: 0).coerceAtMost(maxH)
+        layout(totalW, totalH) {
+            placed.forEach { (p, x, y) -> p.place(x, y) }
+        }
+    }
+}
 
 @Composable
 private fun MasonryMediaGrid(
@@ -512,14 +629,25 @@ private fun MasonryMediaGrid(
         measurables.forEachIndexed { i, measurable ->
             val media = items.getOrNull(i)
             val isLoadMore = media == null // último filho quando hasMore
-            // Retrato quando: capas OFF, ou há pôster. Horizontal (2 col) só com capa e sem pôster.
-            val landscape = !isLoadMore && showCovers && media?.posterPath == null
+
+            // Proporção REAL da capa (largura/altura). Fallbacks quando desconhecida ou capas OFF.
+            val hasPoster = media?.posterPath != null
+            val rawAspect = media?.coverAspectRatio ?: 0f
+            val aspect = when {
+                !showCovers -> 2f / 3f          // capas OFF: retrato uniforme (placeholder)
+                rawAspect > 0f -> rawAspect     // proporção real da imagem do post
+                hasPoster -> 2f / 3f            // pôster sem dimensão conhecida
+                else -> 16f / 9f                // só frame do vídeo
+            }.coerceIn(0.45f, 2.2f)             // guarda contra capas absurdamente extremas
+
+            // Card horizontal (2 colunas) quando a capa é claramente paisagem; senão 1 coluna.
+            val landscape = !isLoadMore && showCovers && aspect > 1.15f
             val span = if (landscape) 2 else 1
             val wPx = if (span == 2) colW * 2 + gapPx else colW
-            val hPx = when {
-                isLoadMore -> colW // bloco compacto para preencher o menor vão do fim
-                landscape -> (wPx * 9f / 16f).roundToInt() + titlePx
-                else -> (wPx * 16f / 9f).roundToInt() + titlePx
+            val hPx = if (isLoadMore) {
+                colW // bloco compacto para preencher o menor vão do fim
+            } else {
+                (wPx / aspect).roundToInt() + titlePx // altura da capa = largura / (w/h)
             }
 
             // Escolhe a posição de menor altura (empata → mais à esquerda), preenchendo vãos.
@@ -625,7 +753,7 @@ private fun MediaCard(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        "${media.durationSeconds / 60} min",
+                        durationLabel(media.durationSeconds),
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall
                     )

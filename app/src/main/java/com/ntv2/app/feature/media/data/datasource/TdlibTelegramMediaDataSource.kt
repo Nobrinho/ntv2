@@ -39,6 +39,7 @@ class TdlibTelegramMediaDataSource(
         fileId = fileId,
         width = width,
         height = height,
+        coverAspectRatio = coverAspectRatio,
         posterPath = posterPath,
         synopsis = synopsis,
         year = year,

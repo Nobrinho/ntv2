@@ -68,7 +68,8 @@ class MediaLibraryViewModel(
     private var currentChannelsCount: Int = 0
     private var loadJob: Job? = null
     private var searchDebounceJob: Job? = null
-    private val pageSize = 40
+    // Página enxuta: menos cards compostos/decodificados por vez na grade (não-lazy).
+    private val pageSize = 24
 
     init {
         observeSelectionAndFilter()
@@ -224,8 +225,18 @@ class MediaLibraryViewModel(
             }
             channelItems[channel.id] = page?.items.orEmpty()
             channelCursors[channel.id] = page?.nextCursor ?: 0L
-            _uiState.update { it.copy(isLoading = false) }
-            projectSections()
+            // Transição atômica: desliga o skeleton JUNTO com os itens/emptyState já calculados,
+            // evitando um frame intermediário com "nenhum vídeo" antes das mídias aparecerem.
+            val sections = computeSections()
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    sections = sections,
+                    items = sections.flatMap { s -> s.items },
+                    hasMore = sections.firstOrNull()?.hasMore ?: false,
+                    emptyState = emptyStateFor(sections)
+                )
+            }
         }
     }
 
@@ -278,39 +289,43 @@ class MediaLibraryViewModel(
 
     private fun projectSections() {
         viewModelScope.launch {
-            val minSeconds = _uiState.value.minDurationMinutes * 60
-            val hasQuery = currentQuery().isNotBlank()
-
-            val sections = withContext(ioDispatcher) {
-                val visibleIds = channelOrder.flatMap { id -> channelItems[id].orEmpty().map { it.mediaId } }
-                val savedPositions = progressStore.savedPositions(visibleIds)
-                channelOrder.mapNotNull { id ->
-                    val items = channelItems[id] ?: return@mapNotNull null
-                    val filtered = items.filter { it.durationSeconds >= minSeconds }
-                    if (filtered.isEmpty()) return@mapNotNull null
-                    ChannelMediaSectionUi(
-                        channelId = id,
-                        channelName = channelTitles[id] ?: "",
-                        items = filtered.map { it.toCard(savedPositions[it.mediaId] ?: 0L) },
-                        hasMore = (channelCursors[id] ?: 0L) != 0L
-                    )
-                }
-            }
-
-            val emptyState = when {
-                currentChannelsCount == 0 -> MediaLibraryEmptyState.NoChannelsSelected
-                sections.isEmpty() && hasQuery -> MediaLibraryEmptyState.NoSearchResults
-                sections.isEmpty() -> MediaLibraryEmptyState.NoVideosFound
-                else -> null
-            }
-
-            // Grade plana do canal ativo (novo layout).
-            val items = sections.flatMap { it.items }
-            val hasMore = sections.firstOrNull()?.hasMore ?: false
+            val sections = computeSections()
             _uiState.update {
-                it.copy(sections = sections, items = items, hasMore = hasMore, emptyState = emptyState)
+                it.copy(
+                    sections = sections,
+                    items = sections.flatMap { s -> s.items },
+                    hasMore = sections.firstOrNull()?.hasMore ?: false,
+                    emptyState = emptyStateFor(sections)
+                )
             }
         }
+    }
+
+    /** Monta as seções (canal ativo) aplicando o filtro de duração e o progresso salvo. */
+    private suspend fun computeSections(): List<ChannelMediaSectionUi> {
+        val minSeconds = _uiState.value.minDurationMinutes * 60
+        return withContext(ioDispatcher) {
+            val visibleIds = channelOrder.flatMap { id -> channelItems[id].orEmpty().map { it.mediaId } }
+            val savedPositions = progressStore.savedPositions(visibleIds)
+            channelOrder.mapNotNull { id ->
+                val items = channelItems[id] ?: return@mapNotNull null
+                val filtered = items.filter { it.durationSeconds >= minSeconds }
+                if (filtered.isEmpty()) return@mapNotNull null
+                ChannelMediaSectionUi(
+                    channelId = id,
+                    channelName = channelTitles[id] ?: "",
+                    items = filtered.map { it.toCard(savedPositions[it.mediaId] ?: 0L) },
+                    hasMore = (channelCursors[id] ?: 0L) != 0L
+                )
+            }
+        }
+    }
+
+    private fun emptyStateFor(sections: List<ChannelMediaSectionUi>): MediaLibraryEmptyState? = when {
+        currentChannelsCount == 0 -> MediaLibraryEmptyState.NoChannelsSelected
+        sections.isEmpty() && currentQuery().isNotBlank() -> MediaLibraryEmptyState.NoSearchResults
+        sections.isEmpty() -> MediaLibraryEmptyState.NoVideosFound
+        else -> null
     }
 
     private fun currentQuery(): String = _uiState.value.searchQuery.trim()
@@ -353,6 +368,7 @@ class MediaLibraryViewModel(
             durationSeconds = durationSeconds,
             thumbnailPath = thumbnailPath,
             posterPath = posterPath,
+            coverAspectRatio = coverAspectRatio,
             fileId = fileId,
             videoHeight = height,
             progress = progress

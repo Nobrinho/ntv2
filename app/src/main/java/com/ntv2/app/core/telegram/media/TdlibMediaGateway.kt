@@ -14,6 +14,8 @@ data class TelegramVideoMessage(
     val fileId: Int,
     val width: Int = 0,
     val height: Int = 0,
+    /** Proporção (largura/altura) da capa exibida — pôster se houver, senão o frame. 0 = desconhecida. */
+    val coverAspectRatio: Float = 0f,
     /** Pôster (foto do post) baixado; capa preferida sobre o frame do vídeo. */
     val posterPath: String? = null,
     val synopsis: String? = null,

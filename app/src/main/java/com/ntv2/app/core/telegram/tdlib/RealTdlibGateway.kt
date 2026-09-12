@@ -291,7 +291,12 @@ class RealTdlibGateway(
 
     /** Baixa o pôster (maior tamanho da foto) e retorna o caminho local; null se não houver. */
     private suspend fun resolvePosterPath(photo: TdApi.Photo): String? {
-        val size = photo.sizes?.maxByOrNull { it.width * it.height } ?: return null
+        val sizes = photo.sizes?.takeIf { it.isNotEmpty() } ?: return null
+        // Escolhe a MENOR variante com largura suficiente para o card (evita baixar/decodificar o
+        // pôster full-res). O Coil ainda reamostra para o tamanho exato do card.
+        val size = sizes.filter { it.width >= 500 }.minByOrNull { it.width * it.height }
+            ?: sizes.maxByOrNull { it.width * it.height }
+            ?: return null
         val f = size.photo ?: return null
         f.local?.let { local ->
             if (local.isDownloadingCompleted && local.path.isNotBlank()) return local.path
@@ -381,7 +386,19 @@ class RealTdlibGateway(
                     val audio = posterMeta?.audio ?: videoMeta.audio
                     val genres = posterMeta?.genres ?: videoMeta.genres
 
-                    val posterPath = posterContent?.photo?.let { resolvePosterPath(it) }
+                    val posterPhoto = posterContent?.photo
+                    val posterPath = posterPhoto?.let { resolvePosterPath(it) }
+
+                    // Proporção real da capa: pôster (se usado) tem sua própria proporção; senão o
+                    // frame do vídeo. As variantes do pôster compartilham a mesma proporção.
+                    val posterAspect = posterPhoto?.sizes
+                        ?.firstOrNull { it.width > 0 && it.height > 0 }
+                        ?.let { it.width.toFloat() / it.height }
+                    val coverAspect = when {
+                        posterPath != null && posterAspect != null -> posterAspect
+                        video.height > 0 -> video.width.toFloat() / video.height
+                        else -> 0f
+                    }
 
                     TelegramVideoMessage(
                         mediaId = "${msg.chatId}_${msg.id}",
@@ -395,6 +412,7 @@ class RealTdlibGateway(
                         fileId = tdFile.id,
                         width = video.width,
                         height = video.height,
+                        coverAspectRatio = coverAspect,
                         posterPath = posterPath,
                         synopsis = synopsis,
                         year = year,

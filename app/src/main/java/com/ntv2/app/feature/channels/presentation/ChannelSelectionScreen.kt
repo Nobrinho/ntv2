@@ -1,5 +1,11 @@
 package com.ntv2.app.feature.channels.presentation
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -99,9 +106,15 @@ fun ChannelSelectionScreen(
                 onClick = { viewModel.onAction(ChannelSelectionAction.ClearSelection) }
             )
             RailButton(
+                icon = Icons.Filled.Refresh,
+                label = "Atualizar",
+                onClick = { viewModel.onAction(ChannelSelectionAction.Retry) }
+            )
+            RailButton(
                 icon = Icons.AutoMirrored.Filled.ArrowForward,
                 label = "Continuar",
                 enabled = state.canContinue,
+                primary = state.canContinue,
                 onClick = { viewModel.onAction(ChannelSelectionAction.Continue) }
             )
             RailButton(
@@ -140,7 +153,7 @@ fun ChannelSelectionScreen(
 
             when {
                 state.isLoading -> {
-                    Text("Carregando canais...", color = Color.White)
+                    ChannelsGridSkeleton()
                 }
 
                 state.errorMessage != null -> {
@@ -180,6 +193,72 @@ private fun ChannelsGrid(
     ) {
         items(state.channels, key = { it.id }) { item ->
             ChannelCard(item = item, onToggle = { onToggle(item.id) })
+        }
+    }
+}
+
+// Skeleton da grade de canais: placeholders no mesmo formato do card (avatar + 2 linhas), com
+// pulse suave — evita a legenda "Carregando canais...".
+@Composable
+private fun ChannelsGridSkeleton() {
+    val transition = rememberInfiniteTransition(label = "channels-skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.05f,
+        targetValue = 0.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "channels-skeleton-alpha"
+    )
+    val shimmer = Color.White.copy(alpha = alpha)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        repeat(6) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                repeat(4) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x11FFFFFF))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(shimmer)
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.85f)
+                                    .height(12.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(shimmer)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.5f)
+                                    .height(10.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(shimmer)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

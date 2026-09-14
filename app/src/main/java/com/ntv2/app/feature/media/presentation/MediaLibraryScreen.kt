@@ -18,9 +18,12 @@ import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -627,7 +630,11 @@ private fun LoadMoreButton(
 // 5 colunas virtuais: card retrato (9:16) ocupa 1 coluna; card horizontal (16:9) ocupa 2
 // colunas adjacentes. A proporção vem do post (pôster → retrato; só frame → horizontal).
 // 6 colunas: card horizontal (2 col) cabe 3 por linha; retrato (1 col) até 6 por linha.
-private const val GRID_COLUMNS = 6
+// Colunas pela largura DISPONÍVEL da grade (dp): ~130dp por card. Cards menores no celular
+// (2 no retrato, ~5 na paisagem) e ~6 na TV (teto). Evita card gigante em telas largas.
+private const val GRID_TARGET_COL_DP = 130f
+private fun columnsForWidthDp(widthDp: Float): Int =
+    (widthDp / GRID_TARGET_COL_DP).toInt().coerceIn(2, 6)
 private val GRID_GAP = 12.dp
 private val CARD_TITLE_H = 56.dp
 
@@ -686,21 +693,22 @@ private fun MediaGridSkeleton(
         val gapPx = GRID_GAP.roundToPx()
         val titlePx = CARD_TITLE_H.roundToPx()
         val totalW = constraints.maxWidth
-        val colW = ((totalW - gapPx * (GRID_COLUMNS - 1)) / GRID_COLUMNS).coerceAtLeast(1)
-        val colHeights = IntArray(GRID_COLUMNS)
+        val cols = columnsForWidthDp(totalW / density)
+        val colW = ((totalW - gapPx * (cols - 1)) / cols).coerceAtLeast(1)
+        val colHeights = IntArray(cols)
         val placed = ArrayList<Triple<Placeable, Int, Int>>(measurables.size)
 
         measurables.forEachIndexed { i, measurable ->
             val aspect = aspects[i].coerceIn(0.45f, 2.2f)
-            val landscape = showCovers && aspect > 1.15f
+            val landscape = showCovers && aspect > 1.15f && cols >= 2
             val span = if (landscape) 2 else 1
             val wPx = if (span == 2) colW * 2 + gapPx else colW
             val hPx = (wPx / aspect).roundToInt() + titlePx
 
             val startCol = if (span == 1) {
-                (0 until GRID_COLUMNS).minByOrNull { colHeights[it] } ?: 0
+                (0 until cols).minByOrNull { colHeights[it] } ?: 0
             } else {
-                (0 until GRID_COLUMNS - 1).minByOrNull { maxOf(colHeights[it], colHeights[it + 1]) } ?: 0
+                (0 until cols - 1).minByOrNull { maxOf(colHeights[it], colHeights[it + 1]) } ?: 0
             }
             val y = if (span == 1) colHeights[startCol]
                     else maxOf(colHeights[startCol], colHeights[startCol + 1])
@@ -753,8 +761,9 @@ private fun MasonryMediaGrid(
         val gapPx = GRID_GAP.roundToPx()
         val titlePx = CARD_TITLE_H.roundToPx()
         val totalW = constraints.maxWidth
-        val colW = ((totalW - gapPx * (GRID_COLUMNS - 1)) / GRID_COLUMNS).coerceAtLeast(1)
-        val colHeights = IntArray(GRID_COLUMNS)
+        val cols = columnsForWidthDp(totalW / density)
+        val colW = ((totalW - gapPx * (cols - 1)) / cols).coerceAtLeast(1)
+        val colHeights = IntArray(cols)
         val placed = ArrayList<Triple<Placeable, Int, Int>>(measurables.size)
 
         measurables.forEachIndexed { i, measurable ->
@@ -771,16 +780,16 @@ private fun MasonryMediaGrid(
             }.coerceIn(0.45f, 2.2f)             // guarda contra capas absurdamente extremas
 
             // Card horizontal (2 colunas) quando a capa é claramente paisagem; senão 1 coluna.
-            val landscape = showCovers && aspect > 1.15f
+            val landscape = showCovers && aspect > 1.15f && cols >= 2
             val span = if (landscape) 2 else 1
             val wPx = if (span == 2) colW * 2 + gapPx else colW
             val hPx = (wPx / aspect).roundToInt() + titlePx // altura da capa = largura / (w/h)
 
             // Escolhe a posição de menor altura (empata → mais à esquerda), preenchendo vãos.
             val startCol = if (span == 1) {
-                (0 until GRID_COLUMNS).minByOrNull { colHeights[it] } ?: 0
+                (0 until cols).minByOrNull { colHeights[it] } ?: 0
             } else {
-                (0 until GRID_COLUMNS - 1).minByOrNull { maxOf(colHeights[it], colHeights[it + 1]) } ?: 0
+                (0 until cols - 1).minByOrNull { maxOf(colHeights[it], colHeights[it + 1]) } ?: 0
             }
             val y = if (span == 1) colHeights[startCol]
                     else maxOf(colHeights[startCol], colHeights[startCol + 1])
@@ -837,12 +846,22 @@ private fun MediaCard(
                     .background(Color(0xFF1C1C1C))
             ) {
                 if (cover != null) {
+                    // Loader por card até a capa carregar (agora que o canal rico usa URL).
+                    var coverLoading by remember(cover) { mutableStateOf(true) }
                     AsyncImage(
                         model = cover,
                         contentDescription = media.title,
                         contentScale = ContentScale.Crop,
+                        onState = { coverLoading = !it.isDone() },
                         modifier = Modifier.fillMaxSize()
                     )
+                    if (coverLoading) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                color = BRAND_GREEN, strokeWidth = 2.dp, modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
                 } else {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -857,33 +876,7 @@ private fun MediaCard(
                     }
                 }
 
-                resolutionLabel(media.videoHeight)?.let { label ->
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xCC000000))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(label, color = Color.White, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xCC000000))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        durationLabel(media.durationSeconds),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
+                // Selos de resolução/duração removidos para não cobrir a arte das capas.
 
                 if (media.progress > 0f) {
                     Box(
@@ -920,7 +913,8 @@ private fun MediaCard(
 
 private val BRAND_GREEN = Color(0xFF2BEE34)
 
-// Tela de Detalhes (estilo Netflix/Prime): fundo (backdrop), dados ricos e botões Assistir/Continuar.
+// Tela de Detalhes (estilo Netflix/Prime): responsiva (TV/paisagem lado a lado, celular/retrato
+// empilhado) + spinner até as imagens (fundo e elenco) carregarem, evitando o "surgir aos poucos".
 @Composable
 private fun MovieDetailsOverlay(
     media: MediaCardUi,
@@ -931,112 +925,153 @@ private fun MovieDetailsOverlay(
 ) {
     BackHandler(enabled = true) { onDismiss() }
     val playFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
 
     val backdrop = details?.backdropPath ?: media.posterPath ?: media.thumbnailPath
-    val title = details?.title ?: media.title
-    val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
+    val castUrls = if (showCastPhotos) details?.cast?.mapNotNull { it.photoUrl }.orEmpty() else emptyList()
+    val imageUrls = remember(backdrop, castUrls) { (listOfNotNull(backdrop) + castUrls).distinct() }
+    val done = remember(imageUrls) { mutableStateMapOf<String, Boolean>() }
+    val ready = imageUrls.isEmpty() || imageUrls.all { done[it] == true }
+    // Salvaguarda: se alguma imagem travar, revela o conteúdo mesmo assim após 6s.
+    LaunchedEffect(imageUrls) { kotlinx.coroutines.delay(6000); imageUrls.forEach { done[it] = true } }
+    LaunchedEffect(ready) { if (ready) runCatching { playFocus.requestFocus() } }
+    val onImageDone: (String) -> Unit = { done[it] = true }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF050505))) {
-        if (backdrop != null) {
-            AsyncImage(
-                model = backdrop,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF050505))) {
+        val portrait = maxHeight > maxWidth
+        if (portrait) {
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                    if (backdrop != null) {
+                        AsyncImage(
+                            model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
+                            onState = { if (it.isDone()) onImageDone(backdrop) },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(0f to Color(0x00050505), 0.7f to Color(0x99050505), 1f to Color(0xFF050505))
+                        )
+                    )
+                }
+                DetailsInfo(
+                    media, details, showCastPhotos, playFocus, onPlay, onDismiss, onImageDone,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)
+                )
+            }
+        } else {
+            if (backdrop != null) {
+                AsyncImage(
+                    model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
+                    onState = { if (it.isDone()) onImageDone(backdrop) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Box(modifier = Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(0f to Color(0xF2050505), 0.45f to Color(0xB3050505), 0.8f to Color(0x00050505))
+            ))
+            Box(modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505))
+            ))
+            DetailsInfo(
+                media, details, showCastPhotos, playFocus, onPlay, onDismiss, onImageDone,
+                modifier = Modifier.fillMaxWidth(0.62f).align(Alignment.CenterStart)
+                    .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp)
             )
         }
-        // Scrim para legibilidade (esquerda→direita e base→topo).
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to Color(0xF2050505), 0.45f to Color(0xB3050505), 0.8f to Color(0x00050505)
-                    )
-                )
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505)
-                    )
-                )
-        )
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.62f)
-                .align(Alignment.CenterStart)
-                .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(title, color = Color.White, style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
-                Text(it, color = Color(0xFFC9C9C9), style = MaterialTheme.typography.titleMedium)
+        if (!ready) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color(0xFF050505)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = BRAND_GREEN, strokeWidth = 3.dp, modifier = Modifier.size(46.dp))
             }
+        }
+    }
+}
 
-            // Linha meta: ano · duração · nota · classificação · qualidade.
-            val meta = buildList {
-                details?.year?.let { add(it.toString()) }
-                if (durationSecs > 0) add(durationLabel(durationSecs))
-                details?.rating?.let { add("★ ${"%.1f".format(it)}") }
-                details?.ageRating?.takeIf { it.isNotBlank() }?.let { add(it) }
-                details?.quality?.takeIf { it.isNotBlank() }?.let { add(it) }
-            }
-            if (meta.isNotEmpty()) {
-                Text(meta.joinToString("   •   "), color = Color(0xFFE6E6E6), style = MaterialTheme.typography.titleSmall)
-            }
-            details?.genres?.takeIf { it.isNotBlank() }?.let {
-                Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
-            }
-            details?.synopsis?.takeIf { it.isNotBlank() }?.let {
-                Text(it, color = Color(0xFFDCDCDC), style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            }
-            details?.director?.takeIf { it.isNotBlank() }?.let {
-                Text("Diretor: $it", color = Color(0xFFB6B6B6), style = MaterialTheme.typography.bodySmall)
-            }
+private fun coil.compose.AsyncImagePainter.State.isDone(): Boolean =
+    this is coil.compose.AsyncImagePainter.State.Success || this is coil.compose.AsyncImagePainter.State.Error
 
-            val cast = details?.cast.orEmpty()
-            if (cast.isNotEmpty()) {
-                if (showCastPhotos) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
-                        cast.take(6).forEach { c ->
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(76.dp)) {
-                                if (c.photoUrl != null) {
-                                    AsyncImage(
-                                        model = c.photoUrl,
-                                        contentDescription = c.name,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name))
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name)),
-                                        contentAlignment = Alignment.Center
-                                    ) { Text(initialFor(c.name), color = Color.White, style = MaterialTheme.typography.titleMedium) }
-                                }
-                                Text(c.name, color = Color(0xFFDCDCDC), style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+@Composable
+private fun DetailsInfo(
+    media: MediaCardUi,
+    details: MovieDetails?,
+    showCastPhotos: Boolean,
+    playFocus: FocusRequester,
+    onPlay: () -> Unit,
+    onDismiss: () -> Unit,
+    onImageDone: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val title = details?.title ?: media.title
+    val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, color = Color.White, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
+            Text(it, color = Color(0xFFC9C9C9), style = MaterialTheme.typography.titleMedium)
+        }
+        val meta = buildList {
+            details?.year?.let { add(it.toString()) }
+            if (durationSecs > 0) add(durationLabel(durationSecs))
+            details?.rating?.let { add("★ ${"%.1f".format(it)}") }
+            details?.ageRating?.takeIf { it.isNotBlank() }?.let { add(it) }
+            details?.quality?.takeIf { it.isNotBlank() }?.let { add(it) }
+        }
+        if (meta.isNotEmpty()) {
+            Text(meta.joinToString("   •   "), color = Color(0xFFE6E6E6), style = MaterialTheme.typography.titleSmall)
+        }
+        details?.genres?.takeIf { it.isNotBlank() }?.let {
+            Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
+        }
+        details?.synopsis?.takeIf { it.isNotBlank() }?.let {
+            Text(it, color = Color(0xFFDCDCDC), style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        }
+        details?.director?.takeIf { it.isNotBlank() }?.let {
+            Text("Diretor: $it", color = Color(0xFFB6B6B6), style = MaterialTheme.typography.bodySmall)
+        }
+
+        val cast = details?.cast.orEmpty()
+        if (cast.isNotEmpty()) {
+            if (showCastPhotos) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    cast.take(8).forEach { c ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(76.dp)) {
+                            if (c.photoUrl != null) {
+                                AsyncImage(
+                                    model = c.photoUrl, contentDescription = c.name, contentScale = ContentScale.Crop,
+                                    onState = { if (it.isDone()) onImageDone(c.photoUrl) },
+                                    modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name))
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name)),
+                                    contentAlignment = Alignment.Center
+                                ) { Text(initialFor(c.name), color = Color.White, style = MaterialTheme.typography.titleMedium) }
                             }
+                            Text(c.name, color = Color(0xFFDCDCDC), style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                         }
                     }
-                } else {
-                    Text("Elenco: ${cast.joinToString(", ") { it.name }}", color = Color(0xFFB6B6B6), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
+            } else {
+                Text("Elenco: ${cast.joinToString(", ") { it.name }}", color = Color(0xFFB6B6B6), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
+        }
 
-            Row(modifier = Modifier.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                DetailButton(
-                    icon = Icons.Filled.PlayArrow,
-                    label = if (media.progress > 0f) "Continuar" else "Assistir",
-                    primary = true,
-                    modifier = Modifier.focusRequester(playFocus),
-                    onClick = onPlay
-                )
-                DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss)
-            }
+        Row(modifier = Modifier.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            DetailButton(
+                icon = Icons.Filled.PlayArrow,
+                label = if (media.progress > 0f) "Continuar" else "Assistir",
+                primary = true,
+                modifier = Modifier.focusRequester(playFocus),
+                onClick = onPlay
+            )
+            DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss)
         }
     }
 }
@@ -1102,7 +1137,8 @@ private fun ChannelPickerOverlay(
     ) {
         Column(
             modifier = Modifier
-                .width(680.dp)
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 680.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(Color(0xFF1E1E1E))
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp))

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -90,7 +91,8 @@ fun ConfirmDialog(
     ) {
         Column(
             modifier = Modifier
-                .width(420.dp)
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 420.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF1E1E1E))
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))

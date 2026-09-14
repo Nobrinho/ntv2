@@ -19,6 +19,7 @@ class UserPreferencesDataStore(
     private val activeChannelKey = longPreferencesKey("active_channel_id")
     private val showCoversKey = booleanPreferencesKey("show_covers")
     private val animationsKey = booleanPreferencesKey("animations_enabled")
+    private val castPhotosKey = booleanPreferencesKey("cast_photos")
     private val maxCardsKey = intPreferencesKey("max_cards")
 
     val minDurationMinutes: Flow<Int> = context.dataStore.data.map { prefs: Preferences ->
@@ -65,5 +66,12 @@ class UserPreferencesDataStore(
 
     suspend fun setAnimationsEnabled(value: Boolean) {
         context.dataStore.edit { prefs -> prefs[animationsKey] = value }
+    }
+
+    /** Exibir fotos do elenco na tela de detalhes (senão, só os nomes). */
+    val castPhotos: Flow<Boolean> = context.dataStore.data.map { it[castPhotosKey] ?: true }
+
+    suspend fun setCastPhotos(value: Boolean) {
+        context.dataStore.edit { prefs -> prefs[castPhotosKey] = value }
     }
 }

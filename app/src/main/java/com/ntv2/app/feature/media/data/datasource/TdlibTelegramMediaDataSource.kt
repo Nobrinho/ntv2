@@ -45,6 +45,19 @@ class TdlibTelegramMediaDataSource(
         year = year,
         director = director,
         audio = audio,
-        genres = genres
+        genres = genres,
+        originalTitle = originalTitle,
+        backdropPath = backdropPath,
+        rating = rating,
+        ageRating = ageRating,
+        country = country,
+        quality = quality,
+        studio = studio,
+        cast = cast,
+        trailerUrl = trailerUrl,
+        tmdbId = tmdbId,
+        category = category,
+        collection = collection,
+        tags = tags
     )
 }

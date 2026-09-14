@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.media.presentation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -65,6 +67,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -91,6 +94,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.core.ui.NavRail
 import com.ntv2.app.feature.media.presentation.state.ChannelChipUi
+import com.ntv2.app.feature.media.domain.MovieDetails
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import com.ntv2.app.feature.media.presentation.state.MediaLibraryEmptyState
 import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryAction
@@ -119,6 +123,8 @@ fun MediaLibraryScreen(
     // Teclado de busca próprio (D-pad) e picker de canal ativo — overlays na tela.
     var searching by remember { mutableStateOf(false) }
     var channelPicker by remember { mutableStateOf(false) }
+    // Card selecionado para a tela de Detalhes (overlay estilo Netflix/Prime).
+    var detailsMedia by remember { mutableStateOf<MediaCardUi?>(null) }
     // Controle de foco do "Carregar mais": ao clicar, o card sai da árvore quando os itens chegam
     // e o foco se perde (direcional depois "pula" pro último). Movemos o foco de forma explícita.
     val loadMoreFocus = remember { FocusRequester() }
@@ -297,9 +303,7 @@ fun MediaLibraryScreen(
                                     onCardFocused = { id ->
                                         viewModel.onAction(MediaLibraryAction.VideoFocused(id))
                                     },
-                                    onCardClick = { media ->
-                                        viewModel.onAction(MediaLibraryAction.OpenVideo(media))
-                                    },
+                                    onCardClick = { media -> detailsMedia = media },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 // Botão único de carregar mais, centralizado; some suavemente ao fim.
@@ -331,6 +335,19 @@ fun MediaLibraryScreen(
                     }
                 }
             }
+        }
+
+        detailsMedia?.let { media ->
+            MovieDetailsOverlay(
+                media = media,
+                details = viewModel.detailsFor(media.mediaId),
+                showCastPhotos = state.castPhotos,
+                onPlay = {
+                    viewModel.onAction(MediaLibraryAction.OpenVideo(media))
+                    detailsMedia = null
+                },
+                onDismiss = { detailsMedia = null }
+            )
         }
 
         if (channelPicker) {
@@ -898,6 +915,160 @@ private fun MediaCard(
                     .padding(horizontal = 8.dp, vertical = 8.dp)
             )
         }
+    }
+}
+
+private val BRAND_GREEN = Color(0xFF2BEE34)
+
+// Tela de Detalhes (estilo Netflix/Prime): fundo (backdrop), dados ricos e botões Assistir/Continuar.
+@Composable
+private fun MovieDetailsOverlay(
+    media: MediaCardUi,
+    details: MovieDetails?,
+    showCastPhotos: Boolean,
+    onPlay: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    BackHandler(enabled = true) { onDismiss() }
+    val playFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
+
+    val backdrop = details?.backdropPath ?: media.posterPath ?: media.thumbnailPath
+    val title = details?.title ?: media.title
+    val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
+
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF050505))) {
+        if (backdrop != null) {
+            AsyncImage(
+                model = backdrop,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        // Scrim para legibilidade (esquerda→direita e base→topo).
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        0f to Color(0xF2050505), 0.45f to Color(0xB3050505), 0.8f to Color(0x00050505)
+                    )
+                )
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505)
+                    )
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.62f)
+                .align(Alignment.CenterStart)
+                .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(title, color = Color.White, style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
+                Text(it, color = Color(0xFFC9C9C9), style = MaterialTheme.typography.titleMedium)
+            }
+
+            // Linha meta: ano · duração · nota · classificação · qualidade.
+            val meta = buildList {
+                details?.year?.let { add(it.toString()) }
+                if (durationSecs > 0) add(durationLabel(durationSecs))
+                details?.rating?.let { add("★ ${"%.1f".format(it)}") }
+                details?.ageRating?.takeIf { it.isNotBlank() }?.let { add(it) }
+                details?.quality?.takeIf { it.isNotBlank() }?.let { add(it) }
+            }
+            if (meta.isNotEmpty()) {
+                Text(meta.joinToString("   •   "), color = Color(0xFFE6E6E6), style = MaterialTheme.typography.titleSmall)
+            }
+            details?.genres?.takeIf { it.isNotBlank() }?.let {
+                Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
+            }
+            details?.synopsis?.takeIf { it.isNotBlank() }?.let {
+                Text(it, color = Color(0xFFDCDCDC), style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            details?.director?.takeIf { it.isNotBlank() }?.let {
+                Text("Diretor: $it", color = Color(0xFFB6B6B6), style = MaterialTheme.typography.bodySmall)
+            }
+
+            val cast = details?.cast.orEmpty()
+            if (cast.isNotEmpty()) {
+                if (showCastPhotos) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
+                        cast.take(6).forEach { c ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(76.dp)) {
+                                if (c.photoUrl != null) {
+                                    AsyncImage(
+                                        model = c.photoUrl,
+                                        contentDescription = c.name,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name))
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name)),
+                                        contentAlignment = Alignment.Center
+                                    ) { Text(initialFor(c.name), color = Color.White, style = MaterialTheme.typography.titleMedium) }
+                                }
+                                Text(c.name, color = Color(0xFFDCDCDC), style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                } else {
+                    Text("Elenco: ${cast.joinToString(", ") { it.name }}", color = Color(0xFFB6B6B6), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+
+            Row(modifier = Modifier.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                DetailButton(
+                    icon = Icons.Filled.PlayArrow,
+                    label = if (media.progress > 0f) "Continuar" else "Assistir",
+                    primary = true,
+                    modifier = Modifier.focusRequester(playFocus),
+                    onClick = onPlay
+                )
+                DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    primary: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var focused by remember { mutableStateOf(false) }
+    val bg = when {
+        primary -> BRAND_GREEN
+        focused -> Color(0x33FFFFFF)
+        else -> Color(0x1FFFFFFF)
+    }
+    val content = if (primary) Color(0xFF0B0B0B) else Color.White
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(bg)
+            .then(if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
+        Text(label, color = content, style = MaterialTheme.typography.titleMedium)
     }
 }
 

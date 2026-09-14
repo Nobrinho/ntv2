@@ -65,6 +65,8 @@ data class MediaLibraryUiState(
     val enabledChannels: List<ChannelChipUi> = emptyList(),
     /** Exibir capas (pôsteres/thumbs) — toggle das Configurações. */
     val showCovers: Boolean = true,
+    /** Exibir fotos do elenco na tela de detalhes — toggle das Configurações. */
+    val castPhotos: Boolean = true,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val emptyState: MediaLibraryEmptyState? = null,

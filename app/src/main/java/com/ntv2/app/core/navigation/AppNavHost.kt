@@ -183,13 +183,16 @@ fun AppNavHost(
             val animationsEnabled by settings.animationsEnabled.collectAsState(initial = true)
             val minDuration by settings.minDurationMinutes.collectAsState(initial = 15)
             val maxCards by settings.maxCards.collectAsState(initial = 150)
+            val castPhotos by settings.castPhotos.collectAsState(initial = true)
             SettingsScreen(
                 showCovers = showCovers,
                 animationsEnabled = animationsEnabled,
+                castPhotos = castPhotos,
                 minDurationMinutes = minDuration,
                 maxCards = maxCards,
                 onToggleCovers = { scope.launch { settings.updateShowCovers(it) } },
                 onToggleAnimations = { scope.launch { settings.updateAnimationsEnabled(it) } },
+                onToggleCastPhotos = { scope.launch { settings.updateCastPhotos(it) } },
                 onChangeMinDuration = { scope.launch { settings.updateMinDurationMinutes(it) } },
                 onChangeMaxCards = { scope.launch { settings.updateMaxCards(it) } },
                 onManageChannels = { navController.navigate(RoutePath.CHANNEL_SELECTION) },

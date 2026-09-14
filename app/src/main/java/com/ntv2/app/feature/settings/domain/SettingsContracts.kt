@@ -19,6 +19,9 @@ interface SettingsRepository {
 
     val animationsEnabled: Flow<Boolean>
     suspend fun updateAnimationsEnabled(value: Boolean)
+
+    val castPhotos: Flow<Boolean>
+    suspend fun updateCastPhotos(value: Boolean)
 }
 
 class FakeSettingsRepository(
@@ -52,5 +55,11 @@ class FakeSettingsRepository(
 
     override suspend fun updateAnimationsEnabled(value: Boolean) {
         dataStore.setAnimationsEnabled(value)
+    }
+
+    override val castPhotos: Flow<Boolean> = dataStore.castPhotos
+
+    override suspend fun updateCastPhotos(value: Boolean) {
+        dataStore.setCastPhotos(value)
     }
 }

@@ -192,6 +192,11 @@ class MediaLibraryViewModel(
             }
         }
         viewModelScope.launch {
+            settingsRepository.castPhotos.collect { on ->
+                _uiState.update { it.copy(castPhotos = on) }
+            }
+        }
+        viewModelScope.launch {
             settingsRepository.maxCards.collect { max ->
                 maxRetainedItems = max
                 // Aplica o novo teto imediatamente ao canal ativo (apara o excedente do topo).
@@ -364,6 +369,9 @@ class MediaLibraryViewModel(
         else -> null
     }
 
+    /** Detalhes ricos para a tela de Detalhes (lidos do cache por mediaId). */
+    fun detailsFor(mediaId: String): MovieDetails? = mediaDetailsCache.get(mediaId)
+
     private fun currentQuery(): String = _uiState.value.searchQuery.trim()
 
     private fun clearChannelData() {
@@ -391,7 +399,19 @@ class MediaLibraryViewModel(
                 year = year,
                 director = director,
                 audio = audio,
-                genres = genres
+                genres = genres,
+                originalTitle = originalTitle,
+                backdropPath = backdropPath,
+                durationSeconds = durationSeconds,
+                rating = rating,
+                ageRating = ageRating,
+                country = country,
+                quality = quality,
+                studio = studio,
+                cast = cast,
+                trailerUrl = trailerUrl,
+                category = category,
+                collection = collection
             )
         )
         return MediaCardUi(

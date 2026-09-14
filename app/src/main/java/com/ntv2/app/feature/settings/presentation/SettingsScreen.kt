@@ -6,11 +6,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,7 +26,9 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.ViewModule
@@ -33,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +61,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.core.ui.ConfirmDialog
 import com.ntv2.app.core.ui.NavRail
+import kotlinx.coroutines.launch
 
 private val BRAND = Color(0xFF2BEE34)
 
@@ -63,10 +69,12 @@ private val BRAND = Color(0xFF2BEE34)
 fun SettingsScreen(
     showCovers: Boolean,
     animationsEnabled: Boolean,
+    castPhotos: Boolean,
     minDurationMinutes: Int,
     maxCards: Int,
     onToggleCovers: (Boolean) -> Unit,
     onToggleAnimations: (Boolean) -> Unit,
+    onToggleCastPhotos: (Boolean) -> Unit,
     onChangeMinDuration: (Int) -> Unit,
     onChangeMaxCards: (Int) -> Unit,
     onManageChannels: () -> Unit,
@@ -75,6 +83,7 @@ fun SettingsScreen(
 ) {
     val firstItemFocus = remember { FocusRequester() }
     var confirmLogout by remember { mutableStateOf(false) }
+    var showPrivacy by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { runCatching { firstItemFocus.requestFocus() } }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0E0E0E))) {
@@ -118,6 +127,14 @@ fun SettingsScreen(
                         modifier = Modifier,
                         onToggle = { onToggleAnimations(!animationsEnabled) }
                     )
+                    ToggleCard(
+                        icon = Icons.Filled.Group,
+                        title = "Fotos do elenco",
+                        subtitle = "Mostrar rostos do elenco nos detalhes (senão, só nomes)",
+                        value = castPhotos,
+                        modifier = Modifier,
+                        onToggle = { onToggleCastPhotos(!castPhotos) }
+                    )
                     DurationCard(
                         value = minDurationMinutes,
                         onChange = onChangeMinDuration
@@ -133,6 +150,13 @@ fun SettingsScreen(
                         destructive = false,
                         onClick = onManageChannels
                     )
+                    NavCard(
+                        icon = Icons.Filled.Shield,
+                        title = "Política de privacidade",
+                        subtitle = "Como o app trata seus dados",
+                        destructive = false,
+                        onClick = { showPrivacy = true }
+                    )
                     Spacer(Modifier.size(8.dp))
                     NavCard(
                         icon = Icons.AutoMirrored.Filled.Logout,
@@ -143,6 +167,10 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+
+        if (showPrivacy) {
+            PrivacyPolicyOverlay(onClose = { showPrivacy = false })
         }
 
         if (confirmLogout) {
@@ -358,4 +386,94 @@ private fun SettingCardShell(
         trailing()
     }
 }
+
+@Composable
+private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
+    BackHandler(enabled = true) { onClose() }
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xF2000000))
+            .padding(40.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.82f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("Política de Privacidade", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                    .focusRequester(focus)
+                    .focusable()
+                    .onKeyEvent { e ->
+                        if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+                        when (e.key) {
+                            Key.DirectionDown -> { scope.launch { scroll.animateScrollBy(320f) }; true }
+                            Key.DirectionUp -> { scope.launch { scroll.animateScrollBy(-320f) }; true }
+                            else -> false
+                        }
+                    }
+                    .verticalScroll(scroll)
+                    .padding(24.dp)
+            ) {
+                Text(
+                    PRIVACY_POLICY_TEXT,
+                    color = Color(0xFFCFCFCF),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Text(
+                "Use ↑ / ↓ para rolar · Voltar para fechar",
+                color = Color(0xFF9A9A9A),
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+private const val PRIVACY_POLICY_TEXT =
+    "Última atualização: 12/09/2026\n\n" +
+    "O Nbr PLAY é um aplicativo cliente de mídia para TV que exibe e reproduz vídeos dos " +
+    "canais do Telegram escolhidos pelo próprio usuário. O aplicativo não hospeda, não " +
+    "distribui e não disponibiliza conteúdo: ele apenas organiza e reproduz o que já existe " +
+    "nos canais aos quais a sua conta do Telegram tem acesso.\n\n" +
+    "1. Dados que tratamos\n" +
+    "Não possuímos servidores próprios e não coletamos, armazenamos ou compartilhamos seus " +
+    "dados pessoais conosco. O aplicativo se conecta diretamente ao Telegram usando a API " +
+    "oficial do Telegram (TDLib). A autenticação (por QR Code ou telefone) é feita entre o " +
+    "seu dispositivo e o Telegram.\n\n" +
+    "2. Armazenamento no dispositivo\n" +
+    "Ficam salvos apenas localmente no seu aparelho: a sessão de login do Telegram (para " +
+    "manter você conectado), os canais que você selecionou, suas preferências (capas, " +
+    "animações, filtros, máximo de cards) e o progresso de reprodução. Esses dados não são " +
+    "enviados para nós nem para terceiros e podem ser apagados ao sair da conta ou desinstalar " +
+    "o aplicativo.\n\n" +
+    "3. Permissões\n" +
+    "O aplicativo usa apenas a permissão de Internet, necessária para se comunicar com o " +
+    "Telegram e reproduzir os vídeos.\n\n" +
+    "4. Terceiros\n" +
+    "O uso do Telegram está sujeito à Política de Privacidade e aos Termos do próprio Telegram. " +
+    "Não utilizamos publicidade nem ferramentas de análise/rastreamento.\n\n" +
+    "5. Conteúdo\n" +
+    "Todo o conteúdo exibido pertence aos canais e usuários do Telegram. O Nbr PLAY não é " +
+    "responsável pelo conteúdo publicado nesses canais e não realiza qualquer distribuição " +
+    "de mídia.\n\n" +
+    "6. Crianças\n" +
+    "O aplicativo não é direcionado a crianças e não coleta intencionalmente dados de menores.\n\n" +
+    "7. Alterações\n" +
+    "Esta política pode ser atualizada; a data no topo indica a versão vigente.\n\n" +
+    "8. Contato\n" +
+    "Dúvidas sobre esta política: nbrplay@outlook.com."
 

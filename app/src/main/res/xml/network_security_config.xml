@@ -1,2 +1,12 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<network-security-config />
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Confia nas CAs do sistema + Amazon Root CA 1 (usada pelo image.tmdb.org via CloudFront).
+     Alguns aparelhos/emuladores não têm essa raiz e falham em carregar as imagens do TMDB. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/amazon_root_ca1" />
+            <certificates src="@raw/starfield_g2" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

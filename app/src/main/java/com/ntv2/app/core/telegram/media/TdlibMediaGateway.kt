@@ -22,7 +22,21 @@ data class TelegramVideoMessage(
     val year: Int? = null,
     val director: String? = null,
     val audio: String? = null,
-    val genres: String? = null
+    val genres: String? = null,
+    // Formato rico (canal próprio).
+    val originalTitle: String? = null,
+    val backdropPath: String? = null,
+    val rating: Double? = null,
+    val ageRating: String? = null,
+    val country: String? = null,
+    val quality: String? = null,
+    val studio: String? = null,
+    val cast: List<CastMemberMeta> = emptyList(),
+    val trailerUrl: String? = null,
+    val tmdbId: String? = null,
+    val category: String? = null,
+    val collection: String? = null,
+    val tags: String? = null
 )
 
 data class TelegramVideoPage(

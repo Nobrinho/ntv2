@@ -25,6 +25,13 @@ val telegramApiHash = providers.gradleProperty("telegramApiHash")
     .get()
 val telegramRealEnabled = telegramApiId > 0 && telegramApiHash.isNotBlank()
 
+// Assinatura de release: valores em ~/.gradle/gradle.properties (fora do git). Se ausentes,
+// o build de release sai sem assinatura (útil em CI/dev), mas não instala no aparelho.
+val releaseStoreFile = providers.gradleProperty("releaseStoreFile").orNull
+val releaseStorePassword = providers.gradleProperty("releaseStorePassword").orNull
+val releaseKeyAlias = providers.gradleProperty("releaseKeyAlias").orNull
+val releaseKeyPassword = providers.gradleProperty("releaseKeyPassword").orNull
+
 abstract class VerifyTdlibNativeLibsTask : DefaultTask() {
     @get:Input
     abstract val realEnabled: Property<Boolean>
@@ -63,8 +70,8 @@ android {
         applicationId = "com.ntv2.app"
         minSdk = 23
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 4
+        versionName = "0.3.0"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
@@ -79,6 +86,17 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseStoreFile != null) {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -86,6 +104,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (releaseStoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

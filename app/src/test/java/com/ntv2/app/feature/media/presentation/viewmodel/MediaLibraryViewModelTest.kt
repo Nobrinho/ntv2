@@ -62,6 +62,8 @@ class MediaLibraryViewModelTest {
         override suspend fun updateShowCovers(value: Boolean) = Unit
         override val animationsEnabled: Flow<Boolean> = MutableStateFlow(true)
         override suspend fun updateAnimationsEnabled(value: Boolean) = Unit
+        override val castPhotos: Flow<Boolean> = MutableStateFlow(true)
+        override suspend fun updateCastPhotos(value: Boolean) = Unit
     }
 
     private class FakeMediaRepo : MediaRepository {

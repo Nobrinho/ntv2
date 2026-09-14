@@ -240,6 +240,12 @@ class RealTdlibGateway(
                         skipped++
                         if (skipped > 12) return null
                     }
+                    is TdApi.MessageText -> {
+                        // Formato rico: mensagem de texto (metadados) imediatamente antes do vídeo.
+                        // É a fonte de metadados desse vídeo (1 texto por vídeo) — aceita direto.
+                        val meta = MovieMetadataParser.parse(c.text?.text)
+                        return if (meta.isRich) m else null
+                    }
                     is TdApi.MessagePhoto -> {
                         val cap = c.caption?.text
                         val posterTitle = cap?.let {
@@ -356,23 +362,23 @@ class RealTdlibGateway(
                         ?: video.fileName.ifBlank { null }?.let { cleanDisplayName(it).ifBlank { it } }
                         ?: videoCaption?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
 
-                    // Pareia com a foto-pôster anterior: casa por título (filme A/B) OU compartilha o
-                    // pôster de uma SÉRIE quando o vídeo é um episódio da sequência sob ele.
-                    val posterMsg = videoName?.let { findMatchingPoster(msg.chatId, msg.id, it) }
-                    val posterContent = posterMsg?.content as? TdApi.MessagePhoto
-                    val posterCaption = posterContent?.caption?.text
-                    val posterMeta = posterCaption?.let { MovieMetadataParser.parse(it) }
+                    // Pareia com a mensagem anterior: TEXTO rico (canal próprio) OU foto-pôster
+                    // (Polemic / séries).
+                    val metaMsg = videoName?.let { findMatchingPoster(msg.chatId, msg.id, it) }
+                    val photoContent = metaMsg?.content as? TdApi.MessagePhoto
+                    val textContent = metaMsg?.content as? TdApi.MessageText
+                    val metaCaption = photoContent?.caption?.text ?: textContent?.text?.text
+                    val posterMeta = metaCaption?.let { MovieMetadataParser.parse(it) }
+                    val richText = textContent != null && posterMeta?.isRich == true
 
-                    // Episódio de série: pareou com um pôster cujo título NÃO é o nome do vídeo →
-                    // mostra o nome do episódio (do vídeo) e a sinopse do PRÓPRIO episódio, mas herda
-                    // o pôster e os metadados (ano/gêneros/áudio) da série.
-                    val isSeriesEpisode = posterMeta?.title != null && videoName != null &&
+                    // Episódio de série (só no modo foto): pareou com um pôster cujo título NÃO é o
+                    // nome do vídeo → nome do episódio + sinopse do episódio, herdando pôster/metadados.
+                    val isSeriesEpisode = !richText && posterMeta?.title != null && videoName != null &&
                         !titlesMatch(videoName, posterMeta.title!!)
-                    val displayTitle = if (isSeriesEpisode) {
-                        // Nome do episódio vem da legenda (já limpo) — não passar pelo cleanDisplayName.
-                        videoName!!.trim()
-                    } else {
-                        ((posterMeta ?: videoMeta).title ?: videoName)
+                    val displayTitle = when {
+                        richText -> posterMeta?.title ?: videoName ?: "Video ${msg.id}"
+                        isSeriesEpisode -> videoName!!.trim()
+                        else -> ((posterMeta ?: videoMeta).title ?: videoName)
                             ?.let { cleanDisplayName(it).ifBlank { it } } ?: "Video ${msg.id}"
                     }
 
@@ -386,16 +392,18 @@ class RealTdlibGateway(
                     val audio = posterMeta?.audio ?: videoMeta.audio
                     val genres = posterMeta?.genres ?: videoMeta.genres
 
-                    val posterPhoto = posterContent?.photo
-                    val posterPath = posterPhoto?.let { resolvePosterPath(it) }
+                    // Pôster: URL do post rico; senão a foto do Telegram (Polemic). Fundo: só rico.
+                    val photo = photoContent?.photo
+                    val posterPath = posterMeta?.posterUrl ?: photo?.let { resolvePosterPath(it) }
+                    val backdropPath = posterMeta?.backdropUrl
 
-                    // Proporção real da capa: pôster (se usado) tem sua própria proporção; senão o
-                    // frame do vídeo. As variantes do pôster compartilham a mesma proporção.
-                    val posterAspect = posterPhoto?.sizes
+                    // Proporção real só é conhecida para a foto do Telegram; URL → desconhecida (0).
+                    val posterAspect = photo?.sizes
                         ?.firstOrNull { it.width > 0 && it.height > 0 }
                         ?.let { it.width.toFloat() / it.height }
                     val coverAspect = when {
-                        posterPath != null && posterAspect != null -> posterAspect
+                        posterMeta?.posterUrl != null -> 0f
+                        posterAspect != null -> posterAspect
                         video.height > 0 -> video.width.toFloat() / video.height
                         else -> 0f
                     }
@@ -405,7 +413,7 @@ class RealTdlibGateway(
                         chatId = msg.chatId,
                         messageId = msg.id,
                         title = displayTitle,
-                        caption = posterCaption ?: videoCaption,
+                        caption = metaCaption ?: videoCaption,
                         fileName = video.fileName.ifBlank { null },
                         durationSeconds = video.duration,
                         thumbnailPath = resolveThumbnailPath(video),
@@ -418,7 +426,20 @@ class RealTdlibGateway(
                         year = year,
                         director = director,
                         audio = audio,
-                        genres = genres
+                        genres = genres,
+                        originalTitle = posterMeta?.originalTitle,
+                        backdropPath = backdropPath,
+                        rating = posterMeta?.rating,
+                        ageRating = posterMeta?.ageRating,
+                        country = posterMeta?.country,
+                        quality = posterMeta?.quality,
+                        studio = posterMeta?.studio,
+                        cast = posterMeta?.cast ?: emptyList(),
+                        trailerUrl = posterMeta?.trailerUrl,
+                        tmdbId = posterMeta?.tmdbId,
+                        category = posterMeta?.category,
+                        collection = posterMeta?.collection,
+                        tags = posterMeta?.tags
                     )
                 }
             }.awaitAll()

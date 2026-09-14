@@ -4,6 +4,11 @@ build/
 **/build/
 local.properties
 
+# Assinatura (nunca commitar keystore nem senhas)
+*.jks
+*.keystore
+keystore.properties
+
 # IDE
 .idea/
 .kotlin/

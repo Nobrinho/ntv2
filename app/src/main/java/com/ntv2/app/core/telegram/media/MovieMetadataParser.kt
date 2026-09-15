@@ -35,6 +35,15 @@ data class MovieMeta(
     val isRich: Boolean
         get() = title != null &&
             (posterUrl != null || backdropUrl != null || tmdbId != null || cast.isNotEmpty())
+
+    /**
+     * Dados COMPLETOS na própria legenda (mensagem única: legenda no vídeo). Diferente de [isRich],
+     * NÃO basta ter só o `TMDB:` — precisa de conteúdo real (pôster, elenco ou sinopse). Assim uma
+     * legenda mínima de vídeo (só "Título + TMDB", usada para amarrar por id) não é confundida.
+     */
+    val isFull: Boolean
+        get() = title != null &&
+            (posterUrl != null || backdropUrl != null || cast.isNotEmpty() || synopsis != null)
 }
 
 /**

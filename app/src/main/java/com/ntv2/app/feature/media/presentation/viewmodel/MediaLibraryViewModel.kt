@@ -245,7 +245,7 @@ class MediaLibraryViewModel(
                 attempt++
                 if (attempt < 4) delay(1_200L)
             }
-            channelItems[channel.id] = page?.items.orEmpty()
+            channelItems[channel.id] = dedupByTmdb(page?.items.orEmpty())
             channelCursors[channel.id] = page?.nextCursor ?: 0L
             // Transição atômica: desliga o skeleton JUNTO com os itens/emptyState já calculados,
             // evitando um frame intermediário com "nenhum vídeo" antes das mídias aparecerem.
@@ -292,7 +292,7 @@ class MediaLibraryViewModel(
             }.onSuccess { page ->
                 val existing = channelItems[channelId].orEmpty()
                 val seen = existing.mapTo(HashSet()) { it.mediaId }
-                val merged = existing + page.items.filter { seen.add(it.mediaId) }
+                val merged = dedupByTmdb(existing + page.items.filter { seen.add(it.mediaId) })
                 // Teto de memória: grade é não-lazy, então limitamos os itens mantidos, descartando
                 // os mais antigos (do topo) e preservando os recém-carregados (do fim).
                 channelItems[channelId] =
@@ -371,6 +371,13 @@ class MediaLibraryViewModel(
 
     /** Detalhes ricos para a tela de Detalhes (lidos do cache por mediaId). */
     fun detailsFor(mediaId: String): MovieDetails? = mediaDetailsCache.get(mediaId)
+
+    /** Remove filmes repetidos pelo mesmo TMDB id (canal rico), mantendo o primeiro. Itens sem id
+     *  (ex.: canais Polemic) passam sem alteração. */
+    private fun dedupByTmdb(items: List<MediaItemSummary>): List<MediaItemSummary> {
+        val seen = HashSet<String>()
+        return items.filter { it.tmdbId.isNullOrBlank() || seen.add(it.tmdbId!!) }
+    }
 
     private fun currentQuery(): String = _uiState.value.searchQuery.trim()
 

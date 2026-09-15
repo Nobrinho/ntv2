@@ -228,7 +228,12 @@ class RealTdlibGateway(
      * Para na 1ª mensagem que não seja vídeo nem foto-pôster (fronteira) → evita capa de outro post.
      * GetChatHistory pode voltar vazio na 1ª chamada enquanto carrega do servidor — 1 retry.
      */
-    private suspend fun findMatchingPoster(chatId: Long, beforeMessageId: Long, videoName: String): TdApi.Message? {
+    private suspend fun findMatchingPoster(
+        chatId: Long,
+        beforeMessageId: Long,
+        videoName: String,
+        videoTmdbId: String?
+    ): TdApi.Message? {
         repeat(2) {
             val res = send(TdApi.GetChatHistory(chatId, beforeMessageId, 0, 12, false)) as? TdApi.Messages
             val msgs = res?.messages?.filterNotNull().orEmpty()
@@ -241,10 +246,15 @@ class RealTdlibGateway(
                         if (skipped > 12) return null
                     }
                     is TdApi.MessageText -> {
-                        // Formato rico: mensagem de texto (metadados) imediatamente antes do vídeo.
-                        // É a fonte de metadados desse vídeo (1 texto por vídeo) — aceita direto.
+                        // Formato rico: mensagem de texto (metadados) antes do vídeo.
                         val meta = MovieMetadataParser.parse(c.text?.text)
-                        return if (meta.isRich) m else null
+                        return when {
+                            // Amarra por ID: só usa o texto cujo TMDB casa com o do vídeo.
+                            videoTmdbId != null -> if (meta.tmdbId == videoTmdbId) m else null
+                            // Sem ID no vídeo: adjacência (compat) — 1 texto rico logo antes.
+                            meta.isRich -> m
+                            else -> null
+                        }
                     }
                     is TdApi.MessagePhoto -> {
                         val cap = c.caption?.text
@@ -362,14 +372,18 @@ class RealTdlibGateway(
                         ?: video.fileName.ifBlank { null }?.let { cleanDisplayName(it).ifBlank { it } }
                         ?: videoCaption?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
 
-                    // Pareia com a mensagem anterior: TEXTO rico (canal próprio) OU foto-pôster
-                    // (Polemic / séries).
-                    val metaMsg = videoName?.let { findMatchingPoster(msg.chatId, msg.id, it) }
+                    // 1) Dados COMPLETOS na própria legenda do vídeo (mensagem única) → usa direto,
+                    //    sem parear (resolve o "capa no vídeo errado").
+                    // 2) Senão, pareia com a mensagem anterior amarrando por TMDB id (texto rico) ou,
+                    //    sem id, por adjacência/foto (Polemic).
+                    val ownFull = videoMeta.isFull
+                    val metaMsg = if (ownFull) null
+                        else videoName?.let { findMatchingPoster(msg.chatId, msg.id, it, videoMeta.tmdbId) }
                     val photoContent = metaMsg?.content as? TdApi.MessagePhoto
                     val textContent = metaMsg?.content as? TdApi.MessageText
                     val metaCaption = photoContent?.caption?.text ?: textContent?.text?.text
-                    val posterMeta = metaCaption?.let { MovieMetadataParser.parse(it) }
-                    val richText = textContent != null && posterMeta?.isRich == true
+                    val posterMeta = if (ownFull) videoMeta else metaCaption?.let { MovieMetadataParser.parse(it) }
+                    val richText = ownFull || (textContent != null && posterMeta?.isRich == true)
 
                     // Episódio de série (só no modo foto): pareou com um pôster cujo título NÃO é o
                     // nome do vídeo → nome do episódio + sinopse do episódio, herdando pôster/metadados.

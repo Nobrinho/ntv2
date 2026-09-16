@@ -19,6 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,15 +30,20 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -50,8 +56,15 @@ import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -84,7 +97,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -95,7 +111,10 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.MainBottomNav
+import com.ntv2.app.core.ui.MainTab
 import com.ntv2.app.core.ui.NavRail
+import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.feature.media.presentation.state.ChannelChipUi
 import com.ntv2.app.feature.media.domain.MovieDetails
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
@@ -108,6 +127,7 @@ import kotlin.math.roundToInt
 @Composable
 fun MediaLibraryScreen(
     viewModel: MediaLibraryViewModel,
+    openChannelPickerRequest: Int,
     onOpenSettings: () -> Unit,
     onOpenPlaybackPlaceholder: (
         mediaId: String,
@@ -135,12 +155,13 @@ fun MediaLibraryScreen(
     // Identidade da fronteira antes do load (robusto ao corte do topo pelo teto de itens).
     var lastIdBeforeLoad by remember { mutableStateOf<String?>(null) }
     var firstIdBeforeLoad by remember { mutableStateOf<String?>(null) }
-    val gridScroll = rememberScrollState()
+    val gridState = rememberLazyGridState()
     // Suprime o bringIntoView SÓ no momento do "carregar mais": ao focar o 1º item novo, o Compose
     // rolaria a tela para enquadrá-lo; suprimindo, a viewport fica 100% parada. Reativado logo após
     // (a navegação normal por D-pad continua rolando a grade ao seguir o foco).
     var suppressBringIntoView by remember { mutableStateOf(false) }
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
+    val adaptive = rememberAdaptiveLayoutInfo()
     val gridBringIntoViewSpec = remember(defaultBringIntoViewSpec) {
         object : BringIntoViewSpec {
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
@@ -164,6 +185,12 @@ fun MediaLibraryScreen(
         if (!searching) initialActionsFocus.requestFocus()
     }
 
+    LaunchedEffect(openChannelPickerRequest) {
+        if (openChannelPickerRequest > 0) {
+            channelPicker = true
+        }
+    }
+
     LaunchedEffect(state.pendingNavigation) {
         val payload = state.pendingNavigation ?: return@LaunchedEffect
         onOpenPlaybackPlaceholder(
@@ -180,7 +207,20 @@ fun MediaLibraryScreen(
 
     LaunchedEffect(state.focusRestoreNonce, state.lastFocusedMediaId) {
         val mediaId = state.lastFocusedMediaId ?: return@LaunchedEffect
+        val index = state.items.indexOfFirst { it.mediaId == mediaId }
+        if (index >= 0) {
+            gridState.scrollToItem(index)
+            withFrameNanos { }
+            withFrameNanos { }
+        }
         cardFocusRequesters[mediaId]?.requestFocus()
+    }
+
+    LaunchedEffect(state.returnToDetailsMediaId, state.items) {
+        val mediaId = state.returnToDetailsMediaId ?: return@LaunchedEffect
+        val media = state.items.firstOrNull { it.mediaId == mediaId } ?: return@LaunchedEffect
+        detailsMedia = media
+        viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
     }
 
     // Após "Carregar mais": foca o 1º item novo (fronteira, achado por identidade). Se o topo NÃO
@@ -192,13 +232,20 @@ fun MediaLibraryScreen(
         val firstNew = if (lastOldIndex >= 0) state.items.getOrNull(lastOldIndex + 1) else null
         when {
             firstNew != null -> {
+                val firstNewIndex = lastOldIndex + 1
                 val trimmed = state.items.firstOrNull()?.mediaId != firstIdBeforeLoad
                 if (trimmed) {
                     // Topo cortado: reancora suavemente na fronteira.
+                    gridState.scrollToItem(firstNewIndex)
+                    withFrameNanos { }
+                    withFrameNanos { }
                     runCatching { cardFocusRequesters[firstNew.mediaId]?.requestFocus() }
                 } else {
                     // Nada cortado: mantém a viewport 100% parada.
                     suppressBringIntoView = true
+                    gridState.scrollToItem(firstNewIndex)
+                    withFrameNanos { }
+                    withFrameNanos { }
                     runCatching { cardFocusRequesters[firstNew.mediaId]?.requestFocus() }
                     withFrameNanos { }
                     withFrameNanos { }
@@ -219,27 +266,40 @@ fun MediaLibraryScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
         Row(modifier = Modifier.fillMaxSize()) {
             // Rail lateral de navegação (logo + ações), estilo TV.
-            NavRail(
-                firstItemFocus = initialActionsFocus,
-                searchActive = state.searchQuery.isNotBlank(),
-                showClearFilter = state.searchQuery.isNotBlank(),
-                onSearch = { searching = true },
-                onClearFilter = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
-                onChannels = { channelPicker = true },
-                onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
-                onSettings = onOpenSettings
-            )
+            if (useTvLayout) {
+                NavRail(
+                    firstItemFocus = initialActionsFocus,
+                    searchActive = false,
+                    showClearFilter = false,
+                    onSearch = { searching = true },
+                    onClearFilter = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
+                    onChannels = { channelPicker = true },
+                    onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
+                    onSettings = onOpenSettings
+                )
+            }
 
             // Conteúdo do canal ativo (grade plana de aspecto misto).
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                    .padding(
+                        horizontal = if (useTvLayout) 24.dp else 14.dp,
+                        vertical = if (useTvLayout) 20.dp else 12.dp
+                    ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (!useTvLayout) {
+                    CompactLibraryActions(
+                        firstItemFocus = initialActionsFocus,
+                        onSearch = { searching = true },
+                        onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) }
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -250,15 +310,9 @@ fun MediaLibraryScreen(
                         style = MaterialTheme.typography.headlineMedium,
                         color = Color.White,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
-                    if (state.searchQuery.isNotBlank()) {
-                        Text(
-                            "• busca: ${state.searchQuery}",
-                            color = Color(0xFFB0B0B0),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
                 }
 
                 when {
@@ -291,53 +345,44 @@ fun MediaLibraryScreen(
 
                     else -> {
                         CompositionLocalProvider(LocalBringIntoViewSpec provides gridBringIntoViewSpec) {
-                            Column(
+                            LazyMediaGrid(
+                                items = state.items,
+                                showCovers = state.showCovers,
+                                hasMore = state.hasMore,
+                                loadingMore = loadMoreRequested,
+                                state = gridState,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .verticalScroll(gridScroll),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                MasonryMediaGrid(
-                                    items = state.items,
-                                    showCovers = state.showCovers,
-                                    focusRequesterFor = { id ->
-                                        cardFocusRequesters.getOrPut(id) { FocusRequester() }
-                                    },
-                                    onCardFocused = { id ->
-                                        viewModel.onAction(MediaLibraryAction.VideoFocused(id))
-                                    },
-                                    onCardClick = { media -> detailsMedia = media },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                // Botão único de carregar mais, centralizado; some suavemente ao fim.
-                                AnimatedVisibility(
-                                    visible = state.hasMore,
-                                    enter = fadeIn(),
-                                    exit = fadeOut()
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        LoadMoreButton(
-                                            loading = loadMoreRequested,
-                                            focusRequester = loadMoreFocus,
-                                            onClick = {
-                                                lastIdBeforeLoad = state.items.lastOrNull()?.mediaId
-                                                firstIdBeforeLoad = state.items.firstOrNull()?.mediaId
-                                                loadMoreRequested = true
-                                                viewModel.onAction(MediaLibraryAction.LoadMore)
-                                            }
-                                        )
-                                    }
+                                    .then(if (useTvLayout) Modifier else Modifier.padding(bottom = 76.dp)),
+                                focusRequesterFor = { id ->
+                                    cardFocusRequesters.getOrPut(id) { FocusRequester() }
+                                },
+                                onCardFocused = { id ->
+                                    viewModel.onAction(MediaLibraryAction.VideoFocused(id))
+                                },
+                                onCardClick = { media -> detailsMedia = media },
+                                loadMoreFocus = loadMoreFocus,
+                                onLoadMore = {
+                                    lastIdBeforeLoad = state.items.lastOrNull()?.mediaId
+                                    firstIdBeforeLoad = state.items.firstOrNull()?.mediaId
+                                    loadMoreRequested = true
+                                    viewModel.onAction(MediaLibraryAction.LoadMore)
                                 }
-                            }
+                            )
                         }
                     }
                 }
             }
+        }
+
+        if (!useTvLayout) {
+            MainBottomNav(
+                selected = MainTab.Library,
+                onLibrary = {},
+                onChannels = { channelPicker = true },
+                onSettings = onOpenSettings,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
 
         detailsMedia?.let { media ->
@@ -366,22 +411,95 @@ fun MediaLibraryScreen(
         }
 
         if (searching) {
-            val resultCount = state.items.size
-            SearchOverlay(
-                query = state.searchQuery,
-                resultCount = resultCount,
-                onKey = { c ->
-                    viewModel.onAction(MediaLibraryAction.SearchChanged(state.searchQuery + c))
-                },
-                onBackspace = {
-                    val q = state.searchQuery
-                    if (q.isNotEmpty()) {
-                        viewModel.onAction(MediaLibraryAction.SearchChanged(q.dropLast(1)))
+            val searchInProgress = state.isSearchPending || state.isSearchLoading
+            val resultCount = if (state.searchQuery.isBlank() || searchInProgress) 0 else state.searchResults.size
+            if (useTvLayout) {
+                TvSearchOverlay(
+                    query = state.searchQuery,
+                    resultCount = resultCount,
+                    searchInProgress = searchInProgress,
+                    onKey = { c ->
+                        viewModel.onAction(MediaLibraryAction.SearchChanged(state.searchQuery + c))
+                    },
+                    onBackspace = {
+                        val q = state.searchQuery
+                        if (q.isNotEmpty()) {
+                            viewModel.onAction(MediaLibraryAction.SearchChanged(q.dropLast(1)))
+                        }
+                    },
+                    onClear = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
+                    onClose = {
+                        searching = false
+                        viewModel.onAction(MediaLibraryAction.SearchChanged(""))
                     }
-                },
-                onClear = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
-                onClose = { searching = false }
-            )
+                )
+            } else {
+                TouchSearchOverlay(
+                    query = state.searchQuery,
+                    resultCount = resultCount,
+                    searchInProgress = searchInProgress,
+                    suggestions = if (state.searchQuery.isBlank() || searchInProgress) emptyList() else state.searchResults,
+                    onQueryChange = { viewModel.onAction(MediaLibraryAction.SearchChanged(it)) },
+                    onClear = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
+                    onClose = {
+                        searching = false
+                        viewModel.onAction(MediaLibraryAction.SearchChanged(""))
+                    },
+                    onSelect = { media ->
+                        detailsMedia = media
+                        searching = false
+                        viewModel.onAction(MediaLibraryAction.SearchChanged(""))
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactLibraryActions(
+    firstItemFocus: FocusRequester,
+    onSearch: () -> Unit,
+    onRefresh: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CompactLibraryChip(modifier = Modifier.focusRequester(firstItemFocus), onClick = onSearch) {
+            Icon(Icons.Filled.Search, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Busca")
+        }
+        CompactLibraryChip(onClick = onRefresh) {
+            Icon(Icons.Filled.Refresh, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Atualizar")
+        }
+    }
+}
+
+@Composable
+private fun CompactLibraryChip(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color(0x22FFFFFF))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.titleSmall.copy(color = Color.White)) {
+            content()
         }
     }
 }
@@ -415,15 +533,47 @@ private val KEYBOARD_ROWS = listOf(
     "zxcvbnm"
 )
 
+@Composable
+private fun SearchStatusText(
+    query: String,
+    resultCount: Int,
+    searchInProgress: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (searchInProgress && query.isNotBlank()) {
+            CircularProgressIndicator(
+                color = BRAND_GREEN,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Text(
+            text = when {
+                query.isBlank() -> "Digite algo para buscar"
+                searchInProgress -> "Pesquisando…"
+                else -> "$resultCount resultado(s)"
+            },
+            color = Color(0xFFB0B0B0),
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
 /**
  * Teclado de busca no estilo TV do YouTube: overlay com a consulta atual e uma grade de teclas
  * navegável por D-pad. Cada tecla é um alvo de foco comum do Compose; OK digita. Sem IME do
  * sistema — funciona igual em qualquer Fire TV e não perde o foco.
  */
 @Composable
-private fun SearchOverlay(
+private fun TvSearchOverlay(
     query: String,
     resultCount: Int,
+    searchInProgress: Boolean,
     onKey: (Char) -> Unit,
     onBackspace: () -> Unit,
     onClear: () -> Unit,
@@ -432,7 +582,7 @@ private fun SearchOverlay(
     val firstKeyFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstKeyFocus.requestFocus() }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xF2000000))
@@ -442,11 +592,16 @@ private fun SearchOverlay(
                     onClose(); true
                 } else false
             }
-            .padding(48.dp)
     ) {
+        val compact = maxWidth < 600.dp
+        val keySize = if (compact) 42.dp else 52.dp
+        val gap = if (compact) 6.dp else 8.dp
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(if (compact) 16.dp else 48.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 14.dp else 20.dp)
         ) {
             Text("Buscar", style = MaterialTheme.typography.headlineMedium, color = Color.White)
 
@@ -468,16 +623,19 @@ private fun SearchOverlay(
                 )
             }
 
-            Text(
-                text = if (query.isBlank()) "Digite algo para buscar" else "$resultCount resultado(s)",
-                color = Color(0xFFB0B0B0),
-                style = MaterialTheme.typography.bodyMedium
+            SearchStatusText(
+                query = query,
+                resultCount = resultCount,
+                searchInProgress = searchInProgress
             )
 
             // Grade de letras/números.
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(gap)) {
                 KEYBOARD_ROWS.forEachIndexed { rowIndex, row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(gap)
+                    ) {
                         row.forEachIndexed { colIndex, c ->
                             val keyModifier = if (rowIndex == 0 && colIndex == 0) {
                                 Modifier.focusRequester(firstKeyFocus)
@@ -486,7 +644,7 @@ private fun SearchOverlay(
                             }
                             KeyButton(
                                 label = c.toString(),
-                                modifier = keyModifier.size(52.dp),
+                                modifier = keyModifier.size(keySize),
                                 onClick = { onKey(c) }
                             )
                         }
@@ -494,29 +652,246 @@ private fun SearchOverlay(
                 }
 
                 // Linha de ações: espaço, apagar, limpar, fechar.
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(gap)
+                ) {
                     KeyButton(
                         label = "Espaço",
-                        modifier = Modifier.height(52.dp).width(160.dp),
+                        modifier = Modifier.height(keySize).width(if (compact) 124.dp else 160.dp),
                         onClick = { onKey(' ') }
                     )
                     KeyButton(
                         label = "⌫ Apagar",
-                        modifier = Modifier.height(52.dp).width(130.dp),
+                        modifier = Modifier.height(keySize).width(if (compact) 112.dp else 130.dp),
                         onClick = onBackspace
                     )
                     KeyButton(
                         label = "Limpar",
-                        modifier = Modifier.height(52.dp).width(110.dp),
+                        modifier = Modifier.height(keySize).width(if (compact) 92.dp else 110.dp),
                         onClick = onClear
                     )
                     KeyButton(
                         label = "Fechar",
-                        modifier = Modifier.height(52.dp).width(110.dp),
+                        modifier = Modifier.height(keySize).width(if (compact) 92.dp else 110.dp),
                         onClick = onClose
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TouchSearchOverlay(
+    query: String,
+    resultCount: Int,
+    searchInProgress: Boolean,
+    suggestions: List<MediaCardUi>,
+    onQueryChange: (String) -> Unit,
+    onClear: () -> Unit,
+    onClose: () -> Unit,
+    onSelect: (MediaCardUi) -> Unit
+) {
+    val fieldFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val visibleSuggestions = remember(query, searchInProgress, suggestions) {
+        val normalized = query.trim()
+        if (normalized.isBlank() || searchInProgress) emptyList()
+        else suggestions.take(12)
+    }
+
+    LaunchedEffect(Unit) {
+        fieldFocus.requestFocus()
+        keyboard?.show()
+    }
+    BackHandler(enabled = true) { onClose() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF101010))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onClose),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Voltar",
+                    tint = Color.White,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp)
+                    .clip(RoundedCornerShape(25.dp))
+                    .background(Color(0xFF252525))
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.foundation.text.BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(fieldFocus),
+                    singleLine = true,
+                    textStyle = androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(color = Color.White),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                    decorationBox = { innerTextField ->
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+                            if (query.isEmpty()) {
+                                androidx.compose.material3.Text(
+                                    "Pesquisar",
+                                    color = Color(0xFF9A9A9A),
+                                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+                if (query.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onClear),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.material3.Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Limpar",
+                            tint = Color(0xFFD8D8D8),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .size(50.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF252525)),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.Icon(
+                    Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+        }
+
+        SearchStatusText(
+            query = query,
+            resultCount = resultCount,
+            searchInProgress = searchInProgress,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 16.dp)
+        ) {
+            visibleSuggestions.forEach { media ->
+                TouchSearchRow(
+                    media = media,
+                    onClick = { onSelect(media) }
+                )
+            }
+            if (searchInProgress && query.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 34.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            color = BRAND_GREEN,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        androidx.compose.material3.Text(
+                            "Pesquisando…",
+                            color = Color.White,
+                            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
+            } else if (visibleSuggestions.isEmpty() && query.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 28.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.Text(
+                        "Nenhum resultado encontrado",
+                        color = Color(0xFFB0B0B0),
+                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TouchSearchRow(
+    media: MediaCardUi,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.Text(
+            media.title,
+            color = Color.White,
+            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        val thumb = media.posterPath ?: media.thumbnailPath
+        if (thumb != null) {
+            AsyncImage(
+                model = thumb,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(width = 72.dp, height = 44.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF222222))
+            )
         }
     }
 }
@@ -638,6 +1013,80 @@ private fun columnsForWidthDp(widthDp: Float): Int =
 private val GRID_GAP = 12.dp
 private val CARD_TITLE_H = 56.dp
 
+@Composable
+private fun LazyMediaGrid(
+    items: List<MediaCardUi>,
+    showCovers: Boolean,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+    state: LazyGridState,
+    focusRequesterFor: (String) -> FocusRequester,
+    onCardFocused: (String) -> Unit,
+    onCardClick: (MediaCardUi) -> Unit,
+    loadMoreFocus: FocusRequester,
+    onLoadMore: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val columns = columnsForWidthDp(maxWidth.value)
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
+            state = state,
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
+            verticalArrangement = Arrangement.spacedBy(GRID_GAP)
+        ) {
+            items(
+                items = items,
+                key = { it.mediaId }
+            ) { media ->
+                val requester = focusRequesterFor(media.mediaId)
+                MediaCard(
+                    media = media,
+                    showCover = showCovers,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(media.gridAspectRatio(showCovers))
+                        .focusRequester(requester)
+                        .onFocusChanged { if (it.isFocused) onCardFocused(media.mediaId) },
+                    onClick = { onCardClick(media) }
+                )
+            }
+
+            if (hasMore) {
+                item(
+                    key = "load-more",
+                    span = { GridItemSpan(maxLineSpan) }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        LoadMoreButton(
+                            loading = loadingMore,
+                            focusRequester = loadMoreFocus,
+                            onClick = onLoadMore
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun MediaCardUi.gridAspectRatio(showCovers: Boolean): Float {
+    val hasPoster = posterPath != null
+    val aspect = when {
+        !showCovers -> 2f / 3f
+        coverAspectRatio > 0f -> coverAspectRatio
+        hasPoster -> 2f / 3f
+        else -> 16f / 9f
+    }
+    return aspect.coerceIn(0.45f, 2.2f)
+}
+
 // Skeleton do grid: um mosaico de placeholders com pulse suave, usando o MESMO empacotamento
 // do masonry — dá a sensação de que a grade está preenchendo (melhor que um "Carregando…").
 @Composable
@@ -678,20 +1127,22 @@ private fun MediaGridSkeleton(
                             .clip(RoundedCornerShape(10.dp))
                             .background(shimmer)
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.72f)
-                            .height(12.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(shimmer)
-                    )
+                    if (!showCovers) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.72f)
+                                .height(12.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(shimmer)
+                        )
+                    }
                 }
             }
         }
     ) { measurables, constraints ->
         val gapPx = GRID_GAP.roundToPx()
-        val titlePx = CARD_TITLE_H.roundToPx()
+        val titlePx = if (showCovers) 0 else CARD_TITLE_H.roundToPx()
         val totalW = constraints.maxWidth
         val cols = columnsForWidthDp(totalW / density)
         val colW = ((totalW - gapPx * (cols - 1)) / cols).coerceAtLeast(1)
@@ -759,7 +1210,7 @@ private fun MasonryMediaGrid(
         }
     ) { measurables, constraints ->
         val gapPx = GRID_GAP.roundToPx()
-        val titlePx = CARD_TITLE_H.roundToPx()
+        val titlePx = if (showCovers) 0 else CARD_TITLE_H.roundToPx()
         val totalW = constraints.maxWidth
         val cols = columnsForWidthDp(totalW / density)
         val colW = ((totalW - gapPx * (cols - 1)) / cols).coerceAtLeast(1)
@@ -846,16 +1297,22 @@ private fun MediaCard(
                     .background(Color(0xFF1C1C1C))
             ) {
                 if (cover != null) {
-                    // Loader por card até a capa carregar (agora que o canal rico usa URL).
-                    var coverLoading by remember(cover) { mutableStateOf(true) }
+                    // Loader por card, mas SÓ se demorar (>180ms): cache hit (voltar à grade) e
+                    // cargas rápidas mostram a capa direto, sem spinner nem "blink".
+                    var loaded by remember(cover) { mutableStateOf(false) }
+                    var showSpinner by remember(cover) { mutableStateOf(false) }
                     AsyncImage(
                         model = cover,
                         contentDescription = media.title,
                         contentScale = ContentScale.Crop,
-                        onState = { coverLoading = !it.isDone() },
+                        onState = { if (it.isDone()) loaded = true },
                         modifier = Modifier.fillMaxSize()
                     )
-                    if (coverLoading) {
+                    LaunchedEffect(cover) {
+                        kotlinx.coroutines.delay(180)
+                        if (!loaded) showSpinner = true
+                    }
+                    if (showSpinner && !loaded) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
                                 color = BRAND_GREEN, strokeWidth = 2.dp, modifier = Modifier.size(24.dp)
@@ -896,17 +1353,19 @@ private fun MediaCard(
                 }
             }
 
-            Text(
-                media.title,
-                color = Color.White,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(CARD_TITLE_H)
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-            )
+            if (!showCover) {
+                Text(
+                    media.title,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(CARD_TITLE_H)
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                )
+            }
         }
     }
 }
@@ -914,7 +1373,7 @@ private fun MediaCard(
 private val BRAND_GREEN = Color(0xFF2BEE34)
 
 // Tela de Detalhes (estilo Netflix/Prime): responsiva (TV/paisagem lado a lado, celular/retrato
-// empilhado) + spinner até as imagens (fundo e elenco) carregarem, evitando o "surgir aos poucos".
+// empilhado). O conteúdo aparece imediatamente; imagens secundárias carregam sem bloquear a tela.
 @Composable
 private fun MovieDetailsOverlay(
     media: MediaCardUi,
@@ -927,24 +1386,17 @@ private fun MovieDetailsOverlay(
     val playFocus = remember { FocusRequester() }
 
     val backdrop = details?.backdropPath ?: media.posterPath ?: media.thumbnailPath
-    val castUrls = if (showCastPhotos) details?.cast?.mapNotNull { it.photoUrl }.orEmpty() else emptyList()
-    val imageUrls = remember(backdrop, castUrls) { (listOfNotNull(backdrop) + castUrls).distinct() }
-    val done = remember(imageUrls) { mutableStateMapOf<String, Boolean>() }
-    val ready = imageUrls.isEmpty() || imageUrls.all { done[it] == true }
-    // Salvaguarda: se alguma imagem travar, revela o conteúdo mesmo assim após 6s.
-    LaunchedEffect(imageUrls) { kotlinx.coroutines.delay(6000); imageUrls.forEach { done[it] = true } }
-    LaunchedEffect(ready) { if (ready) runCatching { playFocus.requestFocus() } }
-    val onImageDone: (String) -> Unit = { done[it] = true }
+    LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF050505))) {
         val portrait = maxHeight > maxWidth
+        val compactLandscape = !portrait && maxHeight < 520.dp
         if (portrait) {
             Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
                     if (backdrop != null) {
                         AsyncImage(
                             model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
-                            onState = { if (it.isDone()) onImageDone(backdrop) },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -955,7 +1407,8 @@ private fun MovieDetailsOverlay(
                     )
                 }
                 DetailsInfo(
-                    media, details, showCastPhotos, playFocus, onPlay, onDismiss, onImageDone,
+                    media, details, showCastPhotos, playFocus, onPlay, onDismiss,
+                    actionsFirst = false,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)
                 )
             }
@@ -963,7 +1416,6 @@ private fun MovieDetailsOverlay(
             if (backdrop != null) {
                 AsyncImage(
                     model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
-                    onState = { if (it.isDone()) onImageDone(backdrop) },
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -974,19 +1426,12 @@ private fun MovieDetailsOverlay(
                 Brush.verticalGradient(0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505))
             ))
             DetailsInfo(
-                media, details, showCastPhotos, playFocus, onPlay, onDismiss, onImageDone,
+                media, details, showCastPhotos, playFocus, onPlay, onDismiss,
+                actionsFirst = compactLandscape,
                 modifier = Modifier.fillMaxWidth(0.62f).align(Alignment.CenterStart)
+                    .then(if (compactLandscape) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                     .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp)
             )
-        }
-
-        if (!ready) {
-            Box(
-                modifier = Modifier.fillMaxSize().background(Color(0xFF050505)),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = BRAND_GREEN, strokeWidth = 3.dp, modifier = Modifier.size(46.dp))
-            }
         }
     }
 }
@@ -1002,7 +1447,7 @@ private fun DetailsInfo(
     playFocus: FocusRequester,
     onPlay: () -> Unit,
     onDismiss: () -> Unit,
-    onImageDone: (String) -> Unit,
+    actionsFirst: Boolean,
     modifier: Modifier = Modifier
 ) {
     val title = details?.title ?: media.title
@@ -1021,6 +1466,9 @@ private fun DetailsInfo(
         }
         if (meta.isNotEmpty()) {
             Text(meta.joinToString("   •   "), color = Color(0xFFE6E6E6), style = MaterialTheme.typography.titleSmall)
+        }
+        if (actionsFirst) {
+            DetailsActionRow(media, playFocus, onPlay, onDismiss)
         }
         details?.genres?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
@@ -1045,7 +1493,6 @@ private fun DetailsInfo(
                             if (c.photoUrl != null) {
                                 AsyncImage(
                                     model = c.photoUrl, contentDescription = c.name, contentScale = ContentScale.Crop,
-                                    onState = { if (it.isDone()) onImageDone(c.photoUrl) },
                                     modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name))
                                 )
                             } else {
@@ -1063,16 +1510,28 @@ private fun DetailsInfo(
             }
         }
 
-        Row(modifier = Modifier.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            DetailButton(
-                icon = Icons.Filled.PlayArrow,
-                label = if (media.progress > 0f) "Continuar" else "Assistir",
-                primary = true,
-                modifier = Modifier.focusRequester(playFocus),
-                onClick = onPlay
-            )
-            DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss)
+        if (!actionsFirst) {
+            DetailsActionRow(media, playFocus, onPlay, onDismiss)
         }
+    }
+}
+
+@Composable
+private fun DetailsActionRow(
+    media: MediaCardUi,
+    playFocus: FocusRequester,
+    onPlay: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Row(modifier = Modifier.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        DetailButton(
+            icon = Icons.Filled.PlayArrow,
+            label = if (media.progress > 0f) "Continuar" else "Assistir",
+            primary = true,
+            modifier = Modifier.focusRequester(playFocus),
+            onClick = onPlay
+        )
+        DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss)
     }
 }
 
@@ -1135,6 +1594,15 @@ private fun ChannelPickerOverlay(
             },
         contentAlignment = Alignment.Center
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}
+                )
+        )
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
@@ -1146,6 +1614,11 @@ private fun ChannelPickerOverlay(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("Escolher canal", style = MaterialTheme.typography.titleLarge, color = Color.White)
+            Text(
+                text = "Selecione o canal usado para listar os vídeos na biblioteca.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xCCFFFFFF)
+            )
             Column(
                 modifier = Modifier.focusGroup(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1217,7 +1690,26 @@ private fun ChannelPickerOverlay(
                     }
                 }
             }
-            Button(onClick = onDismiss) { Text("Fechar") }
+            var closeFocused by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .clip(RoundedCornerShape(10.dp))
+                    .onFocusChanged { closeFocused = it.isFocused }
+                    .clickable(onClick = onDismiss)
+                    .background(if (closeFocused) Color(0x33FFFFFF) else Color(0x1FFFFFFF))
+                    .border(
+                        width = if (closeFocused) 2.dp else 1.dp,
+                        color = if (closeFocused) Color.White else Color(0x33FFFFFF),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Text("Fechar", color = Color.White, style = MaterialTheme.typography.titleSmall)
+            }
         }
     }
 }

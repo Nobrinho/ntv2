@@ -43,6 +43,7 @@ sealed interface MediaLibraryAction {
     data object LoadMore : MediaLibraryAction
     data class SelectActiveChannel(val channelId: Long) : MediaLibraryAction
     data object ConsumeNavigation : MediaLibraryAction
+    data object ConsumeReturnToDetails : MediaLibraryAction
     data object ScreenResumed : MediaLibraryAction
     data object ClearError : MediaLibraryAction
 }
@@ -83,8 +84,27 @@ class MediaLibraryViewModel(
             MediaLibraryAction.Refresh -> loadFirstPages()
 
             is MediaLibraryAction.SearchChanged -> {
-                _uiState.update { it.copy(searchQuery = action.query) }
-                scheduleReload()
+                searchDebounceJob?.cancel()
+                val query = action.query
+                _uiState.update {
+                    if (query.trim().isEmpty()) {
+                        it.copy(
+                            searchQuery = query,
+                            searchResults = emptyList(),
+                            isSearchPending = false,
+                            isSearchLoading = false
+                        )
+                    } else {
+                        it.copy(
+                            searchQuery = query,
+                            isSearchPending = true,
+                            isSearchLoading = false
+                        )
+                    }
+                }
+                if (query.trim().isNotEmpty()) {
+                    scheduleSearch(query)
+                }
             }
 
             is MediaLibraryAction.LoadMoreChannel -> loadMore(action.channelId)
@@ -111,13 +131,18 @@ class MediaLibraryViewModel(
                             fileName = action.media.fileName,
                             thumbnailPath = action.media.thumbnailPath
                         ),
-                        lastFocusedMediaId = action.media.mediaId
+                        lastFocusedMediaId = action.media.mediaId,
+                        returnToDetailsMediaId = action.media.mediaId
                     )
                 }
             }
 
             MediaLibraryAction.ConsumeNavigation -> {
                 _uiState.update { it.copy(pendingNavigation = null) }
+            }
+
+            MediaLibraryAction.ConsumeReturnToDetails -> {
+                _uiState.update { it.copy(returnToDetailsMediaId = null) }
             }
 
             MediaLibraryAction.ScreenResumed -> {
@@ -167,8 +192,11 @@ class MediaLibraryViewModel(
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
+                                isSearchPending = false,
+                                isSearchLoading = false,
                                 sections = emptyList(),
                                 items = emptyList(),
+                                searchResults = emptyList(),
                                 hasMore = false,
                                 emptyState = MediaLibraryEmptyState.NoChannelsSelected,
                                 errorMessage = null
@@ -220,8 +248,16 @@ class MediaLibraryViewModel(
             clearChannelData()
             channelOrder += channel.id
             channelTitles[channel.id] = channel.title
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, emptyState = null) }
-            val query = currentQuery()
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    isSearchPending = false,
+                    isSearchLoading = false,
+                    errorMessage = null,
+                    emptyState = null
+                )
+            }
+            val query = ""
             // Logo após o login o histórico do canal ainda pode não ter carregado no TDLib e a 1ª
             // busca volta vazia — tenta de novo algumas vezes com um pequeno intervalo.
             var page: com.ntv2.app.feature.media.domain.MediaPage? = null
@@ -232,7 +268,12 @@ class MediaLibraryViewModel(
                 }.getOrElse { error ->
                     if (attempt == 3) {
                         _uiState.update {
-                            it.copy(isLoading = false, errorMessage = error.message ?: "Falha ao carregar biblioteca")
+                            it.copy(
+                                isLoading = false,
+                                isSearchPending = false,
+                                isSearchLoading = false,
+                                errorMessage = error.message ?: "Falha ao carregar biblioteca"
+                            )
                         }
                         return@launch
                     }
@@ -253,6 +294,8 @@ class MediaLibraryViewModel(
             _uiState.update {
                 it.copy(
                     isLoading = false,
+                    isSearchPending = false,
+                    isSearchLoading = false,
                     sections = sections,
                     items = sections.flatMap { s -> s.items },
                     hasMore = sections.firstOrNull()?.hasMore ?: false,
@@ -262,11 +305,51 @@ class MediaLibraryViewModel(
         }
     }
 
-    private fun scheduleReload() {
+    private fun scheduleSearch(query: String) {
         searchDebounceJob?.cancel()
         searchDebounceJob = viewModelScope.launch {
-            delay(300L)
-            loadFirstPages()
+            delay(650L)
+            searchCurrentChannel(query.trim())
+        }
+    }
+
+    private fun searchCurrentChannel(query: String) {
+        if (query.isBlank()) return
+        val activeId = _uiState.value.activeChannelId ?: return
+        val title = channelTitles[activeId] ?: _uiState.value.activeChannelName
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isSearchPending = false,
+                    isSearchLoading = true,
+                    searchResults = emptyList()
+                )
+            }
+            runCatching {
+                withContext(ioDispatcher) {
+                    fetchPage(activeId, title, query, fromMessageId = 0L)
+                }
+            }.onSuccess { page ->
+                val items = dedupByTmdb(page.items)
+                val savedPositions = withContext(ioDispatcher) {
+                    progressStore.savedPositions(items.map { it.mediaId })
+                }
+                _uiState.update { current ->
+                    if (current.searchQuery.trim() != query) current
+                    else current.copy(
+                        isSearchLoading = false,
+                        searchResults = items.map { it.toCard(savedPositions[it.mediaId] ?: 0L) }
+                    )
+                }
+            }.onFailure {
+                _uiState.update { current ->
+                    if (current.searchQuery.trim() != query) current
+                    else current.copy(
+                        isSearchLoading = false,
+                        searchResults = emptyList()
+                    )
+                }
+            }
         }
     }
 
@@ -284,10 +367,9 @@ class MediaLibraryViewModel(
         val title = channelTitles[channelId] ?: return
         loadingMore += channelId
         viewModelScope.launch {
-            val query = currentQuery()
             runCatching {
                 withContext(ioDispatcher) {
-                    fetchPage(channelId, title, query, fromMessageId = cursor)
+                    fetchPage(channelId, title, query = "", fromMessageId = cursor)
                 }
             }.onSuccess { page ->
                 val existing = channelItems[channelId].orEmpty()
@@ -364,7 +446,6 @@ class MediaLibraryViewModel(
 
     private fun emptyStateFor(sections: List<ChannelMediaSectionUi>): MediaLibraryEmptyState? = when {
         currentChannelsCount == 0 -> MediaLibraryEmptyState.NoChannelsSelected
-        sections.isEmpty() && currentQuery().isNotBlank() -> MediaLibraryEmptyState.NoSearchResults
         sections.isEmpty() -> MediaLibraryEmptyState.NoVideosFound
         else -> null
     }

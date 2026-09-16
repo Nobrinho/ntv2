@@ -56,6 +56,8 @@ data class MediaLibraryUiState(
     val sections: List<ChannelMediaSectionUi> = emptyList(),
     /** Grade plana do canal ativo (novo layout). */
     val items: List<MediaCardUi> = emptyList(),
+    /** Resultados próprios da busca; não substituem a grade principal. */
+    val searchResults: List<MediaCardUi> = emptyList(),
     val hasMore: Boolean = false,
     /** Incrementa a cada conclusão de "carregar mais" (sucesso ou falha) — sinal p/ a UI reagir
      *  mesmo quando o tamanho da lista não muda (teto de itens atingido). */
@@ -68,9 +70,12 @@ data class MediaLibraryUiState(
     /** Exibir fotos do elenco na tela de detalhes — toggle das Configurações. */
     val castPhotos: Boolean = true,
     val isLoading: Boolean = false,
+    val isSearchPending: Boolean = false,
+    val isSearchLoading: Boolean = false,
     val errorMessage: String? = null,
     val emptyState: MediaLibraryEmptyState? = null,
     val lastFocusedMediaId: String? = null,
+    val returnToDetailsMediaId: String? = null,
     val focusRestoreNonce: Long = 0,
     val pendingNavigation: MediaNavigationPayload? = null
 )

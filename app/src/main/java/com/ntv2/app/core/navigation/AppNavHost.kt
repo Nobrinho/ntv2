@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -70,10 +71,11 @@ fun AppNavHost(
     val navController = rememberNavController()
     val context = LocalContext.current
     var showExitDialog by remember { mutableStateOf(false) }
+    var openChannelPickerRequest by remember { mutableStateOf(0) }
     // Splash como OVERLAY: o app real (Login → Biblioteca) monta e carrega POR TRÁS enquanto a
     // intro cobre a tela; ao terminar, ela some (fade) e revela a Biblioteca já pronta.
     // Respeita o toggle "Animações" das Configurações (off → pula a intro).
-    var showSplash by remember { mutableStateOf(true) }
+    var showSplash by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         if (!appContainer.settingsRepository.animationsEnabled.first()) showSplash = false
     }
@@ -133,6 +135,11 @@ fun AppNavHost(
                         launchSingleTop = true
                     }
                 },
+                onOpenSettings = {
+                    navController.navigate(RoutePath.SETTINGS) {
+                        launchSingleTop = true
+                    }
+                },
                 onBack = { navController.popBackStack() },
                 onLogout = {
                     // A VM já chamou o logout; limpa canais + canal ativo (próximo login = seleção).
@@ -159,6 +166,7 @@ fun AppNavHost(
             )
             MediaLibraryScreen(
                 viewModel = mediaViewModel,
+                openChannelPickerRequest = openChannelPickerRequest,
                 onOpenSettings = { navController.navigate(RoutePath.SETTINGS) },
                 onOpenPlaybackPlaceholder = { mediaId, fileId, title, channelName, durationSeconds, fileName, thumbnailPath ->
                     navController.navigate(
@@ -196,6 +204,12 @@ fun AppNavHost(
                 onChangeMinDuration = { scope.launch { settings.updateMinDurationMinutes(it) } },
                 onChangeMaxCards = { scope.launch { settings.updateMaxCards(it) } },
                 onManageChannels = { navController.navigate(RoutePath.CHANNEL_SELECTION) },
+                onOpenListedChannels = {
+                    openChannelPickerRequest += 1
+                    navController.navigate(RoutePath.MEDIA_LIBRARY) {
+                        launchSingleTop = true
+                    }
+                },
                 onLogout = {
                     // Aguarda o logout concluir (recria o cliente TDLib) ANTES de ir ao Login —
                     // senão a tela de QR abre com o cliente ainda não pronto e trava em "gerando".
@@ -210,7 +224,11 @@ fun AppNavHost(
                         }
                     }
                 },
-                onOpenLibrary = { navController.popBackStack() }
+                onOpenLibrary = {
+                    navController.navigate(RoutePath.MEDIA_LIBRARY) {
+                        launchSingleTop = true
+                    }
+                }
             )
         }
 

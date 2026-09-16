@@ -10,8 +10,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,7 +22,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -55,7 +60,10 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.MainBottomNav
+import com.ntv2.app.core.ui.MainTab
 import coil.compose.AsyncImage
+import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.ui.RailButton
 import com.ntv2.app.core.ui.RailColumn
 import com.ntv2.app.feature.channels.presentation.state.ChannelItemUi
@@ -69,6 +77,7 @@ import kotlin.math.abs
 fun ChannelSelectionScreen(
     viewModel: ChannelSelectionViewModel,
     onOpenLibrary: () -> Unit,
+    onOpenSettings: () -> Unit,
     onBack: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -91,89 +100,185 @@ fun ChannelSelectionScreen(
         }
     }
 
-    Row(modifier = Modifier.fillMaxSize()) {
-        // Ações agora no rail lateral (igual à Biblioteca), mantendo todos os botões.
-        RailColumn {
-            RailButton(
-                icon = Icons.Filled.DoneAll,
-                label = "Todos",
-                modifier = Modifier.focusRequester(firstActionFocusRequester),
-                onClick = { viewModel.onAction(ChannelSelectionAction.SelectAll) }
-            )
-            RailButton(
-                icon = Icons.Filled.Clear,
-                label = "Limpar",
-                onClick = { viewModel.onAction(ChannelSelectionAction.ClearSelection) }
-            )
-            RailButton(
-                icon = Icons.Filled.Refresh,
-                label = "Atualizar",
-                onClick = { viewModel.onAction(ChannelSelectionAction.Retry) }
-            )
-            RailButton(
-                icon = Icons.AutoMirrored.Filled.ArrowForward,
-                label = "Continuar",
-                enabled = state.canContinue,
-                primary = state.canContinue,
-                onClick = { viewModel.onAction(ChannelSelectionAction.Continue) }
-            )
-            RailButton(
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                label = "Voltar",
-                onClick = onBack
-            )
-            RailButton(
-                icon = Icons.AutoMirrored.Filled.Logout,
-                label = "Sair",
-                onClick = { viewModel.onAction(ChannelSelectionAction.Logout) }
+    val adaptive = rememberAdaptiveLayoutInfo()
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
+        if (useTvLayout) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                ChannelActionsRail(
+                    state = state,
+                    firstActionFocusRequester = firstActionFocusRequester,
+                    onSelectAll = { viewModel.onAction(ChannelSelectionAction.SelectAll) },
+                    onClear = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
+                    onRefresh = { viewModel.onAction(ChannelSelectionAction.Retry) },
+                    onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
+                    onBack = onBack,
+                    onLogout = { viewModel.onAction(ChannelSelectionAction.Logout) }
+                )
+                ChannelContent(
+                    state = state,
+                    compact = false,
+                    onRetry = { viewModel.onAction(ChannelSelectionAction.Retry) },
+                    onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
+                )
+            }
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                CompactChannelActions(
+                    state = state,
+                    firstActionFocusRequester = firstActionFocusRequester,
+                    onSelectAll = { viewModel.onAction(ChannelSelectionAction.SelectAll) },
+                    onClear = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
+                    onRefresh = { viewModel.onAction(ChannelSelectionAction.Retry) },
+                    onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
+                    onBack = onBack,
+                    onLogout = { viewModel.onAction(ChannelSelectionAction.Logout) }
+                )
+                ChannelContent(
+                    state = state,
+                    compact = true,
+                    onRetry = { viewModel.onAction(ChannelSelectionAction.Retry) },
+                    onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
+                )
+            }
+            MainBottomNav(
+                selected = MainTab.Channels,
+                onLibrary = onOpenLibrary,
+                onChannels = {},
+                onSettings = onOpenSettings,
+                modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+    }
+}
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Text("Seleção de Canais", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-                if (state.channels.isNotEmpty()) {
-                    Text(
-                        "${state.selectedChannelIds.size} de ${state.channels.size} selecionados",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFB0B0B0),
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                }
+@Composable
+private fun ChannelActionsRail(
+    state: ChannelSelectionUiState,
+    firstActionFocusRequester: FocusRequester,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+    onRefresh: () -> Unit,
+    onContinue: () -> Unit,
+    onBack: () -> Unit,
+    onLogout: () -> Unit
+) {
+    RailColumn {
+        RailButton(
+            icon = Icons.Filled.DoneAll,
+            label = "Todos",
+            modifier = Modifier.focusRequester(firstActionFocusRequester),
+            onClick = onSelectAll
+        )
+        RailButton(Icons.Filled.Clear, "Limpar", onClick = onClear)
+        RailButton(Icons.Filled.Refresh, "Atualizar", onClick = onRefresh)
+        RailButton(
+            icon = Icons.AutoMirrored.Filled.ArrowForward,
+            label = "Continuar",
+            enabled = state.canContinue,
+            primary = state.canContinue,
+            onClick = onContinue
+        )
+        RailButton(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", onClick = onBack)
+        RailButton(Icons.AutoMirrored.Filled.Logout, "Sair", onClick = onLogout)
+    }
+}
+
+@Composable
+private fun CompactChannelActions(
+    state: ChannelSelectionUiState,
+    firstActionFocusRequester: FocusRequester,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+    onRefresh: () -> Unit,
+    onContinue: () -> Unit,
+    onBack: () -> Unit,
+    onLogout: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .horizontalScroll(rememberScrollState())
+            .background(Color(0xFF0C0C0C))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CompactActionChip(
+            label = "Todos",
+            modifier = Modifier.focusRequester(firstActionFocusRequester),
+            onClick = onSelectAll
+        )
+        CompactActionChip(label = "Limpar", onClick = onClear)
+        CompactActionChip(label = "Atualizar", onClick = onRefresh)
+        CompactActionChip(label = "Continuar", enabled = state.canContinue, primary = state.canContinue, onClick = onContinue)
+        CompactActionChip(label = "Voltar", onClick = onBack)
+        CompactActionChip(label = "Sair", onClick = onLogout)
+    }
+}
+
+@Composable
+private fun CompactActionChip(
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    primary: Boolean = false,
+    onClick: () -> Unit
+) {
+    val background = when {
+        !enabled -> Color(0x14FFFFFF)
+        primary -> MaterialTheme.colorScheme.primary
+        else -> Color(0x22FFFFFF)
+    }
+    val content = if (primary && enabled) Color.Black else Color.White
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(24.dp))
+            .background(background)
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 20.dp, vertical = 13.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, color = if (enabled) content else Color(0x66FFFFFF), style = MaterialTheme.typography.titleSmall)
+    }
+}
+
+@Composable
+private fun ChannelContent(
+    state: ChannelSelectionUiState,
+    compact: Boolean,
+    onRetry: () -> Unit,
+    onToggle: (Long) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (compact) Modifier.padding(bottom = 76.dp) else Modifier)
+            .padding(horizontal = if (compact) 16.dp else 24.dp, vertical = if (compact) 16.dp else 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Seleção de Canais", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            if (state.channels.isNotEmpty()) {
+                Text(
+                    "${state.selectedChannelIds.size} de ${state.channels.size} selecionados",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFB0B0B0)
+                )
             }
+        }
 
-            when {
-                state.isLoading -> {
-                    ChannelsGridSkeleton()
-                }
-
-                state.errorMessage != null -> {
-                    Text("Erro: ${state.errorMessage}", color = Color.White)
-                    Button(onClick = { viewModel.onAction(ChannelSelectionAction.Retry) }) {
-                        Text("Tentar novamente")
-                    }
-                }
-
-                state.emptyState == ChannelSelectionEmptyState.NoEligibleChannels -> {
-                    Text("Nenhum canal elegível encontrado", color = Color.White)
-                }
-
-                else -> {
-                    ChannelsGrid(
-                        state = state,
-                        onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
-                    )
-                }
+        when {
+            state.isLoading -> ChannelsGridSkeleton(compact = compact)
+            state.errorMessage != null -> {
+                Text("Erro: ${state.errorMessage}", color = Color.White)
+                Button(onClick = onRetry) { Text("Tentar novamente") }
             }
+            state.emptyState == ChannelSelectionEmptyState.NoEligibleChannels -> {
+                Text("Nenhum canal elegível encontrado", color = Color.White)
+            }
+            else -> ChannelsGrid(state = state, compact = compact, onToggle = onToggle)
         }
     }
 }
@@ -181,13 +286,12 @@ fun ChannelSelectionScreen(
 @Composable
 private fun ChannelsGrid(
     state: ChannelSelectionUiState,
+    compact: Boolean,
     onToggle: (Long) -> Unit
 ) {
     LazyVerticalGrid(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(560.dp),
-        columns = GridCells.Fixed(4),
+        modifier = Modifier.fillMaxSize(),
+        columns = if (compact) GridCells.Adaptive(180.dp) else GridCells.Fixed(4),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -200,7 +304,7 @@ private fun ChannelsGrid(
 // Skeleton da grade de canais: placeholders no mesmo formato do card (avatar + 2 linhas), com
 // pulse suave — evita a legenda "Carregando canais...".
 @Composable
-private fun ChannelsGridSkeleton() {
+private fun ChannelsGridSkeleton(compact: Boolean) {
     val transition = rememberInfiniteTransition(label = "channels-skeleton")
     val alpha by transition.animateFloat(
         initialValue = 0.05f,
@@ -216,12 +320,12 @@ private fun ChannelsGridSkeleton() {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        repeat(6) {
+        repeat(if (compact) 8 else 6) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                repeat(4) {
+                repeat(if (compact) 1 else 4) {
                     Row(
                         modifier = Modifier
                             .weight(1f)

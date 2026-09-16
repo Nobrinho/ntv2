@@ -6,15 +6,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,15 +46,16 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import com.ntv2.app.R
+import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.feature.auth.domain.model.AuthStep
 import com.ntv2.app.feature.auth.domain.model.LoginMode
 import com.ntv2.app.feature.auth.presentation.state.LoginAction
@@ -80,7 +85,11 @@ fun LoginScreen(
         else -> LoginStep.Qr
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0E0E0E))) {
+    val adaptive = rememberAdaptiveLayoutInfo()
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF0E0E0E))) {
+        val compact = adaptive.usePhoneLayout || maxWidth < 600.dp
+        val logoGlow = if (compact) 124.dp else 180.dp
+        val logoSize = if (compact) 86.dp else 124.dp
         // Degradê verde suave no topo (na cor da marca).
         Box(
             modifier = Modifier
@@ -95,7 +104,10 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = if (compact) 14.dp else 16.dp, vertical = if (compact) 20.dp else 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically)
         ) {
@@ -103,7 +115,7 @@ fun LoginScreen(
             Box(contentAlignment = Alignment.Center) {
                 Box(
                     modifier = Modifier
-                        .size(180.dp)
+                        .size(logoGlow)
                         .background(
                             Brush.radialGradient(listOf(Color(0x552BEE34), Color(0x00000000)))
                         )
@@ -112,11 +124,11 @@ fun LoginScreen(
                     painter = painterResource(R.drawable.ic_splash_logo),
                     contentDescription = "Nbr PLAY",
                     colorFilter = ColorFilter.tint(BRAND),
-                    modifier = Modifier.size(124.dp)
+                    modifier = Modifier.size(logoSize)
                 )
             }
 
-            Card {
+            Card(compact = compact) {
                 when (step) {
                 LoginStep.Success -> SuccessStep()
                 LoginStep.Password -> PasswordStep(
@@ -145,6 +157,7 @@ fun LoginScreen(
                     onBack = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }
                 )
                 LoginStep.Qr -> QrStep(
+                    compact = compact,
                     payload = state.qrCodePayload,
                     error = state.errorMessage,
                     onUsePhone = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.Phone)) }
@@ -156,21 +169,22 @@ fun LoginScreen(
 }
 
 @Composable
-private fun Card(content: @Composable () -> Unit) {
+private fun Card(compact: Boolean, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
-            .width(CARD_WIDTH_DP.dp)
+            .fillMaxWidth()
+            .widthIn(max = CARD_WIDTH_DP.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFF1A1A1A))
             .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(16.dp))
-            .padding(horizontal = 28.dp, vertical = 20.dp),
+            .padding(horizontal = if (compact) 18.dp else 28.dp, vertical = if (compact) 18.dp else 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) { content() }
 }
 
 @Composable
-private fun QrStep(payload: String?, error: String?, onUsePhone: () -> Unit) {
+private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhone: () -> Unit) {
     val phoneFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { phoneFocus.requestFocus() } }
 
@@ -182,28 +196,12 @@ private fun QrStep(payload: String?, error: String?, onUsePhone: () -> Unit) {
         textAlign = TextAlign.Center
     )
 
-    // QR + passo a passo do Telegram lado a lado.
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val qr = remember(payload) { payload?.let { generateQrBitmap(it, 400) } }
-        Box(
-            modifier = Modifier
-                .size(200.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.White),
-            contentAlignment = Alignment.Center
-        ) {
-            if (qr != null) {
-                Image(qr.asImageBitmap(), contentDescription = "QR Code", modifier = Modifier.size(180.dp))
-            } else {
-                CircularProgressIndicator(color = Color.Black)
-            }
-        }
+    val qr = remember(payload) { payload?.let { generateQrBitmap(it, 400) } }
+    val qrBoxSize = if (compact) 184.dp else 200.dp
+    val qrImageSize = if (compact) 164.dp else 180.dp
+    val instructions: @Composable (Modifier) -> Unit = { modifier ->
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
@@ -220,6 +218,41 @@ private fun QrStep(payload: String?, error: String?, onUsePhone: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (qr != null) BRAND else Color(0xFF8A8A8A)
             )
+        }
+    }
+    val qrContent: @Composable () -> Unit = {
+        Box(
+            modifier = Modifier
+                .size(qrBoxSize)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White),
+            contentAlignment = Alignment.Center
+        ) {
+            if (qr != null) {
+                Image(qr.asImageBitmap(), contentDescription = "QR Code", modifier = Modifier.size(qrImageSize))
+            } else {
+                CircularProgressIndicator(color = Color.Black)
+            }
+        }
+    }
+
+    if (compact) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            qrContent()
+            instructions(Modifier.fillMaxWidth())
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            qrContent()
+            instructions(Modifier.weight(1f))
         }
     }
 

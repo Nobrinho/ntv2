@@ -56,9 +56,9 @@ data class MovieMeta(
  */
 object MovieMetadataParser {
 
-    private const val TMDB_POSTER = "https://image.tmdb.org/t/p/w780"
-    private const val TMDB_BACKDROP = "https://image.tmdb.org/t/p/w1280"
-    private const val TMDB_PROFILE = "https://image.tmdb.org/t/p/w185"
+    private const val TMDB_POSTER = "https://image.tmdb.org/t/p/w342"
+    private const val TMDB_BACKDROP = "https://image.tmdb.org/t/p/w780"
+    private const val TMDB_PROFILE = "https://image.tmdb.org/t/p/w92"
 
     private val TITLE_KEYS = setOf("filme", "titulo", "title")
     private val ORIGINAL_KEYS = setOf("original")

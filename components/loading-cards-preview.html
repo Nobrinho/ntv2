@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preview de Loadings para Cards</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --line: #dfe4ea;
+      --text: #17202a;
+      --muted: #64748b;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 48px;
+    }
+
+    header {
+      margin-bottom: 28px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .intro {
+      margin: 0;
+      max-width: 760px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .option {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .preview-area {
+      display: grid;
+      place-items: center;
+      min-height: 320px;
+      padding: 24px;
+      background:
+        linear-gradient(135deg, rgba(15, 118, 110, 0.10), rgba(226, 232, 240, 0.45)),
+        #eef2f6;
+    }
+
+    .description {
+      padding: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .description h2 {
+      margin: 0 0 8px;
+      font-size: 19px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .description p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .demo-card {
+      width: min(100%, 285px);
+      min-height: 252px;
+      background: #fff;
+      border: 1px solid #dfe4ea;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.12);
+    }
+
+    .demo-image {
+      height: 138px;
+      background:
+        linear-gradient(135deg, rgba(15, 118, 110, 0.70), rgba(37, 99, 235, 0.60)),
+        linear-gradient(45deg, #cbd5e1, #f8fafc);
+    }
+
+    .demo-body {
+      padding: 14px;
+    }
+
+    .demo-title {
+      height: 19px;
+      width: 72%;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      background: #17202a;
+    }
+
+    .demo-line {
+      height: 13px;
+      margin-bottom: 8px;
+      border-radius: 5px;
+      background: #cbd5e1;
+    }
+
+    .demo-line:nth-child(3) {
+      width: 86%;
+    }
+
+    .demo-line.short {
+      width: 58%;
+    }
+
+    .skeleton-card {
+      padding: 14px;
+    }
+
+    .skeleton {
+      background: linear-gradient(90deg, #e5e7eb 25%, #f8fafc 42%, #e5e7eb 62%);
+      background-size: 220% 100%;
+      animation: shimmer 1.15s ease-in-out infinite;
+      border-radius: 6px;
+    }
+
+    .skeleton.image {
+      height: 138px;
+      margin-bottom: 14px;
+    }
+
+    .skeleton.title {
+      height: 19px;
+      width: 72%;
+      margin-bottom: 10px;
+    }
+
+    .skeleton.text {
+      height: 13px;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+
+    .skeleton.text.short {
+      width: 58%;
+    }
+
+    .pulse-card {
+      animation: pulse 1.3s ease-in-out infinite;
+    }
+
+    .overlay-card {
+      position: relative;
+    }
+
+    .overlay-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 255, 255, 0.74);
+      backdrop-filter: blur(2px);
+    }
+
+    .overlay-card::before {
+      content: "";
+      position: absolute;
+      z-index: 1;
+      top: 50%;
+      left: 50%;
+      width: 32px;
+      height: 32px;
+      border: 3px solid #cbd5e1;
+      border-top-color: #0f766e;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      animation: spin 0.85s linear infinite;
+    }
+
+    .wave-card {
+      padding: 14px;
+    }
+
+    .wave {
+      position: relative;
+      overflow: hidden;
+      background: #e2e8f0;
+      border-radius: 6px;
+    }
+
+    .wave::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+      animation: wave 1.45s linear infinite;
+    }
+
+    .wave.avatar {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      margin-bottom: 16px;
+    }
+
+    .wave.line {
+      height: 14px;
+      margin-bottom: 10px;
+    }
+
+    .wave.line.title {
+      height: 20px;
+      width: 78%;
+    }
+
+    .wave.line.short {
+      width: 54%;
+    }
+
+    .stagger-card {
+      padding: 14px;
+    }
+
+    .stagger {
+      height: 14px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      background: #dbe3ec;
+      animation: staggerPulse 1.25s ease-in-out infinite;
+    }
+
+    .stagger.hero {
+      height: 120px;
+      margin-bottom: 14px;
+    }
+
+    .stagger.title {
+      height: 20px;
+      width: 74%;
+      animation-delay: 0.1s;
+    }
+
+    .stagger:nth-child(3) {
+      animation-delay: 0.2s;
+    }
+
+    .stagger:nth-child(4) {
+      width: 82%;
+      animation-delay: 0.3s;
+    }
+
+    .stagger.short {
+      width: 48%;
+      animation-delay: 0.4s;
+    }
+
+    .progress-card {
+      position: relative;
+    }
+
+    .progress-card::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 5px;
+      background: linear-gradient(90deg, #0f766e, #2563eb);
+      transform-origin: left;
+      animation: loadBar 2.2s ease-in-out infinite;
+    }
+
+    .dots-card {
+      display: grid;
+      place-items: center;
+      min-height: 252px;
+      padding: 22px;
+      text-align: center;
+    }
+
+    .dots {
+      display: inline-flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .dots span {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #0f766e;
+      animation: bounce 0.9s ease-in-out infinite;
+    }
+
+    .dots span:nth-child(2) {
+      animation-delay: 0.12s;
+    }
+
+    .dots span:nth-child(3) {
+      animation-delay: 0.24s;
+    }
+
+    .dots-label {
+      margin: 0;
+      color: #475569;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .blur-card {
+      filter: blur(3px);
+      opacity: 0.78;
+      animation: breathe 1.6s ease-in-out infinite;
+    }
+
+    .poster-card {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 14px;
+      min-height: 180px;
+      padding: 14px;
+    }
+
+    .poster-block {
+      min-height: 150px;
+      border-radius: 7px;
+      background:
+        linear-gradient(90deg, #dbe3ec 25%, #f8fafc 45%, #dbe3ec 65%);
+      background-size: 220% 100%;
+      animation: shimmer 1.25s ease-in-out infinite;
+    }
+
+    .poster-copy {
+      padding-top: 4px;
+    }
+
+    .poster-copy .skeleton.title {
+      width: 88%;
+    }
+
+    .poster-copy .skeleton.text.short {
+      width: 68%;
+    }
+
+    .image-loader-card {
+      position: relative;
+    }
+
+    .image-loader-card .demo-image {
+      position: relative;
+      overflow: hidden;
+      background: #dbe3ec;
+    }
+
+    .image-loader-card .demo-image::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, 0.78) 46%, transparent 72%);
+      transform: translateX(-100%);
+      animation: wave 1.25s linear infinite;
+    }
+
+    .compact-list-card {
+      padding: 14px;
+    }
+
+    .compact-row {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #eef2f6;
+    }
+
+    .compact-row:last-child {
+      border-bottom: 0;
+    }
+
+    .compact-dot {
+      width: 42px;
+      height: 42px;
+      border-radius: 7px;
+    }
+
+    .compact-copy .skeleton.text {
+      margin-bottom: 6px;
+    }
+
+    .dark-card {
+      padding: 14px;
+      background: #111827;
+      border-color: #243244;
+    }
+
+    .dark-card .skeleton {
+      background: linear-gradient(90deg, #263244 25%, #3f4f67 42%, #263244 62%);
+      background-size: 220% 100%;
+    }
+
+    .chips-card {
+      padding: 14px;
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .chip-skeleton {
+      width: 58px;
+      height: 26px;
+      border-radius: 6px;
+    }
+
+    .chip-skeleton.long {
+      width: 86px;
+    }
+
+    .timeout-card {
+      display: grid;
+      place-items: center;
+      min-height: 252px;
+      padding: 22px;
+      text-align: center;
+    }
+
+    .timeout-icon {
+      display: grid;
+      place-items: center;
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 14px;
+      border-radius: 50%;
+      background: #fff7ed;
+      color: #c2410c;
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .timeout-title {
+      margin: 0 0 6px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .timeout-text {
+      margin: 0;
+      color: #64748b;
+      font-size: 13px;
+    }
+
+    .reveal-card {
+      padding: 14px;
+    }
+
+    .reveal-card .skeleton {
+      animation: revealFade 2.4s ease-in-out infinite;
+    }
+
+    .reveal-card .skeleton:nth-child(2) {
+      animation-delay: 0.14s;
+    }
+
+    .reveal-card .skeleton:nth-child(3) {
+      animation-delay: 0.28s;
+    }
+
+    .reveal-card .skeleton:nth-child(4) {
+      animation-delay: 0.42s;
+    }
+
+    .reveal-card .skeleton:nth-child(5) {
+      animation-delay: 0.56s;
+    }
+
+    @keyframes shimmer {
+      to {
+        background-position: -220% 0;
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.48;
+      }
+    }
+
+    @keyframes spin {
+      to {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
+    }
+
+    @keyframes wave {
+      to {
+        transform: translateX(100%);
+      }
+    }
+
+    @keyframes staggerPulse {
+      0%, 100% {
+        opacity: 0.58;
+      }
+
+      50% {
+        opacity: 1;
+      }
+    }
+
+    @keyframes loadBar {
+      0% {
+        transform: scaleX(0.08);
+      }
+
+      55% {
+        transform: scaleX(0.72);
+      }
+
+      100% {
+        transform: scaleX(1);
+      }
+    }
+
+    @keyframes bounce {
+      0%, 80%, 100% {
+        transform: translateY(0);
+        opacity: 0.45;
+      }
+
+      40% {
+        transform: translateY(-9px);
+        opacity: 1;
+      }
+    }
+
+    @keyframes breathe {
+      0%, 100% {
+        opacity: 0.72;
+      }
+
+      50% {
+        opacity: 0.9;
+      }
+    }
+
+    @keyframes revealFade {
+      0%, 100% {
+        opacity: 0.35;
+        transform: translateY(3px);
+      }
+
+      40%, 70% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    @media (max-width: 880px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .preview-area {
+        min-height: 280px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Estilos de loading para cards</h1>
+      <p class="intro">Preview visual com a descricao exata de cada estilo para voce escolher qual combina melhor com a experiencia do projeto. As opcoes seguem boas praticas comuns de UI: usar skeleton quando o formato do conteudo e previsivel, spinner para espera curta e barra apenas quando houver progresso real.</p>
+    </header>
+
+    <section class="grid" aria-label="Opcoes de loading para cards">
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card skeleton-card" aria-label="Card em carregamento com skeleton shimmer">
+            <div class="skeleton image"></div>
+            <div class="skeleton title"></div>
+            <div class="skeleton text"></div>
+            <div class="skeleton text"></div>
+            <div class="skeleton text short"></div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>1. Skeleton com shimmer</h2>
+          <p>Mostra blocos cinza no formato real do conteudo enquanto os dados carregam. O brilho horizontal indica atividade e preserva o tamanho do card, evitando pulos no layout.</p>
+          <span class="tag">Melhor escolha geral</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card pulse-card" aria-label="Card em carregamento com pulse">
+            <div class="demo-image"></div>
+            <div class="demo-body">
+              <div class="demo-title"></div>
+              <div class="demo-line"></div>
+              <div class="demo-line"></div>
+              <div class="demo-line short"></div>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>2. Pulse discreto</h2>
+          <p>O card inteiro alterna suavemente entre opacidade normal e reduzida. E simples, leve e funciona bem quando o card ja tem uma estrutura visual pronta ou dados parciais.</p>
+          <span class="tag">Mais simples</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card overlay-card" aria-label="Card em carregamento com overlay e spinner">
+            <div class="demo-image"></div>
+            <div class="demo-body">
+              <div class="demo-title"></div>
+              <div class="demo-line"></div>
+              <div class="demo-line"></div>
+              <div class="demo-line short"></div>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>3. Overlay com spinner</h2>
+          <p>Mantem o card visivel, aplica uma camada clara por cima e exibe um spinner central. E indicado para recarregar ou atualizar um card existente sem esconder totalmente o conteudo anterior.</p>
+          <span class="tag">Melhor para atualizar</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card wave-card" aria-label="Card em carregamento com skeleton wave e avatar">
+            <div class="wave avatar"></div>
+            <div class="wave line title"></div>
+            <div class="wave line"></div>
+            <div class="wave line"></div>
+            <div class="wave line short"></div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>4. Skeleton wave com avatar</h2>
+          <p>Usa uma faixa de luz atravessando placeholders de avatar, titulo e texto. E ideal para cards de perfil, comentarios, autores ou qualquer item que tenha imagem pequena e informacoes ao lado ou abaixo.</p>
+          <span class="tag">Perfis e comentarios</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card stagger-card" aria-label="Card em carregamento com skeleton em pulsos alternados">
+            <div class="stagger hero"></div>
+            <div class="stagger title"></div>
+            <div class="stagger"></div>
+            <div class="stagger"></div>
+            <div class="stagger short"></div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>5. Skeleton em cascata</h2>
+          <p>Os blocos pulsam em tempos ligeiramente diferentes, criando uma sensacao de carregamento por etapas. Funciona bem quando varios cards aparecem juntos e voce quer movimento mais discreto que o shimmer.</p>
+          <span class="tag">Movimento suave</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card progress-card" aria-label="Card em carregamento com barra de progresso inferior">
+            <div class="demo-image"></div>
+            <div class="demo-body">
+              <div class="demo-title"></div>
+              <div class="demo-line"></div>
+              <div class="demo-line"></div>
+              <div class="demo-line short"></div>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>6. Barra de progresso no card</h2>
+          <p>Mantem o card montado e mostra uma barra na base indicando andamento. Deve ser usado quando o sistema consegue medir progresso real, como upload, processamento, importacao ou geracao de conteudo.</p>
+          <span class="tag">Progresso mensuravel</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card dots-card" aria-label="Card em carregamento com pontos saltando">
+            <div>
+              <div class="dots" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <p class="dots-label">Carregando conteudo</p>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>7. Pontos saltando</h2>
+          <p>Mostra tres pontos animados com uma mensagem curta. E indicado para espera rapida ou estados pequenos, mas nao comunica qual conteudo esta chegando e pode parecer generico em grids grandes.</p>
+          <span class="tag">Espera curta</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card blur-card" aria-label="Card existente desfocado durante atualizacao">
+            <div class="demo-image"></div>
+            <div class="demo-body">
+              <div class="demo-title"></div>
+              <div class="demo-line"></div>
+              <div class="demo-line"></div>
+              <div class="demo-line short"></div>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>8. Conteudo anterior desfocado</h2>
+          <p>Mantem o ultimo conteudo visivel, aplica leve blur e reduz a opacidade enquanto atualiza. E bom para refresh automatico ou filtros, quando voce quer preservar contexto sem prometer que os dados ja estao atuais.</p>
+          <span class="tag">Refresh com contexto</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card poster-card" aria-label="Card em carregamento para layout de poster e detalhes">
+            <div class="poster-block"></div>
+            <div class="poster-copy">
+              <div class="skeleton title"></div>
+              <div class="skeleton text"></div>
+              <div class="skeleton text"></div>
+              <div class="skeleton text"></div>
+              <div class="skeleton text short"></div>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>9. Poster + detalhes</h2>
+          <p>Reserva uma coluna vertical para imagem de capa e outra para textos. E a melhor variacao para cards de filmes, series, videos ou catalogos, porque imita exatamente a estrutura final do conteudo.</p>
+          <span class="tag">Filmes e catalogos</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card image-loader-card" aria-label="Card com imagem carregando e texto ja disponivel">
+            <div class="demo-image"></div>
+            <div class="demo-body">
+              <div class="demo-title"></div>
+              <div class="demo-line"></div>
+              <div class="demo-line short"></div>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>10. Imagem carregando</h2>
+          <p>Deixa o texto do card pronto e aplica shimmer apenas na area da imagem. E ideal quando titulo, nota ou metadados chegam antes do poster, capa ou thumbnail.</p>
+          <span class="tag">Midia atrasada</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card compact-list-card" aria-label="Card com lista compacta em carregamento">
+            <div class="compact-row">
+              <div class="skeleton compact-dot"></div>
+              <div class="compact-copy">
+                <div class="skeleton text"></div>
+                <div class="skeleton text short"></div>
+              </div>
+            </div>
+            <div class="compact-row">
+              <div class="skeleton compact-dot"></div>
+              <div class="compact-copy">
+                <div class="skeleton text"></div>
+                <div class="skeleton text short"></div>
+              </div>
+            </div>
+            <div class="compact-row">
+              <div class="skeleton compact-dot"></div>
+              <div class="compact-copy">
+                <div class="skeleton text"></div>
+                <div class="skeleton text short"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>11. Lista compacta</h2>
+          <p>Representa varios itens pequenos dentro de um mesmo card, com miniatura e duas linhas por item. Funciona bem para rankings, episodios, resultados de busca ou sugestoes relacionadas.</p>
+          <span class="tag">Listas internas</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card dark-card" aria-label="Card escuro em carregamento com shimmer">
+            <div class="skeleton image"></div>
+            <div class="skeleton title"></div>
+            <div class="skeleton text"></div>
+            <div class="skeleton text"></div>
+            <div class="skeleton text short"></div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>12. Skeleton em tema escuro</h2>
+          <p>Usa placeholders com contraste reduzido sobre fundo escuro. E a opcao correta para telas dark mode, evitando blocos claros demais que chamam mais atencao que o conteudo final.</p>
+          <span class="tag">Dark mode</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card chips-card" aria-label="Card com chips e metadados em carregamento">
+            <div class="skeleton image"></div>
+            <div class="skeleton title"></div>
+            <div class="skeleton text"></div>
+            <div class="chip-row">
+              <div class="skeleton chip-skeleton"></div>
+              <div class="skeleton chip-skeleton long"></div>
+              <div class="skeleton chip-skeleton"></div>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>13. Metadados em chips</h2>
+          <p>Inclui placeholders para generos, tags, duracao, qualidade ou status. E bom quando os cards finais exibem pequenas etiquetas alem do titulo e da descricao.</p>
+          <span class="tag">Tags e generos</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card timeout-card" aria-label="Card com estado de demora no carregamento">
+            <div>
+              <div class="timeout-icon">!</div>
+              <p class="timeout-title">Demorando mais que o normal</p>
+              <p class="timeout-text">Mostra que ainda ha tentativa ativa, mas prepara o usuario para uma possivel falha.</p>
+            </div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>14. Loading com aviso de demora</h2>
+          <p>Depois de alguns segundos, troca o loading silencioso por uma mensagem de espera prolongada. E util para APIs instaveis, consultas externas ou tarefas que podem travar.</p>
+          <span class="tag">Timeout amigavel</span>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="preview-area">
+          <div class="demo-card reveal-card" aria-label="Card em carregamento com revelacao progressiva">
+            <div class="skeleton image"></div>
+            <div class="skeleton title"></div>
+            <div class="skeleton text"></div>
+            <div class="skeleton text"></div>
+            <div class="skeleton text short"></div>
+          </div>
+        </div>
+        <div class="description">
+          <h2>15. Revelacao progressiva</h2>
+          <p>Os elementos aparecem em sequencia, simulando que partes do card estao chegando aos poucos. Combina com carregamento incremental, streaming de resposta ou montagem por etapas.</p>
+          <span class="tag">Incremental</span>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

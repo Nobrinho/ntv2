@@ -79,6 +79,7 @@ fun SettingsScreen(
     castPhotos: Boolean,
     minDurationMinutes: Int,
     maxCards: Int,
+    maxCardsLimit: Int? = null,
     onToggleCovers: (Boolean) -> Unit,
     onToggleAnimations: (Boolean) -> Unit,
     onToggleCastPhotos: (Boolean) -> Unit,
@@ -157,6 +158,7 @@ fun SettingsScreen(
                     )
                     MaxCardsCard(
                         value = maxCards,
+                        limit = maxCardsLimit,
                         onChange = onChangeMaxCards
                     )
                     NavCard(
@@ -307,18 +309,28 @@ private val MAX_CARDS_STEPS = listOf(60, 90, 120, 150, 200, 250, 300)
 @Composable
 private fun MaxCardsCard(
     value: Int,
+    limit: Int?,
     onChange: (Int) -> Unit
 ) {
-    val idx = MAX_CARDS_STEPS.indexOfFirst { it >= value }.let { if (it < 0) MAX_CARDS_STEPS.lastIndex else it }
+    val steps = remember(limit) {
+        limit?.let { max -> MAX_CARDS_STEPS.filter { it <= max }.ifEmpty { listOf(max) } } ?: MAX_CARDS_STEPS
+    }
+    val effectiveValue = limit?.let { value.coerceAtMost(it) } ?: value
+    val idx = steps.indexOfFirst { it >= effectiveValue }.let { if (it < 0) steps.lastIndex else it }
+    val subtitle = if (limit != null) {
+        "Limitado automaticamente neste aparelho para evitar travamentos."
+    } else {
+        "Limita quantos itens ficam carregados na biblioteca."
+    }
     StepperSettingCard(
         icon = Icons.Filled.ViewModule,
         title = "Cards na grade",
-        subtitle = "Limita quantos itens ficam carregados na biblioteca.",
-        valueText = "$value",
+        subtitle = subtitle,
+        valueText = "$effectiveValue",
         canDecrease = idx > 0,
-        canIncrease = idx < MAX_CARDS_STEPS.lastIndex,
-        onDecrease = { if (idx > 0) onChange(MAX_CARDS_STEPS[idx - 1]) },
-        onIncrease = { if (idx < MAX_CARDS_STEPS.lastIndex) onChange(MAX_CARDS_STEPS[idx + 1]) }
+        canIncrease = idx < steps.lastIndex,
+        onDecrease = { if (idx > 0) onChange(steps[idx - 1]) },
+        onIncrease = { if (idx < steps.lastIndex) onChange(steps[idx + 1]) }
     )
 }
 

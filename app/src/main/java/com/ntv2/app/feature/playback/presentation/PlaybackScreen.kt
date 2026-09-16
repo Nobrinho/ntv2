@@ -39,13 +39,18 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Brightness6
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Hd
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Sd
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -66,6 +71,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -77,6 +83,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -102,7 +109,7 @@ private const val DPAD_SEEK_MS = 10_000L
 private const val CONTROLS_TIMEOUT_MS = 6_000L
 private const val GESTURE_ADJUSTMENT_TIMEOUT_MS = 900L
 
-private enum class TrackPicker { Audio, Subtitle }
+private enum class TrackPicker { Audio, Subtitle, Settings }
 private enum class PlayerGestureTarget { Volume, Brightness }
 
 private data class GestureAdjustment(
@@ -138,7 +145,7 @@ fun PlaybackScreen(
     val videoIsFullscreen = !(adaptive.usePhoneLayout && adaptive.isPortrait)
     val compactControls = adaptive.usePhoneLayout && adaptive.isPortrait
     val videoHeightDp = if (adaptive.usePhoneLayout && adaptive.isPortrait) {
-        (configuration.screenWidthDp * 9f / 16f).dp
+        configuration.screenHeightDp.dp
     } else {
         configuration.screenHeightDp.dp
     }
@@ -411,6 +418,15 @@ fun PlaybackScreen(
                         onToggle = { togglePlay(); controlsNonce++ },
                         onOpenAudio = { trackPicker = TrackPicker.Audio },
                         onOpenSubtitle = { trackPicker = TrackPicker.Subtitle },
+                        onToggleSubtitle = {
+                            val subtitles = state.snapshot.tracks.subtitles
+                            if (subtitles.isNotEmpty()) {
+                                val selected = subtitles.firstOrNull { it.isSelected }
+                                viewModel.onAction(PlayerScreenAction.SelectSubtitle(if (selected == null) subtitles.first().id else null))
+                                controlsNonce++
+                            }
+                        },
+                        onOpenSettings = { trackPicker = TrackPicker.Settings },
                         onFullscreen = {
                             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                             controlsNonce++
@@ -422,20 +438,30 @@ fun PlaybackScreen(
 
         trackPicker?.let { picker ->
             val tracks = state.snapshot.tracks
-            TrackPickerOverlay(
-                title = if (picker == TrackPicker.Audio) "Áudio" else "Legenda",
-                options = if (picker == TrackPicker.Audio) tracks.audios else tracks.subtitles,
-                allowOff = picker == TrackPicker.Subtitle,
-                onSelect = { id ->
-                    when (picker) {
-                        TrackPicker.Audio -> id?.let { viewModel.onAction(PlayerScreenAction.SelectAudio(it)) }
-                        TrackPicker.Subtitle -> viewModel.onAction(PlayerScreenAction.SelectSubtitle(id))
-                    }
-                    trackPicker = null
-                    controlsNonce++
-                },
-                onDismiss = { trackPicker = null; controlsNonce++ }
-            )
+            when (picker) {
+                TrackPicker.Settings -> PlayerSettingsOverlay(
+                    tracks = tracks,
+                    onOpenAudio = { trackPicker = TrackPicker.Audio; controlsNonce++ },
+                    onOpenSubtitle = { trackPicker = TrackPicker.Subtitle; controlsNonce++ },
+                    onDismiss = { trackPicker = null; controlsNonce++ }
+                )
+                TrackPicker.Audio,
+                TrackPicker.Subtitle -> TrackPickerOverlay(
+                    title = if (picker == TrackPicker.Audio) "Áudio" else "Legendas",
+                    options = if (picker == TrackPicker.Audio) tracks.audios else tracks.subtitles,
+                    allowOff = picker == TrackPicker.Subtitle,
+                    onSelect = { id ->
+                        when (picker) {
+                            TrackPicker.Audio -> id?.let { viewModel.onAction(PlayerScreenAction.SelectAudio(it)) }
+                            TrackPicker.Subtitle -> viewModel.onAction(PlayerScreenAction.SelectSubtitle(id))
+                            TrackPicker.Settings -> Unit
+                        }
+                        trackPicker = null
+                        controlsNonce++
+                    },
+                    onDismiss = { trackPicker = null; controlsNonce++ }
+                )
+            }
         }
     }
 }
@@ -634,8 +660,59 @@ private fun StreamingControlsOverlay(
     onToggle: () -> Unit,
     onOpenAudio: () -> Unit,
     onOpenSubtitle: () -> Unit,
+    onToggleSubtitle: () -> Unit,
+    onOpenSettings: () -> Unit,
     onFullscreen: () -> Unit
 ) {
+    if (compact) {
+        PortraitControlsOverlay(
+            modifier = modifier,
+            title = title,
+            tracks = tracks,
+            isPlaying = isPlaying,
+            positionMs = positionMs,
+            bufferedMs = bufferedMs,
+            durationMs = durationMs,
+            scrubberFocus = scrubberFocus,
+            showFullscreen = showFullscreen,
+            onBack = onBack,
+            onDismiss = onDismiss,
+            onInteract = onInteract,
+            onSeek = onSeek,
+            onSeekTo = onSeekTo,
+            onRestart = onRestart,
+            onToggle = onToggle,
+            onOpenAudio = onOpenAudio,
+            onOpenSubtitle = onOpenSubtitle,
+            onToggleSubtitle = onToggleSubtitle,
+            onOpenSettings = onOpenSettings,
+            onFullscreen = onFullscreen
+        )
+        return
+    }
+
+    LandscapeControlsOverlay(
+        modifier = modifier,
+        title = title,
+        tracks = tracks,
+        isPlaying = isPlaying,
+        positionMs = positionMs,
+        bufferedMs = bufferedMs,
+        durationMs = durationMs,
+        scrubberFocus = scrubberFocus,
+        showFullscreen = showFullscreen,
+        onBack = onBack,
+        onDismiss = onDismiss,
+        onInteract = onInteract,
+        onSeek = onSeek,
+        onSeekTo = onSeekTo,
+        onToggle = onToggle,
+        onToggleSubtitle = onToggleSubtitle,
+        onOpenSettings = onOpenSettings,
+        onFullscreen = onFullscreen
+    )
+    return
+
     val playSize = if (compact) 58.dp else 76.dp
     val playIconSize = if (compact) 32.dp else 42.dp
     val seekPillWidth = if (compact) 52.dp else 64.dp
@@ -794,6 +871,389 @@ private fun StreamingControlsOverlay(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LandscapeControlsOverlay(
+    modifier: Modifier,
+    title: String,
+    tracks: MediaTracksInfo,
+    isPlaying: Boolean,
+    positionMs: Long,
+    bufferedMs: Long,
+    durationMs: Long,
+    scrubberFocus: FocusRequester,
+    showFullscreen: Boolean,
+    onBack: () -> Unit,
+    onDismiss: () -> Unit,
+    onInteract: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onToggle: () -> Unit,
+    onToggleSubtitle: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onFullscreen: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .background(Color(0x26000000))
+            .clickable(onClick = onDismiss)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.30f)
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color(0xD9000000),
+                        0.72f to Color(0x99000000),
+                        1f to Color.Transparent
+                    )
+                )
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.32f)
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.28f to Color(0x99000000),
+                        1f to Color(0xF2000000)
+                    )
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 88.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PortraitTopIcon(Icons.Filled.Close, "Fechar", onBack)
+                    PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onDismiss)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PortraitTopIcon(Icons.Filled.Cast, "Transmitir", onInteract, enabled = false)
+                    PortraitTopIcon(
+                        Icons.Filled.ClosedCaption,
+                        "Ligar ou desligar legenda",
+                        { onToggleSubtitle(); onInteract() },
+                        enabled = tracks.subtitles.isNotEmpty(),
+                        active = tracks.subtitles.any { it.isSelected }
+                    )
+                    PortraitTextAction("1x", "Velocidade", onInteract)
+                    PortraitTopIcon(
+                        Icons.Filled.Settings,
+                        "Opções",
+                        { onOpenSettings(); onInteract() },
+                        enabled = tracks.audios.size > 1 || tracks.subtitles.isNotEmpty()
+                    )
+                }
+            }
+
+            Text(
+                text = title,
+                color = Color.White,
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Row(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalArrangement = Arrangement.spacedBy(72.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PortraitSeekButton("-10") { onSeek(-DPAD_SEEK_MS); onInteract() }
+            OverlayRoundButton(
+                icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
+                size = 86.dp,
+                iconSize = 46.dp,
+                strong = false,
+                onClick = { onToggle(); onInteract() }
+            )
+            PortraitSeekButton("+10") { onSeek(DPAD_SEEK_MS); onInteract() }
+        }
+
+        if (showFullscreen) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 94.dp, top = 70.dp)
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onFullscreen(); onInteract() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Fullscreen, contentDescription = "Tela cheia", tint = Color.White, modifier = Modifier.size(30.dp))
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = 88.dp, end = 88.dp, bottom = 34.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Scrubber(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .focusRequester(scrubberFocus),
+                positionMs = positionMs,
+                bufferedMs = bufferedMs,
+                durationMs = durationMs,
+                onSeek = { delta -> onSeek(delta); onInteract() },
+                onSeekTo = { position -> onSeekTo(position); onInteract() }
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(formatTime(positionMs), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                val remaining = (durationMs - positionMs).coerceAtLeast(0L)
+                Text("-${formatTime(remaining)}", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortraitControlsOverlay(
+    modifier: Modifier,
+    title: String,
+    tracks: MediaTracksInfo,
+    isPlaying: Boolean,
+    positionMs: Long,
+    bufferedMs: Long,
+    durationMs: Long,
+    scrubberFocus: FocusRequester,
+    showFullscreen: Boolean,
+    onBack: () -> Unit,
+    onDismiss: () -> Unit,
+    onInteract: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onRestart: () -> Unit,
+    onToggle: () -> Unit,
+    onOpenAudio: () -> Unit,
+    onOpenSubtitle: () -> Unit,
+    onToggleSubtitle: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onFullscreen: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .background(Color(0x33000000))
+            .clickable(onClick = onDismiss)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.36f)
+                .background(Color(0xF2050A12))
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.34f)
+                .background(Color(0xF2050A12))
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 26.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PortraitTopIcon(Icons.Filled.Close, "Fechar", onBack)
+                PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onDismiss)
+                PortraitTopIcon(Icons.Filled.Cast, "Transmitir", onInteract, enabled = false)
+                    PortraitTopIcon(
+                        Icons.Filled.ClosedCaption,
+                        "Legenda",
+                        { onToggleSubtitle(); onInteract() },
+                        enabled = tracks.subtitles.isNotEmpty(),
+                        active = tracks.subtitles.any { it.isSelected }
+                    )
+                PortraitTextAction("1x", "Velocidade", onInteract)
+                PortraitTopIcon(
+                    Icons.Filled.Settings,
+                    "Opções",
+                    { onOpenSettings(); onInteract() },
+                    enabled = tracks.audios.size > 1 || tracks.subtitles.isNotEmpty()
+                )
+            }
+
+            Text(
+                text = title,
+                color = Color.White,
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        if (showFullscreen) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 42.dp, bottom = 30.dp)
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onFullscreen(); onInteract() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Fullscreen,
+                    contentDescription = "Tela cheia",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 22.dp, vertical = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(26.dp)
+        ) {
+            Scrubber(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .focusRequester(scrubberFocus),
+                positionMs = positionMs,
+                bufferedMs = bufferedMs,
+                durationMs = durationMs,
+                onSeek = { delta -> onSeek(delta); onInteract() },
+                onSeekTo = { position -> onSeekTo(position); onInteract() }
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth().focusGroup(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PortraitSeekButton("-10") { onSeek(-DPAD_SEEK_MS); onInteract() }
+                OverlayRoundButton(
+                    icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
+                    size = 86.dp,
+                    iconSize = 46.dp,
+                    strong = false,
+                    onClick = { onToggle(); onInteract() }
+                )
+                PortraitSeekButton("+10") { onSeek(DPAD_SEEK_MS); onInteract() }
+            }
+
+            if (tracks.audios.size > 1) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OverlayChip(
+                        icon = Icons.Filled.Audiotrack,
+                        label = "Áudio",
+                        showLabel = false
+                    ) { onOpenAudio(); onInteract() }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortraitTopIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    active: Boolean = true
+) {
+    val tint = when {
+        !enabled -> Color(0x66FFFFFF)
+        active -> Color.White
+        else -> Color(0x66FFFFFF)
+    }
+
+    Icon(
+        icon,
+        contentDescription = contentDescription,
+        tint = tint,
+        modifier = Modifier
+            .size(34.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(2.dp)
+    )
+}
+
+@Composable
+private fun PortraitTextAction(
+    text: String,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    Text(
+        text = text,
+        color = Color.White,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+    )
+}
+
+@Composable
+private fun PortraitSeekButton(
+    label: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(62.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -1158,6 +1618,135 @@ private fun Scrubber(
 }
 
 @Composable
+private fun PlayerSettingsOverlay(
+    tracks: MediaTracksInfo,
+    onOpenAudio: () -> Unit,
+    onOpenSubtitle: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val selectedSubtitle = tracks.subtitles.firstOrNull { it.isSelected }?.label ?: "Desativadas"
+    val selectedAudio = tracks.audios.firstOrNull { it.isSelected }?.label ?: "Padrão"
+    val firstFocus = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    BackHandler(enabled = true) { onDismiss() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x66000000))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 580.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF1B1E22))
+                .clickable(onClick = {})
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(56.dp)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color(0x88FFFFFF))
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF343434))
+                    .padding(vertical = 12.dp)
+                    .focusGroup()
+            ) {
+                PlayerSettingsRow(
+                    icon = Icons.Filled.ClosedCaption,
+                    label = "Legendas",
+                    value = selectedSubtitle,
+                    enabled = tracks.subtitles.isNotEmpty(),
+                    modifier = Modifier.focusRequester(firstFocus),
+                    onClick = onOpenSubtitle
+                )
+                PlayerSettingsRow(
+                    icon = Icons.Filled.Audiotrack,
+                    label = "Áudio",
+                    value = selectedAudio,
+                    enabled = tracks.audios.size > 1,
+                    onClick = onOpenAudio
+                )
+                PlayerSettingsRow(
+                    icon = Icons.Filled.Hd,
+                    label = "Descrição de áudio",
+                    value = "Indisponível",
+                    enabled = false,
+                    onClick = {}
+                )
+                PlayerSettingsRow(
+                    icon = Icons.Filled.ClosedCaption,
+                    label = "Melhorar diálogo",
+                    value = "Indisponível",
+                    enabled = false,
+                    onClick = {}
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerSettingsRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val contentColor = if (enabled) Color.White else Color(0xFF9A9A9A)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .focusable(enabled)
+            .clickable(enabled = enabled, onClick = onClick)
+            .background(if (focused) Color(0x1FFFFFFF) else Color.Transparent)
+            .padding(horizontal = 26.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(30.dp))
+        Spacer(Modifier.width(18.dp))
+        Text(
+            text = label,
+            color = contentColor,
+            style = MaterialTheme.typography.titleLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            color = if (enabled) Color(0xFFBDBDBD) else Color(0xFF8C8C8C),
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (enabled) {
+            Spacer(Modifier.width(12.dp))
+            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.White, modifier = Modifier.size(34.dp))
+        }
+    }
+}
+
+@Composable
 private fun TrackPickerOverlay(
     title: String,
     options: List<MediaTrackOption>,
@@ -1193,7 +1782,7 @@ private fun TrackPickerOverlay(
                 if (allowOff) {
                     val noneSelected = options.none { it.isSelected }
                     TrackRow(
-                        label = "Desligar",
+                        label = "Desativadas",
                         selected = noneSelected,
                         modifier = Modifier.focusRequester(firstFocus),
                         onClick = { onSelect(null) }

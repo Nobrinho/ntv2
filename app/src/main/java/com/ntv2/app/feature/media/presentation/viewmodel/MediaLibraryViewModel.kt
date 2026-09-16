@@ -54,6 +54,7 @@ class MediaLibraryViewModel(
     private val settingsRepository: SettingsRepository,
     private val progressStore: PlaybackProgressStore,
     private val mediaDetailsCache: MediaDetailsCache,
+    private val maxCardsLimit: Int? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
@@ -226,13 +227,14 @@ class MediaLibraryViewModel(
         }
         viewModelScope.launch {
             settingsRepository.maxCards.collect { max ->
-                maxRetainedItems = max
+                val effectiveMax = maxCardsLimit?.let { max.coerceAtMost(it) } ?: max
+                maxRetainedItems = effectiveMax
                 // Aplica o novo teto imediatamente ao canal ativo (apara o excedente do topo).
                 var changed = false
                 channelItems.keys.toList().forEach { id ->
                     val items = channelItems[id] ?: return@forEach
-                    if (items.size > max) {
-                        channelItems[id] = items.takeLast(max)
+                    if (items.size > effectiveMax) {
+                        channelItems[id] = items.takeLast(effectiveMax)
                         changed = true
                     }
                 }
@@ -525,7 +527,8 @@ class MediaLibraryViewModelFactory(
     private val channelRepository: ChannelRepository,
     private val settingsRepository: SettingsRepository,
     private val progressStore: PlaybackProgressStore,
-    private val mediaDetailsCache: MediaDetailsCache
+    private val mediaDetailsCache: MediaDetailsCache,
+    private val maxCardsLimit: Int? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -535,7 +538,8 @@ class MediaLibraryViewModelFactory(
                 channelRepository = channelRepository,
                 settingsRepository = settingsRepository,
                 progressStore = progressStore,
-                mediaDetailsCache = mediaDetailsCache
+                mediaDetailsCache = mediaDetailsCache,
+                maxCardsLimit = maxCardsLimit
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

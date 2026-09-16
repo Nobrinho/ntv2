@@ -450,7 +450,9 @@ class RealTdlibGateway(
                         studio = posterMeta?.studio,
                         cast = posterMeta?.cast ?: emptyList(),
                         trailerUrl = posterMeta?.trailerUrl,
-                        tmdbId = posterMeta?.tmdbId,
+                        // Mantém o id mesmo se o pareamento por texto falhar (dedup por tmdbId
+                        // continua funcionando e o vínculo com o filme não se perde).
+                        tmdbId = posterMeta?.tmdbId ?: videoMeta.tmdbId,
                         category = posterMeta?.category,
                         collection = posterMeta?.collection,
                         tags = posterMeta?.tags

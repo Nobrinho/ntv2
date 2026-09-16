@@ -1,6 +1,8 @@
 ﻿package com.ntv2.app.core.navigation
 
 import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -70,6 +72,10 @@ fun AppNavHost(
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
+    val lowRamMaxCards = remember(context) {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        if (activityManager?.isLowRamDevice == true) 60 else null
+    }
     var showExitDialog by remember { mutableStateOf(false) }
     var openChannelPickerRequest by remember { mutableStateOf(0) }
     // Splash como OVERLAY: o app real (Login → Biblioteca) monta e carrega POR TRÁS enquanto a
@@ -161,12 +167,14 @@ fun AppNavHost(
                     channelRepository = appContainer.channelRepository,
                     settingsRepository = appContainer.settingsRepository,
                     progressStore = appContainer.playbackProgressStore,
-                    mediaDetailsCache = appContainer.mediaDetailsCache
+                    mediaDetailsCache = appContainer.mediaDetailsCache,
+                    maxCardsLimit = lowRamMaxCards
                 )
             )
             MediaLibraryScreen(
                 viewModel = mediaViewModel,
                 openChannelPickerRequest = openChannelPickerRequest,
+                lowRamPlaybackWarnings = lowRamMaxCards != null,
                 onOpenSettings = { navController.navigate(RoutePath.SETTINGS) },
                 onOpenPlaybackPlaceholder = { mediaId, fileId, title, channelName, durationSeconds, fileName, thumbnailPath ->
                     navController.navigate(
@@ -190,19 +198,23 @@ fun AppNavHost(
             val showCovers by settings.showCovers.collectAsState(initial = true)
             val animationsEnabled by settings.animationsEnabled.collectAsState(initial = true)
             val minDuration by settings.minDurationMinutes.collectAsState(initial = 15)
-            val maxCards by settings.maxCards.collectAsState(initial = 150)
+            val savedMaxCards by settings.maxCards.collectAsState(initial = 150)
+            val effectiveMaxCards = lowRamMaxCards?.let { savedMaxCards.coerceAtMost(it) } ?: savedMaxCards
             val castPhotos by settings.castPhotos.collectAsState(initial = true)
             SettingsScreen(
                 showCovers = showCovers,
                 animationsEnabled = animationsEnabled,
                 castPhotos = castPhotos,
                 minDurationMinutes = minDuration,
-                maxCards = maxCards,
+                maxCards = effectiveMaxCards,
+                maxCardsLimit = lowRamMaxCards,
                 onToggleCovers = { scope.launch { settings.updateShowCovers(it) } },
                 onToggleAnimations = { scope.launch { settings.updateAnimationsEnabled(it) } },
                 onToggleCastPhotos = { scope.launch { settings.updateCastPhotos(it) } },
                 onChangeMinDuration = { scope.launch { settings.updateMinDurationMinutes(it) } },
-                onChangeMaxCards = { scope.launch { settings.updateMaxCards(it) } },
+                onChangeMaxCards = { value ->
+                    scope.launch { settings.updateMaxCards(lowRamMaxCards?.let { value.coerceAtMost(it) } ?: value) }
+                },
                 onManageChannels = { navController.navigate(RoutePath.CHANNEL_SELECTION) },
                 onOpenListedChannels = {
                     openChannelPickerRequest += 1

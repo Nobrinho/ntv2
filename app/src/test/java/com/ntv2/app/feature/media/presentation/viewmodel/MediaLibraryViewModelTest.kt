@@ -184,7 +184,7 @@ class MediaLibraryViewModelTest {
     }
 
     @Test
-    fun `busca substitui a fonte pelos resultados do servidor`() = runTest(dispatcher) {
+    fun `busca popula searchResults com os resultados do servidor sem trocar a biblioteca`() = runTest(dispatcher) {
         val media = FakeMediaRepo().apply {
             listPages = { channelId, _ -> MediaPage(listOf(item("lib", channelId, 600, 1)), nextCursor = 0L) }
             searchPages = { channelId, query, _ -> MediaPage(listOf(item("found-$query", channelId, 600, 9)), nextCursor = 0L) }
@@ -197,7 +197,9 @@ class MediaLibraryViewModelTest {
         vm.onAction(MediaLibraryAction.SearchChanged("xyz"))
         advanceUntilIdle()
 
-        val titles = vm.uiState.value.sections.flatMap { it.items }.map { it.title }
-        assertTrue("esperava resultado de busca do servidor, veio $titles", titles.any { it.contains("found-xyz") })
+        // A busca virou um overlay de sugestões: alimenta searchResults, não substitui as sections.
+        val encontrados = vm.uiState.value.searchResults.map { it.title }
+        assertTrue("esperava resultado de busca do servidor, veio $encontrados", encontrados.any { it.contains("found-xyz") })
+        assertEquals("tlib", vm.uiState.value.sections[0].items[0].title)
     }
 }

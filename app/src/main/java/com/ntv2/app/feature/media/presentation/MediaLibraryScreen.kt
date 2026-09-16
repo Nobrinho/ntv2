@@ -13,8 +13,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.BringIntoViewSpec
-import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
@@ -53,20 +51,17 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
@@ -88,7 +83,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
@@ -128,6 +122,7 @@ import kotlin.math.roundToInt
 fun MediaLibraryScreen(
     viewModel: MediaLibraryViewModel,
     openChannelPickerRequest: Int,
+    lowRamPlaybackWarnings: Boolean,
     onOpenSettings: () -> Unit,
     onOpenPlaybackPlaceholder: (
         mediaId: String,
@@ -152,23 +147,11 @@ fun MediaLibraryScreen(
     // e o foco se perde (direcional depois "pula" pro último). Movemos o foco de forma explícita.
     val loadMoreFocus = remember { FocusRequester() }
     var loadMoreRequested by remember { mutableStateOf(false) }
-    // Identidade da fronteira antes do load (robusto ao corte do topo pelo teto de itens).
+    // Fronteira antes do load: guardamos o último item conhecido para achar o 1º novo por
+    // identidade (robusto ao corte do topo pelo teto de itens).
     var lastIdBeforeLoad by remember { mutableStateOf<String?>(null) }
-    var firstIdBeforeLoad by remember { mutableStateOf<String?>(null) }
-    val gridState = rememberLazyGridState()
-    // Suprime o bringIntoView SÓ no momento do "carregar mais": ao focar o 1º item novo, o Compose
-    // rolaria a tela para enquadrá-lo; suprimindo, a viewport fica 100% parada. Reativado logo após
-    // (a navegação normal por D-pad continua rolando a grade ao seguir o foco).
-    var suppressBringIntoView by remember { mutableStateOf(false) }
-    val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
+    val gridState = rememberLazyStaggeredGridState()
     val adaptive = rememberAdaptiveLayoutInfo()
-    val gridBringIntoViewSpec = remember(defaultBringIntoViewSpec) {
-        object : BringIntoViewSpec {
-            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
-                if (suppressBringIntoView) 0f
-                else defaultBringIntoViewSpec.calculateScrollDistance(offset, size, containerSize)
-        }
-    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -223,34 +206,19 @@ fun MediaLibraryScreen(
         viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
     }
 
-    // Após "Carregar mais": foca o 1º item novo (fronteira, achado por identidade). Se o topo NÃO
-    // foi cortado pelo teto, suprime o bringIntoView (viewport parada). Se foi cortado, deixa o
-    // bringIntoView reancorar na fronteira (evita salto — só ocorre ao passar do teto).
+    // Após "Carregar mais": leva a fronteira (1º item novo, achado por identidade) à vista e foca.
+    // No grid lazy o item novo pode ainda não estar composto — por isso o scrollToItem antes do
+    // requestFocus (ele também reancora a viewport na fronteira, mostrando o conteúdo novo).
     LaunchedEffect(state.loadMoreNonce) {
         if (!loadMoreRequested) return@LaunchedEffect
         val lastOldIndex = state.items.indexOfFirst { it.mediaId == lastIdBeforeLoad }
         val firstNew = if (lastOldIndex >= 0) state.items.getOrNull(lastOldIndex + 1) else null
         when {
             firstNew != null -> {
-                val firstNewIndex = lastOldIndex + 1
-                val trimmed = state.items.firstOrNull()?.mediaId != firstIdBeforeLoad
-                if (trimmed) {
-                    // Topo cortado: reancora suavemente na fronteira.
-                    gridState.scrollToItem(firstNewIndex)
-                    withFrameNanos { }
-                    withFrameNanos { }
-                    runCatching { cardFocusRequesters[firstNew.mediaId]?.requestFocus() }
-                } else {
-                    // Nada cortado: mantém a viewport 100% parada.
-                    suppressBringIntoView = true
-                    gridState.scrollToItem(firstNewIndex)
-                    withFrameNanos { }
-                    withFrameNanos { }
-                    runCatching { cardFocusRequesters[firstNew.mediaId]?.requestFocus() }
-                    withFrameNanos { }
-                    withFrameNanos { }
-                    suppressBringIntoView = false
-                }
+                gridState.scrollToItem(lastOldIndex + 1)
+                withFrameNanos { }
+                withFrameNanos { }
+                runCatching { cardFocusRequesters[firstNew.mediaId]?.requestFocus() }
                 loadMoreRequested = false
             }
             // Sem itens novos e sem mais páginas: foca o último item existente.
@@ -344,32 +312,30 @@ fun MediaLibraryScreen(
                     }
 
                     else -> {
-                        CompositionLocalProvider(LocalBringIntoViewSpec provides gridBringIntoViewSpec) {
-                            LazyMediaGrid(
-                                items = state.items,
-                                showCovers = state.showCovers,
-                                hasMore = state.hasMore,
-                                loadingMore = loadMoreRequested,
-                                state = gridState,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .then(if (useTvLayout) Modifier else Modifier.padding(bottom = 76.dp)),
-                                focusRequesterFor = { id ->
-                                    cardFocusRequesters.getOrPut(id) { FocusRequester() }
-                                },
-                                onCardFocused = { id ->
-                                    viewModel.onAction(MediaLibraryAction.VideoFocused(id))
-                                },
-                                onCardClick = { media -> detailsMedia = media },
-                                loadMoreFocus = loadMoreFocus,
-                                onLoadMore = {
-                                    lastIdBeforeLoad = state.items.lastOrNull()?.mediaId
-                                    firstIdBeforeLoad = state.items.firstOrNull()?.mediaId
-                                    loadMoreRequested = true
-                                    viewModel.onAction(MediaLibraryAction.LoadMore)
-                                }
-                            )
-                        }
+                        LazyMediaGrid(
+                            items = state.items,
+                            showCovers = state.showCovers,
+                            lowRamPlaybackWarnings = lowRamPlaybackWarnings,
+                            hasMore = state.hasMore,
+                            loadingMore = loadMoreRequested,
+                            state = gridState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(if (useTvLayout) Modifier else Modifier.padding(bottom = 76.dp)),
+                            focusRequesterFor = { id ->
+                                cardFocusRequesters.getOrPut(id) { FocusRequester() }
+                            },
+                            onCardFocused = { id ->
+                                viewModel.onAction(MediaLibraryAction.VideoFocused(id))
+                            },
+                            onCardClick = { media -> detailsMedia = media },
+                            loadMoreFocus = loadMoreFocus,
+                            onLoadMore = {
+                                lastIdBeforeLoad = state.items.lastOrNull()?.mediaId
+                                loadMoreRequested = true
+                                viewModel.onAction(MediaLibraryAction.LoadMore)
+                            }
+                        )
                     }
                 }
             }
@@ -390,6 +356,7 @@ fun MediaLibraryScreen(
                 media = media,
                 details = viewModel.detailsFor(media.mediaId),
                 showCastPhotos = state.castPhotos,
+                lowRamPlaybackWarnings = lowRamPlaybackWarnings,
                 onPlay = {
                     viewModel.onAction(MediaLibraryAction.OpenVideo(media))
                     detailsMedia = null
@@ -516,15 +483,7 @@ private fun durationLabel(durationSeconds: Int): String {
     }
 }
 
-/** Converte a altura do vídeo (px) em rótulo comercial de resolução (null se desconhecida). */
-private fun resolutionLabel(height: Int): String? = when {
-    height <= 0 -> null
-    height >= 2000 -> "4K"
-    height >= 1000 -> "1080p"
-    height >= 700 -> "720p"
-    height >= 460 -> "480p"
-    else -> "SD"
-}
+private fun MediaCardUi.needsLowRamPlaybackWarning(): Boolean = videoHeight >= 1000
 
 private val KEYBOARD_ROWS = listOf(
     "1234567890",
@@ -1017,9 +976,10 @@ private val CARD_TITLE_H = 56.dp
 private fun LazyMediaGrid(
     items: List<MediaCardUi>,
     showCovers: Boolean,
+    lowRamPlaybackWarnings: Boolean,
     hasMore: Boolean,
     loadingMore: Boolean,
-    state: LazyGridState,
+    state: LazyStaggeredGridState,
     focusRequesterFor: (String) -> FocusRequester,
     onCardFocused: (String) -> Unit,
     onCardClick: (MediaCardUi) -> Unit,
@@ -1029,12 +989,12 @@ private fun LazyMediaGrid(
 ) {
     BoxWithConstraints(modifier = modifier) {
         val columns = columnsForWidthDp(maxWidth.value)
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(columns),
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Fixed(columns),
             state = state,
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
-            verticalArrangement = Arrangement.spacedBy(GRID_GAP)
+            verticalItemSpacing = GRID_GAP
         ) {
             items(
                 items = items,
@@ -1044,9 +1004,9 @@ private fun LazyMediaGrid(
                 MediaCard(
                     media = media,
                     showCover = showCovers,
+                    showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning(),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(media.gridAspectRatio(showCovers))
                         .focusRequester(requester)
                         .onFocusChanged { if (it.isFocused) onCardFocused(media.mediaId) },
                     onClick = { onCardClick(media) }
@@ -1056,7 +1016,7 @@ private fun LazyMediaGrid(
             if (hasMore) {
                 item(
                     key = "load-more",
-                    span = { GridItemSpan(maxLineSpan) }
+                    span = StaggeredGridItemSpan.FullLine
                 ) {
                     Box(
                         modifier = Modifier
@@ -1185,99 +1145,19 @@ private fun MediaGridSkeleton(
 }
 
 @Composable
-private fun MasonryMediaGrid(
-    items: List<MediaCardUi>,
-    showCovers: Boolean,
-    focusRequesterFor: (String) -> FocusRequester,
-    onCardFocused: (String) -> Unit,
-    onCardClick: (MediaCardUi) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Layout(
-        modifier = modifier,
-        content = {
-            items.forEach { media ->
-                val requester = focusRequesterFor(media.mediaId)
-                MediaCard(
-                    media = media,
-                    showCover = showCovers,
-                    modifier = Modifier
-                        .focusRequester(requester)
-                        .onFocusChanged { if (it.isFocused) onCardFocused(media.mediaId) },
-                    onClick = { onCardClick(media) }
-                )
-            }
-        }
-    ) { measurables, constraints ->
-        val gapPx = GRID_GAP.roundToPx()
-        val titlePx = if (showCovers) 0 else CARD_TITLE_H.roundToPx()
-        val totalW = constraints.maxWidth
-        val cols = columnsForWidthDp(totalW / density)
-        val colW = ((totalW - gapPx * (cols - 1)) / cols).coerceAtLeast(1)
-        val colHeights = IntArray(cols)
-        val placed = ArrayList<Triple<Placeable, Int, Int>>(measurables.size)
-
-        measurables.forEachIndexed { i, measurable ->
-            val media = items[i]
-
-            // Proporção REAL da capa (largura/altura). Fallbacks quando desconhecida ou capas OFF.
-            val hasPoster = media.posterPath != null
-            val rawAspect = media.coverAspectRatio
-            val aspect = when {
-                !showCovers -> 2f / 3f          // capas OFF: retrato uniforme (placeholder)
-                rawAspect > 0f -> rawAspect     // proporção real da imagem do post
-                hasPoster -> 2f / 3f            // pôster sem dimensão conhecida
-                else -> 16f / 9f                // só frame do vídeo
-            }.coerceIn(0.45f, 2.2f)             // guarda contra capas absurdamente extremas
-
-            // Card horizontal (2 colunas) quando a capa é claramente paisagem; senão 1 coluna.
-            val landscape = showCovers && aspect > 1.15f && cols >= 2
-            val span = if (landscape) 2 else 1
-            val wPx = if (span == 2) colW * 2 + gapPx else colW
-            val hPx = (wPx / aspect).roundToInt() + titlePx // altura da capa = largura / (w/h)
-
-            // Escolhe a posição de menor altura (empata → mais à esquerda), preenchendo vãos.
-            val startCol = if (span == 1) {
-                (0 until cols).minByOrNull { colHeights[it] } ?: 0
-            } else {
-                (0 until cols - 1).minByOrNull { maxOf(colHeights[it], colHeights[it + 1]) } ?: 0
-            }
-            val y = if (span == 1) colHeights[startCol]
-                    else maxOf(colHeights[startCol], colHeights[startCol + 1])
-            val x = startCol * (colW + gapPx)
-
-            val placeable = measurable.measure(Constraints.fixed(wPx, hPx))
-            placed.add(Triple(placeable, x, y))
-
-            val bottom = y + hPx + gapPx
-            if (span == 1) {
-                colHeights[startCol] = bottom
-            } else {
-                colHeights[startCol] = bottom
-                colHeights[startCol + 1] = bottom
-            }
-        }
-
-        val totalH = colHeights.maxOrNull() ?: 0
-        layout(totalW, totalH) {
-            placed.forEach { (p, x, y) -> p.place(x, y) }
-        }
-    }
-}
-
-@Composable
 private fun MediaCard(
     media: MediaCardUi,
     showCover: Boolean,
+    showPlaybackWarning: Boolean,
     modifier: Modifier,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     // Com pôster → capa retrato (9:16). Sem pôster (capas ON) → frame 16:9. Capas OFF → placeholder.
     val cover = if (showCover) (media.posterPath ?: media.thumbnailPath) else null
+    val showTitle = !showCover || media.posterPath == null
     Box(
         modifier = modifier
-            .fillMaxSize()
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
@@ -1288,12 +1168,12 @@ private fun MediaCard(
                 shape = RoundedCornerShape(10.dp)
             )
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Capa com selos de resolução/duração e progresso (preenche o espaço acima do título).
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Capa (proporção da imagem) com barra de progresso e alerta opcional de reprodução.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .aspectRatio(media.gridAspectRatio(showCover))
                     .background(Color(0xFF1C1C1C))
             ) {
                 if (cover != null) {
@@ -1351,9 +1231,27 @@ private fun MediaCard(
                         )
                     }
                 }
+                if (showPlaybackWarning) {
+                    // Ícone neutro de alerta (aparelho pode não decodificar vídeo em alta resolução).
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xCC000000))
+                            .padding(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Warning,
+                            contentDescription = "Pode não reproduzir vídeo neste aparelho",
+                            tint = Color(0xFFFFC857),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
 
-            if (!showCover) {
+            if (showTitle) {
                 Text(
                     media.title,
                     color = Color.White,
@@ -1379,6 +1277,7 @@ private fun MovieDetailsOverlay(
     media: MediaCardUi,
     details: MovieDetails?,
     showCastPhotos: Boolean,
+    lowRamPlaybackWarnings: Boolean,
     onPlay: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1407,7 +1306,7 @@ private fun MovieDetailsOverlay(
                     )
                 }
                 DetailsInfo(
-                    media, details, showCastPhotos, playFocus, onPlay, onDismiss,
+                    media, details, showCastPhotos, lowRamPlaybackWarnings, playFocus, onPlay, onDismiss,
                     actionsFirst = false,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)
                 )
@@ -1426,7 +1325,7 @@ private fun MovieDetailsOverlay(
                 Brush.verticalGradient(0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505))
             ))
             DetailsInfo(
-                media, details, showCastPhotos, playFocus, onPlay, onDismiss,
+                media, details, showCastPhotos, lowRamPlaybackWarnings, playFocus, onPlay, onDismiss,
                 actionsFirst = compactLandscape,
                 modifier = Modifier.fillMaxWidth(0.62f).align(Alignment.CenterStart)
                     .then(if (compactLandscape) Modifier.verticalScroll(rememberScrollState()) else Modifier)
@@ -1444,6 +1343,7 @@ private fun DetailsInfo(
     media: MediaCardUi,
     details: MovieDetails?,
     showCastPhotos: Boolean,
+    lowRamPlaybackWarnings: Boolean,
     playFocus: FocusRequester,
     onPlay: () -> Unit,
     onDismiss: () -> Unit,
@@ -1452,6 +1352,7 @@ private fun DetailsInfo(
 ) {
     val title = details?.title ?: media.title
     val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
+    val showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning()
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(title, color = Color.White, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
@@ -1467,8 +1368,20 @@ private fun DetailsInfo(
         if (meta.isNotEmpty()) {
             Text(meta.joinToString("   •   "), color = Color(0xFFE6E6E6), style = MaterialTheme.typography.titleSmall)
         }
+        if (showPlaybackWarning) {
+            Text(
+                text = "Este aparelho pode tocar apenas o som em vídeos 1080p. Prefira versão 720p quando disponível.",
+                color = Color(0xFFFFD37A),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x26FFC857))
+                    .border(1.dp, Color(0x66FFC857), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 9.dp)
+            )
+        }
         if (actionsFirst) {
-            DetailsActionRow(media, playFocus, onPlay, onDismiss)
+            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss)
         }
         details?.genres?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
@@ -1511,7 +1424,7 @@ private fun DetailsInfo(
         }
 
         if (!actionsFirst) {
-            DetailsActionRow(media, playFocus, onPlay, onDismiss)
+            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss)
         }
     }
 }
@@ -1519,6 +1432,7 @@ private fun DetailsInfo(
 @Composable
 private fun DetailsActionRow(
     media: MediaCardUi,
+    showPlaybackWarning: Boolean,
     playFocus: FocusRequester,
     onPlay: () -> Unit,
     onDismiss: () -> Unit
@@ -1526,7 +1440,11 @@ private fun DetailsActionRow(
     Row(modifier = Modifier.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         DetailButton(
             icon = Icons.Filled.PlayArrow,
-            label = if (media.progress > 0f) "Continuar" else "Assistir",
+            label = when {
+                showPlaybackWarning -> "Tentar assistir"
+                media.progress > 0f -> "Continuar"
+                else -> "Assistir"
+            },
             primary = true,
             modifier = Modifier.focusRequester(playFocus),
             onClick = onPlay

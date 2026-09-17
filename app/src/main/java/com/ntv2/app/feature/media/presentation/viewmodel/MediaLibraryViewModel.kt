@@ -20,14 +20,10 @@ import com.ntv2.app.feature.settings.domain.SettingsRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -461,8 +457,6 @@ class MediaLibraryViewModel(
         val seen = HashSet<String>()
         return items.filter { it.tmdbId.isNullOrBlank() || seen.add(it.tmdbId!!) }
     }
-
-    private fun currentQuery(): String = _uiState.value.searchQuery.trim()
 
     private fun clearChannelData() {
         channelOrder.clear()

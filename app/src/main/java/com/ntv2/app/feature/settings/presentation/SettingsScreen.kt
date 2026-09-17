@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -19,8 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,7 +56,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -215,47 +211,6 @@ fun SettingsScreen(
                 onDismiss = { confirmLogout = false }
             )
         }
-    }
-}
-
-@Composable
-private fun CompactSettingsActions(
-    firstItemFocus: FocusRequester,
-    onOpenLibrary: () -> Unit,
-    onManageChannels: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        CompactSettingsChip(
-            label = "Biblioteca",
-            modifier = Modifier.focusRequester(firstItemFocus),
-            onClick = onOpenLibrary
-        )
-        CompactSettingsChip(label = "Canais", onClick = onManageChannels)
-    }
-}
-
-@Composable
-private fun CompactSettingsChip(
-    label: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0x22FFFFFF))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 13.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, color = Color.White, style = MaterialTheme.typography.titleSmall)
     }
 }
 

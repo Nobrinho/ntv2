@@ -1,6 +1,5 @@
 ﻿package com.ntv2.app.feature.media.domain
 
-import kotlinx.coroutines.flow.Flow
 
 data class MediaItemSummary(
     val mediaId: String,

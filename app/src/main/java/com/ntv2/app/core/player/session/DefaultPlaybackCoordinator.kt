@@ -59,6 +59,10 @@ class DefaultPlaybackCoordinator(
     private var downloadJob: Job? = null
     private var progressJob: Job? = null
     private var wasPlayingBeforeStop: Boolean = false
+    // Recuperação de troca de áudio: se a faixa escolhida não puder ser decodificada, o player dá
+    // erro; voltamos ao áudio padrão e retomamos da mesma posição em vez de travar.
+    private var pendingAudioSwitch: Boolean = false
+    private var positionBeforeAudioSwitch: Long = 0L
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -77,6 +81,10 @@ class DefaultPlaybackCoordinator(
                     bufferedPositionMs = exoPlayer?.bufferedPosition ?: it.bufferedPositionMs
                 )
             }
+            if (playbackState == Player.STATE_READY) {
+                // Troca de áudio concluída com sucesso: não precisa mais monitorar erro dela.
+                pendingAudioSwitch = false
+            }
             if (playbackState == Player.STATE_ENDED) {
                 // Assistido até o fim: limpa o progresso para não retomar no finzinho.
                 currentMedia?.let { media -> scope.launch { progressStore.clear(media.mediaId) } }
@@ -89,6 +97,25 @@ class DefaultPlaybackCoordinator(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            val player = exoPlayer
+            // Erro logo após trocar de áudio: a faixa escolhida não pôde ser decodificada neste
+            // aparelho. Em vez de travar, volta ao áudio padrão (auto) e retoma da mesma posição.
+            if (pendingAudioSwitch && player != null) {
+                pendingAudioSwitch = false
+                android.util.Log.w("NTV2Audio", "erro ao trocar áudio, revertendo p/ padrão: ${error.errorCodeName}")
+                runCatching {
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                        .build()
+                    player.prepare()
+                    player.seekTo(positionBeforeAudioSwitch)
+                    player.playWhenReady = true
+                }
+                snapshotState.update {
+                    it.copy(state = PlaybackState.Buffering, isPlaying = false)
+                }
+                return
+            }
             snapshotState.update {
                 it.copy(
                     state = PlaybackState.Error(
@@ -225,6 +252,9 @@ class DefaultPlaybackCoordinator(
     override fun selectAudioTrack(id: String) {
         val player = exoPlayer ?: return
         val override = overrideFor(id) ?: return
+        // Guarda a posição/estado para poder reverter se a faixa não decodificar (ver onPlayerError).
+        positionBeforeAudioSwitch = player.currentPosition
+        pendingAudioSwitch = true
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setOverrideForType(override)
             .build()
@@ -309,14 +339,15 @@ class DefaultPlaybackCoordinator(
                         if (format.width > 0) videoWidth = format.width
                         if (format.height > 0) videoHeight = format.height
                     }
-                    C.TRACK_TYPE_AUDIO -> if (group.isTrackSupported(trackIndex)) {
-                        audios += MediaTrackOption(
-                            id = "$groupIndex:$trackIndex",
-                            label = audioLabel(format, audios.size),
-                            isSelected = selected
-                        )
-                    }
-                    C.TRACK_TYPE_TEXT -> if (group.isTrackSupported(trackIndex)) {
+                    // Sem filtro de suporte: lista todas as faixas de áudio do container
+                    // (ex.: 2º áudio/dublagem), como a versão anterior fazia. A reprodução
+                    // usa override manual e o ExoPlayer decodifica por software se preciso.
+                    C.TRACK_TYPE_AUDIO -> audios += MediaTrackOption(
+                        id = "$groupIndex:$trackIndex",
+                        label = audioLabel(format, audios.size),
+                        isSelected = selected
+                    )
+                    C.TRACK_TYPE_TEXT -> if (group.isTrackSupported(trackIndex, true)) {
                         subtitles += MediaTrackOption(
                             id = "$groupIndex:$trackIndex",
                             label = trackLabel(format, subtitles.size, "Legenda"),

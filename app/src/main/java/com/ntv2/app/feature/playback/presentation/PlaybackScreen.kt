@@ -9,6 +9,11 @@ import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,7 +40,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Brightness6
@@ -43,13 +47,10 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Sd
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -64,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
@@ -263,8 +265,12 @@ fun PlaybackScreen(
         }
     }
 
-    // Seletor de faixa (áudio/legenda) aberto sobre o player.
+    // Seletor de faixa (legenda) aberto sobre o player.
     var trackPicker by remember { mutableStateOf<TrackPicker?>(null) }
+    // Ao fechar o modal, devolve o foco aos controles (evita o dpad ficar sem foco).
+    LaunchedEffect(trackPicker) {
+        if (trackPicker == null && controlsVisible) runCatching { scrubberFocus.requestFocus() }
+    }
 
     // Gestos verticais em tela cheia: esquerda controla volume, direita controla brilho.
     var gestureAdjustment by remember { mutableStateOf<GestureAdjustment?>(null) }
@@ -406,8 +412,8 @@ fun PlaybackScreen(
                         bufferedMs = state.snapshot.bufferedPositionMs,
                         durationMs = durationMs,
                         scrubberFocus = scrubberFocus,
-                        protectBottomInsets = videoIsFullscreen,
                         compact = compactControls,
+                        isTv = adaptive.isTv,
                         showFullscreen = compactControls,
                         onBack = onBack,
                         onDismiss = { controlsVisible = false },
@@ -648,8 +654,8 @@ private fun StreamingControlsOverlay(
     bufferedMs: Long,
     durationMs: Long,
     scrubberFocus: FocusRequester,
-    protectBottomInsets: Boolean,
     compact: Boolean,
+    isTv: Boolean,
     showFullscreen: Boolean,
     onBack: () -> Unit,
     onDismiss: () -> Unit,
@@ -700,6 +706,7 @@ private fun StreamingControlsOverlay(
         bufferedMs = bufferedMs,
         durationMs = durationMs,
         scrubberFocus = scrubberFocus,
+        isTv = isTv,
         showFullscreen = showFullscreen,
         onBack = onBack,
         onDismiss = onDismiss,
@@ -711,167 +718,6 @@ private fun StreamingControlsOverlay(
         onOpenSettings = onOpenSettings,
         onFullscreen = onFullscreen
     )
-    return
-
-    val playSize = if (compact) 58.dp else 76.dp
-    val playIconSize = if (compact) 32.dp else 42.dp
-    val seekPillWidth = if (compact) 52.dp else 64.dp
-    val seekPillHeight = if (compact) 40.dp else 48.dp
-    val centerGap = if (compact) 16.dp else 26.dp
-    val bottomPadding = if (compact) 10.dp else 18.dp
-    val bottomGap = if (compact) 8.dp else 12.dp
-
-    Box(
-        modifier = modifier
-            .background(Color(0x3D000000))
-            .clickable(onClick = onDismiss)
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(132.dp)
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color(0xCC000000),
-                        0.62f to Color(0x66000000),
-                        1f to Color.Transparent
-                    )
-                )
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(176.dp)
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.34f to Color(0x66000000),
-                        1f to Color(0xE6000000)
-                    )
-                )
-        )
-
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OverlayRoundButton(
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Voltar",
-                size = 46.dp,
-                onClick = onBack
-            )
-            Text(
-                text = title,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Row(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalArrangement = Arrangement.spacedBy(centerGap),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SeekPill(
-                label = "-10",
-                width = seekPillWidth,
-                height = seekPillHeight,
-                onClick = { onSeek(-DPAD_SEEK_MS); onInteract() }
-            )
-            OverlayRoundButton(
-                icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
-                size = playSize,
-                iconSize = playIconSize,
-                strong = true,
-                onClick = onToggle
-            )
-            SeekPill(
-                label = "+10",
-                width = seekPillWidth,
-                height = seekPillHeight,
-                onClick = { onSeek(DPAD_SEEK_MS); onInteract() }
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .then(if (protectBottomInsets) Modifier.navigationBarsPadding() else Modifier)
-                .padding(horizontal = if (compact) 14.dp else 22.dp, vertical = bottomPadding),
-            verticalArrangement = Arrangement.spacedBy(bottomGap)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(formatTime(positionMs), color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                Scrubber(
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(scrubberFocus),
-                    positionMs = positionMs,
-                    bufferedMs = bufferedMs,
-                    durationMs = durationMs,
-                    onSeek = { delta -> onSeek(delta); onInteract() },
-                    onSeekTo = { position -> onSeekTo(position); onInteract() }
-                )
-                Text(formatTime(durationMs), color = Color.White, style = MaterialTheme.typography.bodyMedium)
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth().focusGroup(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                resolutionLabel(tracks.videoHeight)?.let { label ->
-                    OverlayChip(
-                        icon = if (tracks.videoHeight >= 700) Icons.Filled.Hd else Icons.Filled.Sd,
-                        label = label,
-                        enabled = false,
-                        onClick = {}
-                    )
-                }
-                OverlayChip(
-                    icon = Icons.Filled.Replay,
-                    label = "Reiniciar",
-                    showLabel = false
-                ) { onRestart(); onInteract() }
-                if (tracks.audios.size > 1) {
-                    OverlayChip(
-                        icon = Icons.Filled.Audiotrack,
-                        label = "Áudio",
-                        showLabel = false
-                    ) { onOpenAudio(); onInteract() }
-                }
-                if (tracks.subtitles.isNotEmpty()) {
-                    val selected = tracks.subtitles.firstOrNull { it.isSelected }?.label ?: "Legenda"
-                    OverlayChip(
-                        icon = Icons.Filled.ClosedCaption,
-                        label = selected,
-                        contentDescription = "Legenda",
-                        showLabel = false
-                    ) { onOpenSubtitle(); onInteract() }
-                }
-                if (showFullscreen) {
-                    OverlayChip(Icons.Filled.Fullscreen, "Tela cheia") { onFullscreen() }
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -884,6 +730,7 @@ private fun LandscapeControlsOverlay(
     bufferedMs: Long,
     durationMs: Long,
     scrubberFocus: FocusRequester,
+    isTv: Boolean,
     showFullscreen: Boolean,
     onBack: () -> Unit,
     onDismiss: () -> Unit,
@@ -895,6 +742,21 @@ private fun LandscapeControlsOverlay(
     onOpenSettings: () -> Unit,
     onFullscreen: () -> Unit
 ) {
+    // Amarração de foco para o dpad da TV: barra superior <-> controles centrais <-> scrubber,
+    // e a linha da barra superior (Fechar -> Legenda -> Velocidade -> Opções).
+    val topBarFocus = remember { FocusRequester() }
+    val centerFocus = remember { FocusRequester() }
+    val closeFocus = remember { FocusRequester() }
+    val ccFocus = remember { FocusRequester() }
+    val speedFocus = remember { FocusRequester() }
+    val ccEnabled = tracks.subtitles.isNotEmpty()
+    // Link horizontal explícito só na TV (dpad); no celular deixa a navegação espacial/toque.
+    fun Modifier.hLink(left: FocusRequester? = null, right: FocusRequester? = null): Modifier =
+        if (!isTv) this else this.focusProperties {
+            down = centerFocus
+            left?.let { this.left = it }
+            right?.let { this.right = it }
+        }
     Box(
         modifier = modifier
             .background(Color(0x26000000))
@@ -936,29 +798,57 @@ private fun LandscapeControlsOverlay(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusProperties { down = centerFocus },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PortraitTopIcon(Icons.Filled.Close, "Fechar", onBack)
-                    PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onDismiss)
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PortraitTopIcon(
+                        Icons.Filled.Close,
+                        "Fechar",
+                        onBack,
+                        modifier = Modifier
+                            .focusRequester(closeFocus)
+                            .hLink(right = if (ccEnabled) ccFocus else speedFocus)
+                    )
+                    // PiP não se aplica à TV.
+                    if (!isTv) {
+                        PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onDismiss)
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PortraitTopIcon(Icons.Filled.Cast, "Transmitir", onInteract, enabled = false)
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Espelhamento/transmissão não se aplica à TV.
+                    if (!isTv) {
+                        PortraitTopIcon(Icons.Filled.Cast, "Transmitir", onInteract, enabled = false)
+                    }
                     PortraitTopIcon(
                         Icons.Filled.ClosedCaption,
                         "Ligar ou desligar legenda",
                         { onToggleSubtitle(); onInteract() },
-                        enabled = tracks.subtitles.isNotEmpty(),
-                        active = tracks.subtitles.any { it.isSelected }
+                        enabled = ccEnabled,
+                        active = tracks.subtitles.any { it.isSelected },
+                        modifier = Modifier
+                            .focusRequester(ccFocus)
+                            .hLink(left = closeFocus, right = speedFocus)
                     )
-                    PortraitTextAction("1x", "Velocidade", onInteract)
+                    PortraitTextAction(
+                        "1x",
+                        "Velocidade",
+                        onInteract,
+                        modifier = Modifier
+                            .focusRequester(speedFocus)
+                            .hLink(left = if (ccEnabled) ccFocus else closeFocus, right = topBarFocus)
+                    )
                     PortraitTopIcon(
                         Icons.Filled.Settings,
                         "Opções",
                         { onOpenSettings(); onInteract() },
-                        enabled = tracks.audios.size > 1 || tracks.subtitles.isNotEmpty()
+                        enabled = tracks.audios.size > 1 || tracks.subtitles.isNotEmpty(),
+                        modifier = Modifier
+                            .focusRequester(topBarFocus)
+                            .hLink(left = speedFocus)
                     )
                 }
             }
@@ -974,7 +864,9 @@ private fun LandscapeControlsOverlay(
         }
 
         Row(
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .focusProperties { up = topBarFocus },
             horizontalArrangement = Arrangement.spacedBy(72.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -985,23 +877,10 @@ private fun LandscapeControlsOverlay(
                 size = 86.dp,
                 iconSize = 46.dp,
                 strong = false,
+                modifier = Modifier.focusRequester(centerFocus),
                 onClick = { onToggle(); onInteract() }
             )
             PortraitSeekButton("+10") { onSeek(DPAD_SEEK_MS); onInteract() }
-        }
-
-        if (showFullscreen) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 94.dp, top = 70.dp)
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { onFullscreen(); onInteract() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Filled.Fullscreen, contentDescription = "Tela cheia", tint = Color.White, modifier = Modifier.size(30.dp))
-            }
         }
 
         Column(
@@ -1016,17 +895,27 @@ private fun LandscapeControlsOverlay(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(28.dp)
-                    .focusRequester(scrubberFocus),
+                    .focusRequester(scrubberFocus)
+                    .focusProperties { up = centerFocus },
                 positionMs = positionMs,
                 bufferedMs = bufferedMs,
                 durationMs = durationMs,
                 onSeek = { delta -> onSeek(delta); onInteract() },
                 onSeekTo = { position -> onSeekTo(position); onInteract() }
             )
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(formatTime(positionMs), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                val remaining = (durationMs - positionMs).coerceAtLeast(0L)
-                Text("-${formatTime(remaining)}", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val remaining = (durationMs - positionMs).coerceAtLeast(0L)
+                    Text("-${formatTime(remaining)}", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    if (showFullscreen) {
+                        FullscreenControlButton { onFullscreen(); onInteract() }
+                    }
+                }
             }
         }
     }
@@ -1118,25 +1007,6 @@ private fun PortraitControlsOverlay(
             )
         }
 
-        if (showFullscreen) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 42.dp, bottom = 30.dp)
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onFullscreen(); onInteract() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Filled.Fullscreen,
-                    contentDescription = "Tela cheia",
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-        }
-
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -1146,17 +1016,36 @@ private fun PortraitControlsOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(26.dp)
         ) {
-            Scrubber(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(28.dp)
-                    .focusRequester(scrubberFocus),
-                positionMs = positionMs,
-                bufferedMs = bufferedMs,
-                durationMs = durationMs,
-                onSeek = { delta -> onSeek(delta); onInteract() },
-                onSeekTo = { position -> onSeekTo(position); onInteract() }
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Scrubber(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                        .focusRequester(scrubberFocus),
+                    positionMs = positionMs,
+                    bufferedMs = bufferedMs,
+                    durationMs = durationMs,
+                    onSeek = { delta -> onSeek(delta); onInteract() },
+                    onSeekTo = { position -> onSeekTo(position); onInteract() }
+                )
+                if (showFullscreen) {
+                    FullscreenControlButton { onFullscreen(); onInteract() }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(formatTime(positionMs), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                val remaining = (durationMs - positionMs).coerceAtLeast(0L)
+                Text("-${formatTime(remaining)}", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth().focusGroup(),
@@ -1198,41 +1087,72 @@ private fun PortraitTopIcon(
     contentDescription: String,
     onClick: () -> Unit,
     enabled: Boolean = true,
-    active: Boolean = true
+    active: Boolean = true,
+    modifier: Modifier = Modifier
 ) {
+    var focused by remember { mutableStateOf(false) }
     val tint = when {
+        focused -> Color.Black
         !enabled -> Color(0x66FFFFFF)
         active -> Color.White
         else -> Color(0x66FFFFFF)
     }
 
-    Icon(
-        icon,
-        contentDescription = contentDescription,
-        tint = tint,
-        modifier = Modifier
-            .size(34.dp)
-            .clip(RoundedCornerShape(8.dp))
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(2.dp)
-    )
+            .background(if (focused) Color.White else Color.Transparent),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(30.dp)
+        )
+    }
+}
+
+@Composable
+private fun FullscreenControlButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Filled.Fullscreen,
+            contentDescription = "Tela cheia",
+            tint = Color.White,
+            modifier = Modifier.size(28.dp)
+        )
+    }
 }
 
 @Composable
 private fun PortraitTextAction(
     text: String,
     contentDescription: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    var focused by remember { mutableStateOf(false) }
     Text(
         text = text,
-        color = Color.White,
+        color = if (focused) Color.Black else Color.White,
         style = MaterialTheme.typography.titleLarge,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .background(if (focused) Color.White else Color.Transparent)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
     )
 }
 
@@ -1264,11 +1184,12 @@ private fun OverlayRoundButton(
     size: androidx.compose.ui.unit.Dp,
     iconSize: androidx.compose.ui.unit.Dp = 24.dp,
     strong: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(size)
             .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
@@ -1292,32 +1213,6 @@ private fun OverlayRoundButton(
             contentDescription = contentDescription,
             tint = if (strong || focused) Color.Black else Color.White,
             modifier = Modifier.size(iconSize)
-        )
-    }
-}
-
-@Composable
-private fun SeekPill(
-    label: String,
-    width: androidx.compose.ui.unit.Dp,
-    height: androidx.compose.ui.unit.Dp,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .size(width = width, height = height)
-            .clip(RoundedCornerShape(24.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color(0x66000000))
-            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(24.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            label,
-            color = if (focused) Color.Black else Color.White,
-            style = MaterialTheme.typography.titleMedium
         )
     }
 }
@@ -1370,163 +1265,7 @@ private fun OverlayChip(
     }
 }
 
-/**
- * Barra de controles no estilo player de TV: linha de "abas" (resolução/áudio/legenda), linha de
- * tempo com knob e os tempos nas pontas, e uma linha de ícones (reiniciar, play/pausa, áudio).
- */
-@Composable
-private fun PlayerControlBar(
-    modifier: Modifier,
-    tracks: MediaTracksInfo,
-    isPlaying: Boolean,
-    positionMs: Long,
-    bufferedMs: Long,
-    durationMs: Long,
-    scrubberFocus: FocusRequester,
-    onInteract: () -> Unit,
-    onSeek: (Long) -> Unit,
-    onRestart: () -> Unit,
-    onToggle: () -> Unit,
-    onOpenAudio: () -> Unit,
-    onOpenSubtitle: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .background(Color(0xE6000000))
-            .padding(horizontal = 32.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Linha superior: abas (resolução exibida; áudio/legenda acionáveis).
-        Row(
-            modifier = Modifier.focusGroup(),
-            horizontalArrangement = Arrangement.spacedBy(28.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            resolutionLabel(tracks.videoHeight)?.let { label ->
-                TabItem(
-                    icon = if (tracks.videoHeight >= 700) Icons.Filled.Hd else Icons.Filled.Sd,
-                    label = label,
-                    focusable = false,
-                    onClick = {}
-                )
-            }
-            if (tracks.audios.size > 1) {
-                TabItem(
-                    icon = Icons.Filled.Audiotrack,
-                    label = "Áudio",
-                    onClick = { onOpenAudio(); onInteract() }
-                )
-            }
-            if (tracks.subtitles.isNotEmpty()) {
-                val sel = tracks.subtitles.firstOrNull { it.isSelected }
-                TabItem(
-                    icon = Icons.Filled.ClosedCaption,
-                    label = sel?.label ?: "Legenda",
-                    onClick = { onOpenSubtitle(); onInteract() }
-                )
-            }
-        }
-
-        // Linha do tempo: decorrido — barra com knob — total.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(formatTime(positionMs), color = Color.White, style = MaterialTheme.typography.bodyMedium)
-            Scrubber(
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(scrubberFocus),
-                positionMs = positionMs,
-                bufferedMs = bufferedMs,
-                durationMs = durationMs,
-                onSeek = { delta -> onSeek(delta); onInteract() }
-            )
-            Text(formatTime(durationMs), color = Color.White, style = MaterialTheme.typography.bodyMedium)
-        }
-
-        // Linha inferior: ícones de ação.
-        Row(
-            modifier = Modifier.focusGroup(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconControlButton(Icons.Filled.Replay, "Reiniciar") { onRestart() }
-            Box(
-                modifier = Modifier
-                    .padding(horizontal = 4.dp)
-                    .size(width = 1.dp, height = 20.dp)
-                    .background(Color(0x33FFFFFF))
-            )
-            IconControlButton(
-                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                if (isPlaying) "Pausar" else "Reproduzir"
-            ) { onToggle() }
-            if (tracks.audios.size > 1) {
-                IconControlButton(Icons.Filled.Audiotrack, "Áudio") { onOpenAudio(); onInteract() }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TabItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    focusable: Boolean = true,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val base = Modifier
-        .clip(RoundedCornerShape(8.dp))
-        .then(if (focused) Modifier.background(Color(0x33FFFFFF)) else Modifier)
-        .padding(horizontal = 10.dp, vertical = 6.dp)
-    val interactive = if (focusable) {
-        Modifier
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-    } else {
-        Modifier
-    }
-    Row(
-        modifier = interactive.then(base),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-        Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-    }
-}
-
-@Composable
-private fun IconControlButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color(0x22FFFFFF)),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            icon,
-            contentDescription = contentDescription,
-            tint = if (focused) Color.Black else Color.White,
-            modifier = Modifier.size(22.dp)
-        )
-    }
-}
-
-/** Linha do tempo com buffer, progresso, marcadores de segmento e knob. ← / → dão seek. */
+/** Linha do tempo com buffer, progresso e knob. ← / → dão seek. */
 @Composable
 private fun Scrubber(
     modifier: Modifier,
@@ -1599,17 +1338,6 @@ private fun Scrubber(
                 size = Size(w * played, trackH),
                 cornerRadius = radius
             )
-            // Marcadores de segmento (visual, estilo capítulos).
-            val segments = 5
-            val gap = 2.dp.toPx()
-            for (i in 1 until segments) {
-                val x = w * i / segments
-                drawRect(
-                    color = Color(0xFF000000),
-                    topLeft = Offset(x - gap / 2f, cy - trackH / 2f),
-                    size = Size(gap, trackH)
-                )
-            }
             // Knob
             val knobR = if (focused) 10.dp.toPx() else 7.dp.toPx()
             drawCircle(color = Color.White, radius = knobR, center = Offset(w * played, cy))
@@ -1628,16 +1356,9 @@ private fun PlayerSettingsOverlay(
     val selectedAudio = tracks.audios.firstOrNull { it.isSelected }?.label ?: "Padrão"
     val firstFocus = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
     BackHandler(enabled = true) { onDismiss() }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x66000000))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.Center
-    ) {
+    BottomSheetScrim(onDismiss = onDismiss, focusTarget = firstFocus) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
@@ -1679,20 +1400,46 @@ private fun PlayerSettingsOverlay(
                     enabled = tracks.audios.size > 1,
                     onClick = onOpenAudio
                 )
-                PlayerSettingsRow(
-                    icon = Icons.Filled.Hd,
-                    label = "Descrição de áudio",
-                    value = "Indisponível",
-                    enabled = false,
-                    onClick = {}
-                )
-                PlayerSettingsRow(
-                    icon = Icons.Filled.ClosedCaption,
-                    label = "Melhorar diálogo",
-                    value = "Indisponível",
-                    enabled = false,
-                    onClick = {}
-                )
+            }
+        }
+    }
+}
+
+// Scrim + folha que desliza de baixo para cima. O conteúdo é ancorado embaixo.
+// focusTarget: alvo focado após a folha entrar (dpad/TV). Precisa ser pedido só depois
+// que o conteúdo do AnimatedVisibility é composto/anexado, com retry em alguns frames.
+@Composable
+private fun BottomSheetScrim(
+    onDismiss: () -> Unit,
+    focusTarget: FocusRequester? = null,
+    content: @Composable () -> Unit
+) {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    if (focusTarget != null) {
+        LaunchedEffect(shown) {
+            if (shown) {
+                repeat(12) {
+                    if (runCatching { focusTarget.requestFocus() }.isSuccess) return@LaunchedEffect
+                    delay(16)
+                }
+            }
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x99000000))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        AnimatedVisibility(
+            visible = shown,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            Box(modifier = Modifier.padding(bottom = 28.dp)) {
+                content()
             }
         }
     }
@@ -1716,7 +1463,6 @@ private fun PlayerSettingsRow(
             .height(64.dp)
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
-            .focusable(enabled)
             .clickable(enabled = enabled, onClick = onClick)
             .background(if (focused) Color(0x1FFFFFFF) else Color.Transparent)
             .padding(horizontal = 26.dp),
@@ -1755,15 +1501,9 @@ private fun TrackPickerOverlay(
     onDismiss: () -> Unit
 ) {
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
     BackHandler(enabled = true) { onDismiss() }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xE6000000)),
-        contentAlignment = Alignment.Center
-    ) {
+    BottomSheetScrim(onDismiss = onDismiss, focusTarget = firstFocus) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
@@ -1771,6 +1511,7 @@ private fun TrackPickerOverlay(
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF1E1E1E))
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                .clickable(onClick = {})
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -1811,7 +1552,6 @@ private fun CloseTrackPickerButton(onClick: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
             .clickable(onClick = onClick)
             .background(if (focused) Color.White else Color(0x22FFFFFF))
             .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
@@ -1855,16 +1595,6 @@ private fun TrackRow(
             overflow = TextOverflow.Ellipsis
         )
     }
-}
-
-/** Converte a altura do vídeo em rótulo comercial de resolução. */
-private fun resolutionLabel(height: Int): String? = when {
-    height <= 0 -> null
-    height >= 2000 -> "4K"
-    height >= 1000 -> "1080p"
-    height >= 700 -> "720p"
-    height >= 460 -> "480p"
-    else -> "SD"
 }
 
 /** Rótulo do estado exibido junto do loading durante a reprodução (null = não mostrar). */

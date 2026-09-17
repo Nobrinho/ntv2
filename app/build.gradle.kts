@@ -156,6 +156,8 @@ dependencies {
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    // Decoder FFmpeg por software (ac3/eac3/dts/truehd) para aparelhos sem esses codecs.
+    implementation(project(":ffmpeg-decoder"))
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.room.runtime)

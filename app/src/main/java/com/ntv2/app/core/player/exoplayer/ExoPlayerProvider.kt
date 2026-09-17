@@ -3,6 +3,7 @@
 import android.content.Context
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 
 interface ExoPlayerProvider {
@@ -26,7 +27,13 @@ class DefaultExoPlayerProvider(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        return ExoPlayer.Builder(context.applicationContext)
+        // Habilita os decoders de extensão (FfmpegAudioRenderer do módulo :ffmpeg-decoder),
+        // carregados por reflexão pelo DefaultRenderersFactory. Assim faixas de áudio que o
+        // hardware não decodifica (AC3/EAC3/DTS/TrueHD) tocam por software.
+        val renderersFactory = DefaultRenderersFactory(context.applicationContext)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+
+        return ExoPlayer.Builder(context.applicationContext, renderersFactory)
             .setLoadControl(loadControl)
             .build()
     }

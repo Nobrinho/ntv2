@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ntv2"
 include(":app")
+include(":ffmpeg-decoder")

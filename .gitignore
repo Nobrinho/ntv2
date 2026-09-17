@@ -21,3 +21,6 @@ keystore.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# Banco local do dispositivo/dev
+ntv2-device.db

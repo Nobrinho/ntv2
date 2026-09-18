@@ -56,6 +56,8 @@ class MediaLibraryViewModel(
     // Passo da grade por dispositivo: TV = 5 colunas, celular = 2. A paginação carrega múltiplos
     // desse passo para as linhas fecharem completas (sem sobra de meia linha).
     private val gridStep: Int = 2,
+    // Índice de busca (canal rico) para busca local instantânea; null = sem índice.
+    private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
@@ -86,6 +88,8 @@ class MediaLibraryViewModel(
 
     init {
         observeSelectionAndFilter()
+        // Pré-carrega o índice de busca em background para a 1ª busca já vir instantânea.
+        searchIndexRepository?.let { repo -> viewModelScope.launch { runCatching { repo.covers(0L) } } }
     }
 
     fun onAction(action: MediaLibraryAction) {
@@ -140,23 +144,7 @@ class MediaLibraryViewModel(
                 _uiState.update { it.copy(lastFocusedMediaId = action.mediaId) }
             }
 
-            is MediaLibraryAction.OpenVideo -> {
-                _uiState.update {
-                    it.copy(
-                        pendingNavigation = MediaNavigationPayload(
-                            mediaId = action.media.mediaId,
-                            fileId = action.media.fileId,
-                            title = action.media.title,
-                            channelName = action.media.channelName,
-                            durationSeconds = action.media.durationSeconds,
-                            fileName = action.media.fileName,
-                            thumbnailPath = action.media.thumbnailPath
-                        ),
-                        lastFocusedMediaId = action.media.mediaId,
-                        returnToDetailsMediaId = action.media.mediaId
-                    )
-                }
-            }
+            is MediaLibraryAction.OpenVideo -> openVideo(action.media)
 
             MediaLibraryAction.ConsumeNavigation -> {
                 _uiState.update { it.copy(pendingNavigation = null) }
@@ -327,6 +315,76 @@ class MediaLibraryViewModel(
         }
     }
 
+    private fun openVideo(media: MediaCardUi) {
+        // Card normal (já tem fileId do TDLib): navega direto.
+        if (media.fileId != 0) {
+            _uiState.update {
+                it.copy(
+                    pendingNavigation = MediaNavigationPayload(
+                        mediaId = media.mediaId,
+                        fileId = media.fileId,
+                        title = media.title,
+                        channelName = media.channelName,
+                        durationSeconds = media.durationSeconds,
+                        fileName = media.fileName,
+                        thumbnailPath = media.thumbnailPath
+                    ),
+                    lastFocusedMediaId = media.mediaId,
+                    returnToDetailsMediaId = media.mediaId
+                )
+            }
+            return
+        }
+        // Card do índice (sem fileId): resolve a mensagem no TDLib para obter o fileId e reproduzir.
+        val messageId = media.mediaId.substringAfterLast('_').toLongOrNull() ?: return
+        _uiState.update { it.copy(lastFocusedMediaId = media.mediaId, returnToDetailsMediaId = media.mediaId) }
+        viewModelScope.launch {
+            val resolved = withContext(ioDispatcher) {
+                runCatching { mediaRepository.getVideoByMessage(media.channelId, media.channelName, messageId) }.getOrNull()
+            }
+            if (resolved == null || resolved.fileId == 0) {
+                _uiState.update { it.copy(errorMessage = "Não foi possível abrir este vídeo.") }
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    pendingNavigation = MediaNavigationPayload(
+                        mediaId = media.mediaId,
+                        fileId = resolved.fileId,
+                        title = media.title,
+                        channelName = media.channelName,
+                        durationSeconds = resolved.durationSeconds,
+                        fileName = resolved.fileName,
+                        thumbnailPath = media.posterPath ?: media.thumbnailPath
+                    )
+                )
+            }
+        }
+    }
+
+    private fun com.ntv2.app.feature.media.data.index.IndexMovie.toSummary(
+        channelId: Long,
+        channelTitle: String
+    ): MediaItemSummary = MediaItemSummary(
+        mediaId = "${channelId}_$videoMessageId",
+        channelId = channelId,
+        channelTitle = channelTitle,
+        title = title,
+        caption = null,
+        fileName = null,
+        durationSeconds = 0,
+        thumbnailPath = null,
+        fileId = 0,
+        coverAspectRatio = 0f,
+        posterPath = posterUrl,
+        synopsis = overview,
+        year = year?.take(4)?.toIntOrNull(),
+        genres = genres.joinToString(", ").ifBlank { null },
+        originalTitle = originalTitle,
+        backdropPath = backdropUrl,
+        tmdbId = tmdbId.toString()
+    )
+
     private fun scheduleSearch(query: String) {
         searchDebounceJob?.cancel()
         searchDebounceJob = viewModelScope.launch {
@@ -351,6 +409,24 @@ class MediaLibraryViewModel(
                     searchHasMore = false,
                     searchResults = emptyList()
                 )
+            }
+            // Índice local (canal rico): busca instantânea por título, sem TDLib.
+            val idx = searchIndexRepository
+            if (idx != null && runCatching { idx.covers(activeId) }.getOrDefault(false)) {
+                val movies = runCatching { idx.search(activeId, query) }.getOrDefault(emptyList())
+                if (_uiState.value.searchQuery.trim() != query) return@launch
+                val summaries = dedupByTmdb(movies.map { it.toSummary(activeId, title) })
+                val saved = withContext(ioDispatcher) { progressStore.savedPositions(summaries.map { it.mediaId }) }
+                _uiState.update { current ->
+                    if (current.searchQuery.trim() != query) current
+                    else current.copy(
+                        isSearchLoading = false,
+                        isSearchLoadingMore = false,
+                        searchHasMore = false,
+                        searchResults = summaries.map { it.toCard(saved[it.mediaId] ?: 0L) }
+                    )
+                }
+                return@launch
             }
             try {
                 // Palavras comuns (ex.: "segredo") retornam muitas mensagens que só casam na SINOPSE;
@@ -597,7 +673,8 @@ class MediaLibraryViewModelFactory(
     private val progressStore: PlaybackProgressStore,
     private val mediaDetailsCache: MediaDetailsCache,
     private val maxCardsLimit: Int? = null,
-    private val gridStep: Int = 2
+    private val gridStep: Int = 2,
+    private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -609,7 +686,8 @@ class MediaLibraryViewModelFactory(
                 progressStore = progressStore,
                 mediaDetailsCache = mediaDetailsCache,
                 maxCardsLimit = maxCardsLimit,
-                gridStep = gridStep
+                gridStep = gridStep,
+                searchIndexRepository = searchIndexRepository
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

@@ -75,6 +75,8 @@ class MediaLibraryViewModelTest {
 
         override suspend fun searchChannelVideos(channelId: Long, channelTitle: String, query: String, fromMessageId: Long, limit: Int): MediaPage =
             searchPages(channelId, query, fromMessageId)
+
+        override suspend fun getVideoByMessage(channelId: Long, channelTitle: String, messageId: Long): MediaItemSummary? = null
     }
 
     private fun item(id: String, channelId: Long, durationSeconds: Int, fileId: Int) = MediaItemSummary(

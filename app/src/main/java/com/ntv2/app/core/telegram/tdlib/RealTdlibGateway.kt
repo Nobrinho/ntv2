@@ -394,6 +394,30 @@ class RealTdlibGateway(
     override suspend fun searchVideoMessages(chatId: Long, query: String, fromMessageId: Long, limit: Int): TelegramVideoPage =
         searchVideos(chatId, query = query, fromMessageId = fromMessageId, limit = limit)
 
+    /** Resolve o vídeo de uma mensagem (busca via índice): só o necessário para reproduzir — o card
+     *  rico já vem do índice, então aqui basta fileId/duração/nome. */
+    override suspend fun getVideoByMessage(chatId: Long, messageId: Long): TelegramVideoMessage? {
+        ensureConfigured()
+        runCatching { send(TdApi.GetChat(chatId)) }
+        val msg = send(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message ?: return null
+        val content = msg.content as? TdApi.MessageVideo ?: return null
+        val video = content.video ?: return null
+        val tdFile = video.video ?: return null
+        return TelegramVideoMessage(
+            mediaId = "${msg.chatId}_${msg.id}",
+            chatId = msg.chatId,
+            messageId = msg.id,
+            title = content.caption?.text?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "Video ${msg.id}",
+            caption = content.caption?.text,
+            fileName = video.fileName.ifBlank { null },
+            durationSeconds = video.duration,
+            thumbnailPath = null,
+            fileId = tdFile.id,
+            width = video.width,
+            height = video.height
+        )
+    }
+
     private suspend fun searchVideos(chatId: Long, query: String, fromMessageId: Long, limit: Int): TelegramVideoPage {
         ensureConfigured()
         // Garante que o TDLib conheça o chat (logo após o login a lista de diálogos pode não ter

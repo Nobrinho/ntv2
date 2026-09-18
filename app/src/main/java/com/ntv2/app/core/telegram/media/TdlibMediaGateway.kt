@@ -48,6 +48,8 @@ data class TelegramVideoPage(
 interface TdlibMediaGateway {
     suspend fun listVideoMessages(chatId: Long, fromMessageId: Long = 0L, limit: Int = 40): TelegramVideoPage
     suspend fun searchVideoMessages(chatId: Long, query: String, fromMessageId: Long = 0L, limit: Int = 40): TelegramVideoPage
+    /** Resolve o vídeo de uma mensagem específica (para a busca via índice obter o fileId do TDLib). */
+    suspend fun getVideoByMessage(chatId: Long, messageId: Long): TelegramVideoMessage? = null
 }
 
 class FakeTdlibMediaGateway : TdlibMediaGateway {

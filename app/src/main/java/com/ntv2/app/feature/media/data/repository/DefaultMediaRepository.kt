@@ -36,4 +36,10 @@ class DefaultMediaRepository(
             limit = limit
         )
     }
+
+    override suspend fun getVideoByMessage(
+        channelId: Long,
+        channelTitle: String,
+        messageId: Long
+    ) = mediaDataSource.getVideoByMessage(channelId, channelTitle, messageId)
 }

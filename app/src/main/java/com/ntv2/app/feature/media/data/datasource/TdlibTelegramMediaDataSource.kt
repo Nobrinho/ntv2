@@ -24,6 +24,9 @@ class TdlibTelegramMediaDataSource(
         )
     }
 
+    override suspend fun getVideoByMessage(channelId: Long, channelTitle: String, messageId: Long): MediaItemSummary? =
+        tdlibMediaGateway.getVideoByMessage(chatId = channelId, messageId = messageId)?.toSummary(channelId, channelTitle)
+
     private fun com.ntv2.app.core.telegram.media.TelegramVideoMessage.toSummary(
         channelId: Long,
         channelTitle: String

@@ -167,7 +167,8 @@ fun AppNavHost(
                     progressStore = appContainer.playbackProgressStore,
                     mediaDetailsCache = appContainer.mediaDetailsCache,
                     maxCardsLimit = lowRamMaxCards,
-                    gridStep = mediaGridStep
+                    gridStep = mediaGridStep,
+                    searchIndexRepository = appContainer.searchIndexRepository
                 )
             )
             MediaLibraryScreen(

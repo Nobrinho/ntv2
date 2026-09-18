@@ -58,4 +58,11 @@ interface MediaRepository {
         fromMessageId: Long,
         limit: Int
     ): MediaPage
+
+    /** Resolve uma mídia pelo id da mensagem (usado pela busca via índice para obter o fileId). */
+    suspend fun getVideoByMessage(
+        channelId: Long,
+        channelTitle: String,
+        messageId: Long
+    ): MediaItemSummary?
 }

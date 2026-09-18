@@ -42,6 +42,7 @@ import com.ntv2.app.feature.channels.data.repository.DefaultChannelRepository
 import com.ntv2.app.feature.channels.domain.ChannelRepository
 import com.ntv2.app.feature.media.data.datasource.TelegramMediaDataSource
 import com.ntv2.app.feature.media.data.datasource.TdlibTelegramMediaDataSource
+import com.ntv2.app.feature.media.data.index.SearchIndexRepository
 import com.ntv2.app.feature.media.data.repository.DefaultMediaRepository
 import com.ntv2.app.feature.media.domain.MediaRepository
 import com.ntv2.app.feature.media.domain.MediaDetailsCache
@@ -74,6 +75,7 @@ interface AppContainer {
     val mediaRepository: MediaRepository
     val settingsRepository: SettingsRepository
     val mediaDetailsCache: MediaDetailsCache
+    val searchIndexRepository: SearchIndexRepository
 }
 
 class DefaultAppContainer(
@@ -225,4 +227,13 @@ class DefaultAppContainer(
     }
 
     override val mediaDetailsCache: MediaDetailsCache by lazy { MediaDetailsCache() }
+
+    override val searchIndexRepository: SearchIndexRepository by lazy {
+        SearchIndexRepository(indexUrl = SEARCH_INDEX_URL)
+    }
+
+    private companion object {
+        // Índice de busca publicado pelo bot (GitHub Pages). Trocar aqui se mudar de host.
+        const val SEARCH_INDEX_URL = "https://nobrinho.github.io/nbrplay-privacy/docs/index.json"
+    }
 }

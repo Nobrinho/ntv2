@@ -33,6 +33,8 @@ sealed interface MediaLibraryAction {
     data object Load : MediaLibraryAction
     data object Refresh : MediaLibraryAction
     data class SearchChanged(val query: String) : MediaLibraryAction
+    data object SubmitSearch : MediaLibraryAction
+    data object LoadMoreSearch : MediaLibraryAction
     data class VideoFocused(val mediaId: String) : MediaLibraryAction
     data class OpenVideo(val media: MediaCardUi) : MediaLibraryAction
     data class LoadMoreChannel(val channelId: Long) : MediaLibraryAction
@@ -51,6 +53,9 @@ class MediaLibraryViewModel(
     private val progressStore: PlaybackProgressStore,
     private val mediaDetailsCache: MediaDetailsCache,
     private val maxCardsLimit: Int? = null,
+    // Passo da grade por dispositivo: TV = 5 colunas, celular = 2. A paginação carrega múltiplos
+    // desse passo para as linhas fecharem completas (sem sobra de meia linha).
+    private val gridStep: Int = 2,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
@@ -66,8 +71,16 @@ class MediaLibraryViewModel(
     private var currentChannelsCount: Int = 0
     private var loadJob: Job? = null
     private var searchDebounceJob: Job? = null
-    // Página enxuta: menos cards compostos/decodificados por vez na grade (não-lazy).
-    private val pageSize = 24
+    // Paginação infinita da busca: itens acumulados + cursor + guarda de concorrência.
+    private val searchItems = mutableListOf<MediaItemSummary>()
+    private var searchCursor = 0L
+    private var searchLoadingMore = false
+    // Página enxuta, sempre múltipla do passo da grade (TV=5 → 30; celular=2 → 24).
+    private val pageSize = if (gridStep >= 5) 30 else 24
+    // Primeira leva da busca menor => primeiro resultado pinta mais rápido; o resto vem no scroll.
+    private val searchPageSize = if (gridStep >= 5) 10 else 8
+    // Teto de páginas que a busca avança sozinha quando o filtro de título esvazia as primeiras.
+    private val MAX_SEARCH_AUTO_PAGES = 5
     // Teto de itens mantidos por canal (grade não-lazy). Configurável nas Configurações.
     private var maxRetainedItems = 150
 
@@ -89,7 +102,9 @@ class MediaLibraryViewModel(
                             searchQuery = query,
                             searchResults = emptyList(),
                             isSearchPending = false,
-                            isSearchLoading = false
+                            isSearchLoading = false,
+                            isSearchLoadingMore = false,
+                            searchHasMore = false
                         )
                     } else {
                         it.copy(
@@ -103,6 +118,15 @@ class MediaLibraryViewModel(
                     scheduleSearch(query)
                 }
             }
+
+            MediaLibraryAction.SubmitSearch -> {
+                // Enter/ação de busca: dispara já, sem esperar o debounce.
+                searchDebounceJob?.cancel()
+                val q = _uiState.value.searchQuery.trim()
+                if (q.isNotEmpty()) searchCurrentChannel(q)
+            }
+
+            MediaLibraryAction.LoadMoreSearch -> loadMoreSearch()
 
             is MediaLibraryAction.LoadMoreChannel -> loadMore(action.channelId)
 
@@ -306,7 +330,7 @@ class MediaLibraryViewModel(
     private fun scheduleSearch(query: String) {
         searchDebounceJob?.cancel()
         searchDebounceJob = viewModelScope.launch {
-            delay(650L)
+            delay(300L)
             searchCurrentChannel(query.trim())
         }
     }
@@ -316,38 +340,82 @@ class MediaLibraryViewModel(
         val activeId = _uiState.value.activeChannelId ?: return
         val title = channelTitles[activeId] ?: _uiState.value.activeChannelName
         viewModelScope.launch {
+            searchItems.clear()
+            searchCursor = 0L
+            searchLoadingMore = false
             _uiState.update {
                 it.copy(
                     isSearchPending = false,
                     isSearchLoading = true,
+                    isSearchLoadingMore = false,
+                    searchHasMore = false,
                     searchResults = emptyList()
                 )
             }
-            runCatching {
-                withContext(ioDispatcher) {
-                    fetchPage(activeId, title, query, fromMessageId = 0L)
-                }
-            }.onSuccess { page ->
-                val items = dedupByTmdb(page.items)
-                val savedPositions = withContext(ioDispatcher) {
-                    progressStore.savedPositions(items.map { it.mediaId })
-                }
+            try {
+                // Palavras comuns (ex.: "segredo") retornam muitas mensagens que só casam na SINOPSE;
+                // o filtro de título as descarta e a página fica vazia. Avança páginas até achar ao
+                // menos um título relevante (ou acabar / atingir o teto), para não devolver vazio.
+                var pages = 0
+                do {
+                    val page = withContext(ioDispatcher) {
+                        fetchPage(activeId, title, query, fromMessageId = searchCursor, limit = searchPageSize)
+                    }
+                    if (_uiState.value.searchQuery.trim() != query) return@launch
+                    searchItems += page.items
+                    searchCursor = page.nextCursor
+                    pages++
+                } while (dedupByTmdb(searchItems).isEmpty() && searchCursor != 0L && pages < MAX_SEARCH_AUTO_PAGES)
+                publishSearchResults(query, searchCursor != 0L)
+            } catch (e: Throwable) {
                 _uiState.update { current ->
                     if (current.searchQuery.trim() != query) current
-                    else current.copy(
-                        isSearchLoading = false,
-                        searchResults = items.map { it.toCard(savedPositions[it.mediaId] ?: 0L) }
-                    )
-                }
-            }.onFailure {
-                _uiState.update { current ->
-                    if (current.searchQuery.trim() != query) current
-                    else current.copy(
-                        isSearchLoading = false,
-                        searchResults = emptyList()
-                    )
+                    else current.copy(isSearchLoading = false, searchResults = emptyList())
                 }
             }
+        }
+    }
+
+    private fun loadMoreSearch() {
+        val query = _uiState.value.searchQuery.trim()
+        val state = _uiState.value
+        if (query.isEmpty() || searchLoadingMore || !state.searchHasMore ||
+            state.isSearchLoading || searchCursor == 0L
+        ) return
+        val activeId = state.activeChannelId ?: return
+        val title = channelTitles[activeId] ?: state.activeChannelName
+        searchLoadingMore = true
+        _uiState.update { it.copy(isSearchLoadingMore = true) }
+        viewModelScope.launch {
+            runCatching {
+                withContext(ioDispatcher) { fetchPage(activeId, title, query, fromMessageId = searchCursor, limit = searchPageSize) }
+            }.onSuccess { page ->
+                if (_uiState.value.searchQuery.trim() != query) { searchLoadingMore = false; return@launch }
+                searchItems += page.items
+                searchCursor = page.nextCursor
+                searchLoadingMore = false
+                publishSearchResults(query, page.nextCursor != 0L)
+            }.onFailure {
+                searchLoadingMore = false
+                _uiState.update { it.copy(isSearchLoadingMore = false) }
+            }
+        }
+    }
+
+    /** Deduplica os itens acumulados da busca, resolve progresso e publica em searchResults. */
+    private suspend fun publishSearchResults(query: String, hasMore: Boolean) {
+        val items = dedupByTmdb(searchItems)
+        val savedPositions = withContext(ioDispatcher) {
+            progressStore.savedPositions(items.map { it.mediaId })
+        }
+        _uiState.update { current ->
+            if (current.searchQuery.trim() != query) current
+            else current.copy(
+                isSearchLoading = false,
+                isSearchLoadingMore = false,
+                searchHasMore = hasMore,
+                searchResults = items.map { it.toCard(savedPositions[it.mediaId] ?: 0L) }
+            )
         }
     }
 
@@ -401,11 +469,17 @@ class MediaLibraryViewModel(
         }
     }
 
-    private suspend fun fetchPage(channelId: Long, channelTitle: String, query: String, fromMessageId: Long) =
+    private suspend fun fetchPage(
+        channelId: Long,
+        channelTitle: String,
+        query: String,
+        fromMessageId: Long,
+        limit: Int = pageSize
+    ) =
         if (query.isBlank()) {
-            mediaRepository.fetchChannelVideos(channelId, channelTitle, fromMessageId, pageSize)
+            mediaRepository.fetchChannelVideos(channelId, channelTitle, fromMessageId, limit)
         } else {
-            mediaRepository.searchChannelVideos(channelId, channelTitle, query, fromMessageId, pageSize)
+            mediaRepository.searchChannelVideos(channelId, channelTitle, query, fromMessageId, limit)
         }
 
     private fun projectSections() {
@@ -522,7 +596,8 @@ class MediaLibraryViewModelFactory(
     private val settingsRepository: SettingsRepository,
     private val progressStore: PlaybackProgressStore,
     private val mediaDetailsCache: MediaDetailsCache,
-    private val maxCardsLimit: Int? = null
+    private val maxCardsLimit: Int? = null,
+    private val gridStep: Int = 2
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -533,7 +608,8 @@ class MediaLibraryViewModelFactory(
                 settingsRepository = settingsRepository,
                 progressStore = progressStore,
                 mediaDetailsCache = mediaDetailsCache,
-                maxCardsLimit = maxCardsLimit
+                maxCardsLimit = maxCardsLimit,
+                gridStep = gridStep
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

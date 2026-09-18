@@ -5,8 +5,15 @@ import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,6 +42,8 @@ import com.ntv2.app.di.AppContainer
 import com.ntv2.app.feature.auth.presentation.LoginScreen
 import com.ntv2.app.feature.auth.presentation.viewmodel.LoginViewModel
 import com.ntv2.app.feature.auth.presentation.viewmodel.LoginViewModelFactory
+import com.ntv2.app.feature.auth.domain.model.LoginMode
+import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.feature.channels.presentation.ChannelSelectionScreen
 import com.ntv2.app.feature.channels.presentation.viewmodel.ChannelSelectionViewModel
 import com.ntv2.app.feature.channels.presentation.viewmodel.ChannelSelectionViewModelFactory
@@ -59,6 +68,8 @@ fun AppNavHost(
     }
     var showExitDialog by remember { mutableStateOf(false) }
     var openChannelPickerRequest by remember { mutableStateOf(0) }
+    // Cobre a tela com feedback enquanto o logout (recriação do cliente TDLib) acontece.
+    var loggingOut by remember { mutableStateOf(false) }
     // Splash como OVERLAY: o app real (Login → Biblioteca) monta e carrega POR TRÁS enquanto a
     // intro cobre a tela; ao terminar, ela some (fade) e revela a Biblioteca já pronta.
     // Respeita o toggle "Animações" das Configurações (off → pula a intro).
@@ -79,8 +90,11 @@ fun AppNavHost(
         startDestination = RoutePath.LOGIN
     ) {
         composable(RoutePath.LOGIN) {
+            // TV inicia no QR Code; celular inicia no telefone.
+            val loginAdaptive = rememberAdaptiveLayoutInfo()
+            val initialLoginMode = if (loginAdaptive.isTv) LoginMode.QrCode else LoginMode.Phone
             val loginViewModel: LoginViewModel = viewModel(
-                factory = LoginViewModelFactory(appContainer.authRepository)
+                factory = LoginViewModelFactory(appContainer.authRepository, initialLoginMode)
             )
             val scope = rememberCoroutineScope()
             LoginScreen(
@@ -114,6 +128,8 @@ fun AppNavHost(
             )
             ChannelSelectionScreen(
                 viewModel = channelViewModel,
+                // "Voltar" só quando há tela anterior (veio das Configurações); no 1º login é a raiz.
+                showBack = navController.previousBackStackEntry != null,
                 onOpenLibrary = {
                     // Vai para a biblioteca sem empilhar a seleção de canais (evita duplicatas
                     // ao abrir "Canais" pela própria biblioteca).
@@ -122,26 +138,27 @@ fun AppNavHost(
                         launchSingleTop = true
                     }
                 },
-                onOpenSettings = {
-                    navController.navigate(RoutePath.SETTINGS) {
-                        launchSingleTop = true
-                    }
-                },
                 onBack = { navController.popBackStack() },
                 onLogout = {
-                    // A VM já chamou o logout; limpa canais + canal ativo (próximo login = seleção).
+                    // Mesmo fluxo das Configurações: overlay "Saindo…" + aguarda o logout (recria o
+                    // cliente TDLib) antes de ir ao Login, limpando canais + canal ativo.
+                    loggingOut = true
                     channelScope.launch {
+                        runCatching { appContainer.authRepository.logout() }
                         runCatching { appContainer.channelRepository.clearSelectedChannels() }
                         runCatching { appContainer.settingsRepository.updateActiveChannelId(0L) }
-                    }
-                    navController.navigate(RoutePath.LOGIN) {
-                        popUpTo(navController.graph.id) { inclusive = true }
+                        navController.navigate(RoutePath.LOGIN) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                        }
+                        loggingOut = false
                     }
                 }
             )
         }
 
         composable(RoutePath.MEDIA_LIBRARY) {
+            // Passo da grade: TV = 5 colunas, celular = 2 (reflete na paginação em múltiplos).
+            val mediaGridStep = if (rememberAdaptiveLayoutInfo().isTv) 5 else 2
             val mediaViewModel: MediaLibraryViewModel = viewModel(
                 factory = MediaLibraryViewModelFactory(
                     mediaRepository = appContainer.mediaRepository,
@@ -149,14 +166,16 @@ fun AppNavHost(
                     settingsRepository = appContainer.settingsRepository,
                     progressStore = appContainer.playbackProgressStore,
                     mediaDetailsCache = appContainer.mediaDetailsCache,
-                    maxCardsLimit = lowRamMaxCards
+                    maxCardsLimit = lowRamMaxCards,
+                    gridStep = mediaGridStep
                 )
             )
             MediaLibraryScreen(
                 viewModel = mediaViewModel,
                 openChannelPickerRequest = openChannelPickerRequest,
+                onChannelPickerConsumed = { openChannelPickerRequest = 0 },
                 lowRamPlaybackWarnings = lowRamMaxCards != null,
-                onOpenSettings = { navController.navigate(RoutePath.SETTINGS) },
+                onOpenSettings = { navController.navigate(RoutePath.SETTINGS) { launchSingleTop = true } },
                 onOpenPlaybackPlaceholder = { mediaId, fileId, title, channelName, durationSeconds, fileName, thumbnailPath ->
                     navController.navigate(
                         RoutePath.playbackPlaceholder(
@@ -182,6 +201,7 @@ fun AppNavHost(
             val savedMaxCards by settings.maxCards.collectAsState(initial = 150)
             val effectiveMaxCards = lowRamMaxCards?.let { savedMaxCards.coerceAtMost(it) } ?: savedMaxCards
             val castPhotos by settings.castPhotos.collectAsState(initial = true)
+            val settingsGridStep = if (rememberAdaptiveLayoutInfo().isTv) 5 else 2
             SettingsScreen(
                 showCovers = showCovers,
                 animationsEnabled = animationsEnabled,
@@ -189,6 +209,7 @@ fun AppNavHost(
                 minDurationMinutes = minDuration,
                 maxCards = effectiveMaxCards,
                 maxCardsLimit = lowRamMaxCards,
+                gridStep = settingsGridStep,
                 onToggleCovers = { scope.launch { settings.updateShowCovers(it) } },
                 onToggleAnimations = { scope.launch { settings.updateAnimationsEnabled(it) } },
                 onToggleCastPhotos = { scope.launch { settings.updateCastPhotos(it) } },
@@ -196,10 +217,13 @@ fun AppNavHost(
                 onChangeMaxCards = { value ->
                     scope.launch { settings.updateMaxCards(lowRamMaxCards?.let { value.coerceAtMost(it) } ?: value) }
                 },
-                onManageChannels = { navController.navigate(RoutePath.CHANNEL_SELECTION) },
+                onManageChannels = {
+                    navController.navigate(RoutePath.CHANNEL_SELECTION) { launchSingleTop = true }
+                },
                 onOpenListedChannels = {
                     openChannelPickerRequest += 1
                     navController.navigate(RoutePath.MEDIA_LIBRARY) {
+                        popUpTo(RoutePath.MEDIA_LIBRARY) { inclusive = false }
                         launchSingleTop = true
                     }
                 },
@@ -208,6 +232,8 @@ fun AppNavHost(
                     // senão a tela de QR abre com o cliente ainda não pronto e trava em "gerando".
                     // Limpa canais + canal ativo para que o próximo login seja um "primeiro login"
                     // (checa canais → seleção quando não houver), sem herdar IDs de outra conta.
+                    // Mostra o overlay "Saindo…" enquanto a requisição roda (leva alguns segundos).
+                    loggingOut = true
                     scope.launch {
                         runCatching { appContainer.authRepository.logout() }
                         runCatching { appContainer.channelRepository.clearSelectedChannels() }
@@ -215,10 +241,15 @@ fun AppNavHost(
                         navController.navigate(RoutePath.LOGIN) {
                             popUpTo(navController.graph.id) { inclusive = true }
                         }
+                        loggingOut = false
                     }
                 },
                 onOpenLibrary = {
+                    // Volta para a Biblioteca EXISTENTE (colapsa a pilha) em vez de empilhar outra —
+                    // sem isso, alternar Config/Biblioteca acumulava telas e o "voltar" refazia todo
+                    // o caminho antes de sair.
                     navController.navigate(RoutePath.MEDIA_LIBRARY) {
+                        popUpTo(RoutePath.MEDIA_LIBRARY) { inclusive = false }
                         launchSingleTop = true
                     }
                 }
@@ -282,5 +313,40 @@ fun AppNavHost(
             onDismiss = { showExitDialog = false }
         )
     }
+
+    // Overlay de saída: cobre tudo com feedback enquanto o logout é processado.
+    if (loggingOut) {
+        LogoutOverlay()
+    }
   }
+}
+
+@Composable
+private fun LogoutOverlay() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xF20E0E0E)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            androidx.compose.material3.CircularProgressIndicator(
+                color = Color(0xFF2BEE34),
+                modifier = Modifier.size(52.dp)
+            )
+            androidx.compose.material3.Text(
+                text = "Saindo da conta…",
+                color = Color.White,
+                style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+            )
+            androidx.compose.material3.Text(
+                text = "Encerrando a sessão do Telegram com segurança",
+                color = Color(0xFFB0B0B0),
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+            )
+        }
+    }
 }

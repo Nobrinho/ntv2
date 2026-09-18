@@ -72,6 +72,10 @@ data class MediaLibraryUiState(
     val isLoading: Boolean = false,
     val isSearchPending: Boolean = false,
     val isSearchLoading: Boolean = false,
+    /** Há mais páginas de busca para carregar (paginação infinita). */
+    val searchHasMore: Boolean = false,
+    /** Carregando a próxima página de resultados da busca. */
+    val isSearchLoadingMore: Boolean = false,
     val errorMessage: String? = null,
     val emptyState: MediaLibraryEmptyState? = null,
     val lastFocusedMediaId: String? = null,

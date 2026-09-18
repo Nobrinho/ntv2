@@ -7,7 +7,7 @@ data class LoginUiState(
     val loginMode: LoginMode = LoginMode.QrCode,
     val authStep: AuthStep = AuthStep.Idle,
     val qrCodePayload: String? = null,
-    val phoneNumber: String = "",
+    val phoneNumber: String = "+55 ",
     val code: String = "",
     val password: String = "",
     val isLoading: Boolean = false,

@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -76,6 +79,7 @@ fun SettingsScreen(
     minDurationMinutes: Int,
     maxCards: Int,
     maxCardsLimit: Int? = null,
+    gridStep: Int = 2,
     onToggleCovers: (Boolean) -> Unit,
     onToggleAnimations: (Boolean) -> Unit,
     onToggleCastPhotos: (Boolean) -> Unit,
@@ -155,6 +159,7 @@ fun SettingsScreen(
                     MaxCardsCard(
                         value = maxCards,
                         limit = maxCardsLimit,
+                        gridStep = gridStep,
                         onChange = onChangeMaxCards
                     )
                     NavCard(
@@ -265,10 +270,15 @@ private val MAX_CARDS_STEPS = listOf(60, 90, 120, 150, 200, 250, 300)
 private fun MaxCardsCard(
     value: Int,
     limit: Int?,
+    gridStep: Int,
     onChange: (Int) -> Unit
 ) {
-    val steps = remember(limit) {
-        limit?.let { max -> MAX_CARDS_STEPS.filter { it <= max }.ifEmpty { listOf(max) } } ?: MAX_CARDS_STEPS
+    // Cada valor é arredondado para múltiplo do passo da grade (TV=5 / celular=2), para as linhas
+    // fecharem completas. Os valores base já são múltiplos de 10; o arredondamento garante isso.
+    val steps = remember(limit, gridStep) {
+        val stepUnit = gridStep.coerceAtLeast(1)
+        val base = MAX_CARDS_STEPS.map { it - (it % stepUnit) }.filter { it > 0 }.distinct()
+        limit?.let { max -> base.filter { it <= max }.ifEmpty { listOf(max - (max % stepUnit)) } } ?: base
     }
     val effectiveValue = limit?.let { value.coerceAtMost(it) } ?: value
     val idx = steps.indexOfFirst { it >= effectiveValue }.let { if (it < 0) steps.lastIndex else it }
@@ -491,21 +501,34 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val adaptive = rememberAdaptiveLayoutInfo()
+    val compact = adaptive.usePhoneLayout || !adaptive.useTvLayout
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xF2000000))
-            .padding(40.dp),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = if (compact) 12.dp else 40.dp, vertical = if (compact) 12.dp else 40.dp)
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.TopCenter
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.82f)
+                .then(if (compact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.82f).widthIn(max = 760.dp))
                 .fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Política de Privacidade", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            // Cabeçalho: título + X discreto para fechar.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Política de Privacidade",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f)
+                )
+                PrivacyCloseButton(onClose)
+            }
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -523,7 +546,7 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
                         }
                     }
                     .verticalScroll(scroll)
-                    .padding(24.dp)
+                    .padding(horizontal = if (compact) 18.dp else 24.dp, vertical = 20.dp)
             ) {
                 Text(
                     PRIVACY_POLICY_TEXT,
@@ -532,11 +555,32 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
                 )
             }
             Text(
-                "Use ↑ / ↓ para rolar · Voltar para fechar",
+                if (compact) "Deslize para rolar · toque no X para fechar" else "Use ↑ / ↓ para rolar · Voltar para fechar",
                 color = Color(0xFF9A9A9A),
                 style = MaterialTheme.typography.bodySmall
             )
         }
+    }
+}
+
+@Composable
+private fun PrivacyCloseButton(onClose: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClose)
+            .background(if (focused) Color.White else Color(0x1FFFFFFF)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Filled.Close,
+            contentDescription = "Fechar",
+            tint = if (focused) Color.Black else Color(0xFFCFCFCF),
+            modifier = Modifier.size(22.dp)
+        )
     }
 }
 

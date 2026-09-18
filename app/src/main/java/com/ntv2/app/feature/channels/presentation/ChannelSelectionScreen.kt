@@ -28,8 +28,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -57,9 +57,8 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.ntv2.app.core.ui.MainBottomNav
-import com.ntv2.app.core.ui.MainTab
 import coil.compose.AsyncImage
+import com.ntv2.app.core.ui.ConfirmDialog
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.ui.RailButton
 import com.ntv2.app.core.ui.RailColumn
@@ -74,12 +73,16 @@ import kotlin.math.abs
 fun ChannelSelectionScreen(
     viewModel: ChannelSelectionViewModel,
     onOpenLibrary: () -> Unit,
-    onOpenSettings: () -> Unit,
     onBack: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    // "Voltar" só faz sentido quando esta tela foi aberta a partir das Configurações.
+    // No primeiro login (raiz), não há para onde voltar, então o botão é ocultado.
+    showBack: Boolean = false
 ) {
     val state by viewModel.uiState.collectAsState()
     val firstActionFocusRequester = remember { FocusRequester() }
+    var confirmLogout by remember { mutableStateOf(false) }
+    val hasSelection = state.selectedChannelIds.isNotEmpty()
 
     LaunchedEffect(Unit) {
         firstActionFocusRequester.requestFocus()
@@ -105,12 +108,13 @@ fun ChannelSelectionScreen(
                 ChannelActionsRail(
                     state = state,
                     firstActionFocusRequester = firstActionFocusRequester,
-                    onSelectAll = { viewModel.onAction(ChannelSelectionAction.SelectAll) },
+                    showBack = showBack,
+                    hasSelection = hasSelection,
                     onClear = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
                     onRefresh = { viewModel.onAction(ChannelSelectionAction.Retry) },
                     onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
                     onBack = onBack,
-                    onLogout = { viewModel.onAction(ChannelSelectionAction.Logout) }
+                    onLogout = { confirmLogout = true }
                 )
                 ChannelContent(
                     state = state,
@@ -124,12 +128,13 @@ fun ChannelSelectionScreen(
                 CompactChannelActions(
                     state = state,
                     firstActionFocusRequester = firstActionFocusRequester,
-                    onSelectAll = { viewModel.onAction(ChannelSelectionAction.SelectAll) },
+                    showBack = showBack,
+                    hasSelection = hasSelection,
                     onClear = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
                     onRefresh = { viewModel.onAction(ChannelSelectionAction.Retry) },
                     onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
                     onBack = onBack,
-                    onLogout = { viewModel.onAction(ChannelSelectionAction.Logout) }
+                    onLogout = { confirmLogout = true }
                 )
                 ChannelContent(
                     state = state,
@@ -138,12 +143,22 @@ fun ChannelSelectionScreen(
                     onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
                 )
             }
-            MainBottomNav(
-                selected = MainTab.Channels,
-                onLibrary = onOpenLibrary,
-                onChannels = {},
-                onSettings = onOpenSettings,
-                modifier = Modifier.align(Alignment.BottomCenter)
+            // Sem bottom nav aqui: ainda não há biblioteca (nenhum canal escolhido); as ações do
+            // topo (Continuar/Atualizar/Limpar/Sair e Voltar quando aplicável) já bastam.
+        }
+
+        if (confirmLogout) {
+            ConfirmDialog(
+                title = "Sair da conta?",
+                message = "Você precisará entrar novamente para usar o app.",
+                icon = Icons.AutoMirrored.Filled.Logout,
+                confirmLabel = "Sair",
+                confirmIcon = Icons.AutoMirrored.Filled.Logout,
+                cancelLabel = "Cancelar",
+                cancelIcon = Icons.Filled.Close,
+                destructive = true,
+                onConfirm = { confirmLogout = false; onLogout() },
+                onDismiss = { confirmLogout = false }
             )
         }
     }
@@ -153,7 +168,8 @@ fun ChannelSelectionScreen(
 private fun ChannelActionsRail(
     state: ChannelSelectionUiState,
     firstActionFocusRequester: FocusRequester,
-    onSelectAll: () -> Unit,
+    showBack: Boolean,
+    hasSelection: Boolean,
     onClear: () -> Unit,
     onRefresh: () -> Unit,
     onContinue: () -> Unit,
@@ -161,14 +177,16 @@ private fun ChannelActionsRail(
     onLogout: () -> Unit
 ) {
     RailColumn {
+        // Foco inicial na Atualizar (sempre presente); Limpar só aparece com seleção.
         RailButton(
-            icon = Icons.Filled.DoneAll,
-            label = "Todos",
+            icon = Icons.Filled.Refresh,
+            label = "Atualizar",
             modifier = Modifier.focusRequester(firstActionFocusRequester),
-            onClick = onSelectAll
+            onClick = onRefresh
         )
-        RailButton(Icons.Filled.Clear, "Limpar", onClick = onClear)
-        RailButton(Icons.Filled.Refresh, "Atualizar", onClick = onRefresh)
+        if (hasSelection) {
+            RailButton(Icons.Filled.Deselect, "Limpar", onClick = onClear)
+        }
         RailButton(
             icon = Icons.AutoMirrored.Filled.ArrowForward,
             label = "Continuar",
@@ -176,7 +194,9 @@ private fun ChannelActionsRail(
             primary = state.canContinue,
             onClick = onContinue
         )
-        RailButton(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", onClick = onBack)
+        if (showBack) {
+            RailButton(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", onClick = onBack)
+        }
         RailButton(Icons.AutoMirrored.Filled.Logout, "Sair", onClick = onLogout)
     }
 }
@@ -185,7 +205,8 @@ private fun ChannelActionsRail(
 private fun CompactChannelActions(
     state: ChannelSelectionUiState,
     firstActionFocusRequester: FocusRequester,
-    onSelectAll: () -> Unit,
+    showBack: Boolean,
+    hasSelection: Boolean,
     onClear: () -> Unit,
     onRefresh: () -> Unit,
     onContinue: () -> Unit,
@@ -202,16 +223,53 @@ private fun CompactChannelActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CompactActionChip(
-            label = "Todos",
+        // Atualizar e Limpar são só ícone. Limpar só aparece com pelo menos um canal selecionado.
+        ChannelIconAction(
+            icon = Icons.Filled.Refresh,
+            contentDescription = "Atualizar",
             modifier = Modifier.focusRequester(firstActionFocusRequester),
-            onClick = onSelectAll
+            onClick = onRefresh
         )
-        CompactActionChip(label = "Limpar", onClick = onClear)
-        CompactActionChip(label = "Atualizar", onClick = onRefresh)
+        if (hasSelection) {
+            ChannelIconAction(
+                icon = Icons.Filled.Deselect,
+                contentDescription = "Limpar seleção",
+                onClick = onClear
+            )
+        }
         CompactActionChip(label = "Continuar", enabled = state.canContinue, primary = state.canContinue, onClick = onContinue)
-        CompactActionChip(label = "Voltar", onClick = onBack)
+        if (showBack) {
+            CompactActionChip(label = "Voltar", onClick = onBack)
+        }
         CompactActionChip(label = "Sair", onClick = onLogout)
+    }
+}
+
+// Ação circular só-ícone (contraste + destaque de foco) para a barra de canais no celular.
+@Composable
+private fun ChannelIconAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(if (focused) Color.White else Color(0xFF2C2C2E))
+            .border(1.dp, if (focused) Color.White else Color(0x66FFFFFF), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = if (focused) Color.Black else Color.White,
+            modifier = Modifier.size(22.dp)
+        )
     }
 }
 

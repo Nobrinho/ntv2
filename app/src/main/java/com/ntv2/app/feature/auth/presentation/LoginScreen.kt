@@ -144,15 +144,17 @@ fun LoginScreen(
                     onChange = { viewModel.onAction(LoginAction.UpdateCode(it)) },
                     onSubmit = { viewModel.onAction(LoginAction.SubmitCode) },
                     onResend = { viewModel.onAction(LoginAction.SubmitPhone) },
-                    onBack = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }
+                    onBack = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.Phone)) }
                 )
                 LoginStep.Phone -> PhoneStep(
                     value = state.phoneNumber,
                     loading = state.isLoading,
                     error = state.errorMessage,
+                    // Autofoco só na TV (dpad). No celular abriria o teclado sozinho — só ao tocar.
+                    autoFocus = !compact,
                     onChange = { viewModel.onAction(LoginAction.UpdatePhone(it)) },
                     onSubmit = { viewModel.onAction(LoginAction.SubmitPhone) },
-                    onBack = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }
+                    onUseQr = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }
                 )
                 LoginStep.Qr -> QrStep(
                     compact = compact,
@@ -188,7 +190,7 @@ private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhon
 
     Text("Entre na sua conta", style = MaterialTheme.typography.headlineSmall, color = Color.White)
     Text(
-        "Método 1 — QR Code (recomendado)",
+        "Método 1 — QR Code",
         style = MaterialTheme.typography.titleSmall,
         color = BRAND,
         textAlign = TextAlign.Center
@@ -296,15 +298,22 @@ private fun PhoneStep(
     value: String,
     loading: Boolean,
     error: String?,
+    autoFocus: Boolean,
     onChange: (String) -> Unit,
     onSubmit: () -> Unit,
-    onBack: () -> Unit
+    onUseQr: () -> Unit
 ) {
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(autoFocus) { if (autoFocus) runCatching { focus.requestFocus() } }
 
-    Text("Entrar com telefone", style = MaterialTheme.typography.headlineSmall, color = Color.White)
-    Text("Número de telefone", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
+    Text("Entre na sua conta", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+    Text(
+        "Método 1 — Número de telefone",
+        style = MaterialTheme.typography.titleSmall,
+        color = BRAND,
+        textAlign = TextAlign.Center
+    )
+    Text("Informe o número com DDI e DDD", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
     OutlinedTextField(
         modifier = Modifier.fillMaxWidth().focusRequester(focus),
         value = value,
@@ -318,7 +327,16 @@ private fun PhoneStep(
     Button(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
         Text(if (loading) "Enviando…" else "Continuar")
     }
-    Button(onClick = onBack) { Text("Voltar") }
+
+    Divider("OU")
+
+    Text(
+        "Método 2 — Entrar com QR Code",
+        style = MaterialTheme.typography.bodySmall,
+        color = Color(0xFF8A8A8A),
+        textAlign = TextAlign.Center
+    )
+    Button(modifier = Modifier.fillMaxWidth(), onClick = onUseQr) { Text("Entrar com QR Code") }
 }
 
 @Composable

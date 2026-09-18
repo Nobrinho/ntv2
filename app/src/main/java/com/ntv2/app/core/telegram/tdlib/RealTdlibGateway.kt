@@ -131,22 +131,61 @@ class RealTdlibGateway(
 
     override suspend fun requestQrCodeAuthentication() {
         if (!config.enabled) return
-        send(TdApi.RequestQrCodeAuthentication(longArrayOf()))
+        sendAuth(TdApi.RequestQrCodeAuthentication(longArrayOf()))
     }
 
     override suspend fun setAuthenticationPhoneNumber(phoneNumber: String) {
         ensureConfigured()
-        send(TdApi.SetAuthenticationPhoneNumber(phoneNumber, null))
+        // SetAuthenticationPhoneNumber só é aceito em WaitPhoneNumber. Se um QR já foi solicitado,
+        // o TDLib fica em WaitOtherDeviceConfirmation e recusa ("call to ... unexpected"). Nesse
+        // caso recriamos o cliente (Close → novo cliente → WaitPhoneNumber) antes de enviar.
+        if (auth.value is TdAuthorizationState.WaitQrCode) {
+            runCatching { send(TdApi.Close()) }
+            withTimeoutOrNull(5_000L) { auth.first { it is TdAuthorizationState.Closed } }
+            client = null
+            ensureClient()
+            withTimeoutOrNull(8_000L) { auth.first { it is TdAuthorizationState.WaitPhoneNumber } }
+        }
+        sendAuth(TdApi.SetAuthenticationPhoneNumber(phoneNumber, null))
     }
 
     override suspend fun checkAuthenticationCode(code: String) {
         ensureConfigured()
-        send(TdApi.CheckAuthenticationCode(code))
+        sendAuth(TdApi.CheckAuthenticationCode(code))
     }
 
     override suspend fun checkAuthenticationPassword(password: String) {
         ensureConfigured()
-        send(TdApi.CheckAuthenticationPassword(password))
+        sendAuth(TdApi.CheckAuthenticationPassword(password))
+    }
+
+    // Comandos de autorização retornam o erro no resultado (não como update de estado). Sem checar,
+    // número/código/senha inválidos — ou um estado incompatível — ficariam sem feedback na tela.
+    // Lança em vez de mudar o estado: o data source captura e mostra a mensagem preservando o passo
+    // atual (código/senha errados não devem jogar o usuário de volta à entrada de telefone).
+    private suspend fun sendAuth(function: TdApi.Function<out TdApi.Object>) {
+        val result = send(function)
+        if (result is TdApi.Error) {
+            throw IllegalStateException(authErrorMessage(result))
+        }
+    }
+
+    private fun authErrorMessage(error: TdApi.Error): String {
+        val raw = error.message ?: ""
+        return when {
+            raw.contains("PHONE_NUMBER_INVALID") -> "Número de telefone inválido."
+            raw.contains("PHONE_NUMBER_BANNED") -> "Este número está banido no Telegram."
+            raw.contains("PHONE_NUMBER_FLOOD") -> "Muitas tentativas com este número. Aguarde um pouco."
+            raw.contains("PHONE_CODE_INVALID") || raw.contains("PHONE_CODE_EMPTY") -> "Código inválido."
+            raw.contains("PHONE_CODE_EXPIRED") -> "Código expirado. Reenvie o código."
+            raw.contains("PASSWORD_HASH_INVALID") || raw.contains("PASSWORD_INVALID") -> "Senha incorreta."
+            raw.startsWith("FLOOD_WAIT") -> {
+                val secs = raw.substringAfter("FLOOD_WAIT_", "").toIntOrNull()
+                if (secs != null) "Muitas tentativas. Tente novamente em ${secs}s." else "Muitas tentativas. Aguarde e tente novamente."
+            }
+            raw.isBlank() -> "Falha na autenticação (código ${error.code})."
+            else -> raw
+        }
     }
 
     override suspend fun logout() {
@@ -275,6 +314,24 @@ class RealTdlibGateway(
         return null
     }
 
+    /**
+     * Dado um pôster (foto/texto) que casou na busca, acha o vídeo do MESMO post — normalmente a
+     * mensagem logo APÓS o pôster (id maior). O offset negativo do GetChatHistory traz também as
+     * mensagens mais novas; escolhemos o vídeo mais próximo (após, ou antes como fallback).
+     */
+    private suspend fun findVideoNearPoster(chatId: Long, posterId: Long): TdApi.Message? {
+        repeat(2) {
+            val res = send(TdApi.GetChatHistory(chatId, posterId, -9, 19, false)) as? TdApi.Messages
+            val msgs = res?.messages?.filterNotNull().orEmpty()
+            if (msgs.isEmpty()) return@repeat
+            val videos = msgs.filter { it.content is TdApi.MessageVideo }
+            (videos.filter { it.id > posterId }.minByOrNull { it.id }
+                ?: videos.filter { it.id < posterId }.maxByOrNull { it.id })
+                ?.let { return it }
+        }
+        return null
+    }
+
     /** Heurística: o nome parece de episódio de série (número no início, "Episódio", "EP", "Cap"…). */
     private fun looksLikeEpisode(name: String): Boolean {
         // Número no início: "1. Ausência", "2) ...", "03 - ...".
@@ -342,24 +399,37 @@ class RealTdlibGateway(
         // Garante que o TDLib conheça o chat (logo após o login a lista de diálogos pode não ter
         // carregado e SearchChatMessages volta vazio). GetChat força o carregamento do chat.
         runCatching { send(TdApi.GetChat(chatId)) }
+        // Listagem (query vazia): só vídeos. Busca por texto: SEM filtro, para varrer também as
+        // mensagens de PÔSTER/TEXTO — o título costuma estar nelas (não na legenda do vídeo). Sem
+        // isso, buscar "ogiva" não achava o filme (só casava a palavra na SINOPSE de outro).
+        val filter = if (query.isBlank()) TdApi.SearchMessagesFilterVideo() else null
         val result = send(
-            TdApi.SearchChatMessages(
-                chatId,
-                null,
-                query,
-                null,
-                fromMessageId,
-                0,
-                limit,
-                TdApi.SearchMessagesFilterVideo()
-            )
+            TdApi.SearchChatMessages(chatId, null, query, null, fromMessageId, 0, limit, filter)
         )
         if (result !is TdApi.FoundChatMessages) return TelegramVideoPage(emptyList(), 0L)
+
+        // Mensagens de vídeo a montar: na listagem são os próprios resultados; na busca por texto,
+        // os vídeos diretos + o vídeo adjacente de cada pôster/texto que casou.
+        val videoMessages: List<TdApi.Message> = if (query.isBlank()) {
+            result.messages.orEmpty().filterNotNull()
+        } else {
+            coroutineScope {
+                result.messages.orEmpty().filterNotNull().map { msg ->
+                    async {
+                        when (msg.content) {
+                            is TdApi.MessageVideo -> msg
+                            is TdApi.MessagePhoto, is TdApi.MessageText -> findVideoNearPoster(chatId, msg.id)
+                            else -> null
+                        }
+                    }
+                }.awaitAll().filterNotNull().distinctBy { it.id }
+            }
+        }
 
         // Monta os itens em paralelo: cada um baixa sua miniatura (arquivo pequeno) para termos
         // um caminho local — sem isso thumbnail.file.local.path fica vazio e o card fica cinza.
         val items = coroutineScope {
-            result.messages.orEmpty().mapNotNull { msg ->
+            videoMessages.mapNotNull { msg ->
                 val content = msg.content as? TdApi.MessageVideo ?: return@mapNotNull null
                 val video = content.video ?: return@mapNotNull null
                 val tdFile = video.video ?: return@mapNotNull null
@@ -409,6 +479,10 @@ class RealTdlibGateway(
                     // Pôster: URL do post rico; senão a foto do Telegram (Polemic). Fundo: só rico.
                     val photo = photoContent?.photo
                     val posterPath = posterMeta?.posterUrl ?: photo?.let { resolvePosterPath(it) }
+                    // Só baixa a miniatura do vídeo (round-trip no TDLib) quando NÃO há pôster — o
+                    // card usa posterPath quando existe. No canal rico o pôster é URL, então isso
+                    // elimina um download por item na busca/listagem.
+                    val resolvedThumb = if (posterPath != null) null else resolveThumbnailPath(video)
                     val backdropPath = posterMeta?.backdropUrl
 
                     // Proporção real só é conhecida para a foto do Telegram; URL → desconhecida (0).
@@ -430,7 +504,7 @@ class RealTdlibGateway(
                         caption = metaCaption ?: videoCaption,
                         fileName = video.fileName.ifBlank { null },
                         durationSeconds = video.duration,
-                        thumbnailPath = resolveThumbnailPath(video),
+                        thumbnailPath = resolvedThumb,
                         fileId = tdFile.id,
                         width = video.width,
                         height = video.height,
@@ -460,8 +534,24 @@ class RealTdlibGateway(
                 }
             }.awaitAll()
         }
+        // O SearchChatMessages do TDLib faz busca de TEXTO em toda a legenda/sinopse do vídeo — por
+        // isso "ogiva" trazia "007 Contra a Chantagem Atômica" (a palavra aparece na SINOPSE dele).
+        // Filtramos por relevância de TÍTULO: só mantém itens cujo título/título original/arquivo
+        // contenha todos os termos buscados (sem acento/caixa). Assim descarta os que só casaram na
+        // descrição. (Limite conhecido: títulos que vivem só na mensagem do pôster e não na do vídeo
+        // podem não ser retornados pelo TDLib.)
+        val filtered = if (query.isBlank()) items else {
+            val tokens = normalizeForSearch(query).split(' ').filter { it.isNotBlank() }
+            if (tokens.isEmpty()) items
+            else items.filter { item ->
+                val hay = normalizeForSearch(
+                    listOfNotNull(item.title, item.originalTitle, item.fileName).joinToString(" ")
+                )
+                tokens.all { hay.contains(it) }
+            }
+        }
         // nextFromMessageId=0 => fim (doc TDLib).
-        return TelegramVideoPage(videos = items, nextFromMessageId = result.nextFromMessageId)
+        return TelegramVideoPage(videos = filtered, nextFromMessageId = result.nextFromMessageId)
     }
 
     override suspend fun openFile(fileId: Int): TdlibPlaybackFileState {
@@ -701,6 +791,12 @@ private val VIDEO_TECH_TAGS: Set<String> = setOf(
 
 private val VIDEO_EXTENSION_REGEX =
     Regex("\\.(mp4|mkv|avi|mov|m4v|webm|ts|wmv|flv|mpg|mpeg)$", RegexOption.IGNORE_CASE)
+
+/** Normaliza para busca: sem acentos e em caixa baixa (para comparar termos de forma tolerante). */
+internal fun normalizeForSearch(raw: String): String =
+    java.text.Normalizer.normalize(raw, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+        .lowercase()
 
 /**
  * Limpa o nome exibido: remove a extensão de vídeo, troca separadores (._) por espaço e descarta

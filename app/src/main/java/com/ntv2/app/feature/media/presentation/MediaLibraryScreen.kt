@@ -113,6 +113,7 @@ import kotlin.math.roundToInt
 fun MediaLibraryScreen(
     viewModel: MediaLibraryViewModel,
     openChannelPickerRequest: Int,
+    onChannelPickerConsumed: () -> Unit = {},
     lowRamPlaybackWarnings: Boolean,
     onOpenSettings: () -> Unit,
     onOpenPlaybackPlaceholder: (
@@ -159,9 +160,13 @@ fun MediaLibraryScreen(
         if (!searching) initialActionsFocus.requestFocus()
     }
 
+    // Só abre o modal de canais por um PEDIDO novo (botão). Antes, ao voltar de outra tela a
+    // recomposição via este efeito com o contador ainda > 0 reabria o modal sozinho. Agora o
+    // pedido é consumido (zerado) assim que atendido.
     LaunchedEffect(openChannelPickerRequest) {
         if (openChannelPickerRequest > 0) {
             channelPicker = true
+            onChannelPickerConsumed()
         }
     }
 
@@ -349,8 +354,10 @@ fun MediaLibraryScreen(
                 showCastPhotos = state.castPhotos,
                 lowRamPlaybackWarnings = lowRamPlaybackWarnings,
                 onPlay = {
+                    // Não fecha os detalhes aqui: fechar antes da navegação (assíncrona) fazia a grid
+                    // "piscar" no intervalo. O player cobre o overlay; ao voltar, os detalhes reabrem
+                    // via returnToDetailsMediaId.
                     viewModel.onAction(MediaLibraryAction.OpenVideo(media))
-                    detailsMedia = null
                 },
                 onDismiss = { detailsMedia = null }
             )
@@ -394,15 +401,18 @@ fun MediaLibraryScreen(
             } else {
                 TouchSearchOverlay(
                     query = state.searchQuery,
-                    resultCount = resultCount,
                     searchInProgress = searchInProgress,
                     suggestions = if (state.searchQuery.isBlank() || searchInProgress) emptyList() else state.searchResults,
+                    hasMore = state.searchHasMore,
+                    loadingMore = state.isSearchLoadingMore,
                     onQueryChange = { viewModel.onAction(MediaLibraryAction.SearchChanged(it)) },
                     onClear = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
                     onClose = {
                         searching = false
                         viewModel.onAction(MediaLibraryAction.SearchChanged(""))
                     },
+                    onLoadMore = { viewModel.onAction(MediaLibraryAction.LoadMoreSearch) },
+                    onSubmit = { viewModel.onAction(MediaLibraryAction.SubmitSearch) },
                     onSelect = { media ->
                         detailsMedia = media
                         searching = false
@@ -425,40 +435,49 @@ private fun CompactLibraryActions(
             .fillMaxWidth()
             .statusBarsPadding()
             .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CompactLibraryChip(modifier = Modifier.focusRequester(firstItemFocus), onClick = onSearch) {
-            Icon(Icons.Filled.Search, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text("Busca")
-        }
-        CompactLibraryChip(onClick = onRefresh) {
-            Icon(Icons.Filled.Refresh, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text("Atualizar")
-        }
+        CompactLibraryChip(
+            icon = Icons.Filled.Search,
+            contentDescription = "Busca",
+            modifier = Modifier.focusRequester(firstItemFocus),
+            onClick = onSearch
+        )
+        CompactLibraryChip(
+            icon = Icons.Filled.Refresh,
+            contentDescription = "Atualizar",
+            onClick = onRefresh
+        )
     }
 }
 
+// Botão de ação da biblioteca no celular: circular, só ícone, com contraste (círculo escuro +
+// borda visível) e destaque de foco (fundo branco / ícone escuro).
 @Composable
 private fun CompactLibraryChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-    content: @Composable () -> Unit
+    onClick: () -> Unit
 ) {
-    Row(
+    var focused by remember { mutableStateOf(false) }
+    Box(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0x22FFFFFF))
+            .size(46.dp)
+            .clip(CircleShape)
+            .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .background(if (focused) Color.White else Color(0xFF2C2C2E))
+            .border(1.dp, if (focused) Color.White else Color(0x66FFFFFF), CircleShape),
+        contentAlignment = Alignment.Center
     ) {
-        androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.titleSmall.copy(color = Color.White)) {
-            content()
-        }
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = if (focused) Color.Black else Color.White,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
 
@@ -635,12 +654,15 @@ private fun TvSearchOverlay(
 @Composable
 private fun TouchSearchOverlay(
     query: String,
-    resultCount: Int,
     searchInProgress: Boolean,
     suggestions: List<MediaCardUi>,
+    hasMore: Boolean,
+    loadingMore: Boolean,
     onQueryChange: (String) -> Unit,
     onClear: () -> Unit,
     onClose: () -> Unit,
+    onLoadMore: () -> Unit,
+    onSubmit: () -> Unit,
     onSelect: (MediaCardUi) -> Unit
 ) {
     val fieldFocus = remember { FocusRequester() }
@@ -648,7 +670,18 @@ private fun TouchSearchOverlay(
     val visibleSuggestions = remember(query, searchInProgress, suggestions) {
         val normalized = query.trim()
         if (normalized.isBlank() || searchInProgress) emptyList()
-        else suggestions.take(12)
+        else suggestions
+    }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // Paginação infinita: dispara ao aproximar do fim da lista.
+    val shouldLoadMore by remember(visibleSuggestions.size) {
+        androidx.compose.runtime.derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            visibleSuggestions.isNotEmpty() && last >= visibleSuggestions.size - 3
+        }
+    }
+    LaunchedEffect(shouldLoadMore, hasMore, loadingMore) {
+        if (shouldLoadMore && hasMore && !loadingMore) onLoadMore()
     }
 
     LaunchedEffect(Unit) {
@@ -703,7 +736,7 @@ private fun TouchSearchOverlay(
                     singleLine = true,
                     textStyle = androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(color = Color.White),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); onSubmit() }),
                     decorationBox = { innerTextField ->
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
                             if (query.isEmpty()) {
@@ -750,60 +783,83 @@ private fun TouchSearchOverlay(
             }
         }
 
-        SearchStatusText(
-            query = query,
-            resultCount = resultCount,
-            searchInProgress = searchInProgress,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
-        )
-
-        Column(
+        // Feedback de busca fica só no centro (spinner "Pesquisando…" / "Nenhum resultado"),
+        // sem duplicar um status no topo. Lista com paginação infinita.
+        androidx.compose.foundation.lazy.LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
                 .padding(bottom = 16.dp)
         ) {
             visibleSuggestions.forEach { media ->
-                TouchSearchRow(
-                    media = media,
-                    onClick = { onSelect(media) }
-                )
+                item(key = media.mediaId) {
+                    TouchSearchRow(media = media, onClick = { onSelect(media) })
+                }
+            }
+            // Rodapé: spinner ao carregar mais; "Fim da lista" discreto quando acabou.
+            if (visibleSuggestions.isNotEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 18.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (loadingMore) {
+                            CircularProgressIndicator(
+                                color = BRAND_GREEN,
+                                strokeWidth = 3.dp,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        } else if (!hasMore) {
+                            androidx.compose.material3.Text(
+                                "Fim da lista",
+                                color = Color(0xFF6E6E6E),
+                                style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
             }
             if (searchInProgress && query.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 34.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillParentMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 34.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            color = BRAND_GREEN,
-                            strokeWidth = 3.dp,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        androidx.compose.material3.Text(
-                            "Pesquisando…",
-                            color = Color.White,
-                            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                color = BRAND_GREEN,
+                                strokeWidth = 3.dp,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            androidx.compose.material3.Text(
+                                "Pesquisando…",
+                                color = Color.White,
+                                style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                            )
+                        }
                     }
                 }
             } else if (visibleSuggestions.isEmpty() && query.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 28.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Text(
-                        "Nenhum resultado encontrado",
-                        color = Color(0xFFB0B0B0),
-                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-                    )
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillParentMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 28.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.material3.Text(
+                            "Nenhum resultado encontrado",
+                            color = Color(0xFFB0B0B0),
+                            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                        )
+                    }
                 }
             }
         }
@@ -833,12 +889,14 @@ private fun TouchSearchRow(
         )
         val thumb = media.posterPath ?: media.thumbnailPath
         if (thumb != null) {
+            // Mostra o pôster na proporção original: paisagem (H) fica largo, retrato (V) fica em pé.
             AsyncImage(
                 model = thumb,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(width = 72.dp, height = 44.dp)
+                    .height(58.dp)
+                    .aspectRatio(media.gridAspectRatio(true))
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF222222))
             )

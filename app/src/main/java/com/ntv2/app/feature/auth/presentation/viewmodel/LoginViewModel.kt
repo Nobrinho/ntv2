@@ -16,10 +16,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class LoginViewModel(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    // Modo inicial por tipo de dispositivo: TV começa no QR Code, celular no telefone.
+    initialMode: LoginMode = LoginMode.QrCode
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(LoginUiState())
+    private val _uiState = MutableStateFlow(LoginUiState(loginMode = initialMode))
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
     private var qrRequested = false
 
@@ -43,19 +45,25 @@ class LoginViewModel(
                 ) {
                     qrRequested = false
                 }
-                // Em modo QR, ao TDLib passar a aguardar credenciais, solicita o QR uma vez.
-                if (authState.step is AuthStep.WaitingPhoneNumber &&
-                    _uiState.value.loginMode == LoginMode.QrCode &&
-                    authState.qrCodePayload == null &&
-                    !qrRequested
-                ) {
-                    qrRequested = true
-                    authRepository.requestQrLogin()
-                }
+                maybeRequestQr()
             }
         }
 
         onAction(LoginAction.Initialize)
+    }
+
+    // Em modo QR, ao TDLib passar a aguardar credenciais (WaitPhoneNumber), solicita o QR uma vez.
+    // No modo telefone nada é pedido — o TDLib fica em WaitPhoneNumber, pronto para o número.
+    private fun maybeRequestQr() {
+        val s = _uiState.value
+        if (s.loginMode == LoginMode.QrCode &&
+            s.authStep is AuthStep.WaitingPhoneNumber &&
+            s.qrCodePayload == null &&
+            !qrRequested
+        ) {
+            qrRequested = true
+            requestQr()
+        }
     }
 
     fun onAction(action: LoginAction) {
@@ -92,7 +100,9 @@ class LoginViewModel(
         }
 
         if (mode == LoginMode.QrCode) {
-            requestQr()
+            // Permite pedir um QR novo (ex.: veio do modo telefone) e solicita se já estiver pronto.
+            qrRequested = false
+            maybeRequestQr()
         }
     }
 
@@ -140,12 +150,13 @@ class LoginViewModel(
 }
 
 class LoginViewModelFactory(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val initialMode: LoginMode = LoginMode.QrCode
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LoginViewModel::class.java)) {
-            return LoginViewModel(authRepository) as T
+            return LoginViewModel(authRepository, initialMode) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

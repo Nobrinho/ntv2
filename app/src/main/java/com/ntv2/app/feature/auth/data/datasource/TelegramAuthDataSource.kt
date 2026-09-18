@@ -15,4 +15,5 @@ interface TelegramAuthDataSource {
     suspend fun logout()
     suspend fun close()
     suspend fun currentSession(): AuthSession
+    suspend fun verifySessionActive()
 }

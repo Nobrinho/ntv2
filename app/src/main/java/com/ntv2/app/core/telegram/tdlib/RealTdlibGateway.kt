@@ -21,8 +21,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -119,7 +122,32 @@ class RealTdlibGateway(
 
     override val authorizationState: Flow<TdAuthorizationState> = auth.asStateFlow()
 
+    // Sinal one-shot de sessão revogada externamente. replay=1 sobrevive à recriação do cliente
+    // (que emite WaitPhoneNumber logo em seguida) e garante entrega mesmo se o coletor for lento.
+    private val _sessionRevoked = MutableSharedFlow<Unit>(
+        replay = 1,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    override val sessionRevoked: Flow<Unit> = _sessionRevoked.asSharedFlow()
+
+    // true enquanto a sessão esteve autenticada (Ready). Base para classificar uma queda como
+    // revogação externa vs. um fluxo normal de login (que nunca esteve Ready).
+    @Volatile private var wasReady = false
+    // Ligado durante logout()/close() iniciados pelo usuário, para NÃO tratar a queda como revogação.
+    @Volatile private var userInitiatedLogout = false
+
     private val authReducer = TdlibAuthReducer()
+
+    /** Classifica e trata uma perda de sessão involuntária (revogação externa). Idempotente.
+     *  Apenas SINALIZA — o app reage com o mesmo fluxo do logout manual (logout()), que fecha e
+     *  recria o cliente com feedback visual. Não recriamos o cliente aqui para não duplicar o fluxo. */
+    private fun onSessionRevoked() {
+        if (userInitiatedLogout || !wasReady) return
+        wasReady = false
+        _sessionRevoked.tryEmit(Unit)
+        auth.value = TdAuthorizationState.SessionExpired
+    }
 
     override suspend fun initialize() {
         // Apenas cria o cliente. O estado inicial (WaitTdlibParameters → Ready/WaitPhoneNumber)
@@ -131,6 +159,17 @@ class RealTdlibGateway(
 
     override suspend fun requestQrCodeAuthentication() {
         if (!config.enabled) return
+        ensureClient()
+        // Alternar para QR depois de já ter enviado o número (WaitCode) ou estar em 2FA (WaitPassword):
+        // recria o cliente para voltar a WaitPhoneNumber e então pedir o QR (evita recusa por query
+        // pendente). Mesmo mecanismo do caminho QR→telefone.
+        if (auth.value is TdAuthorizationState.WaitCode || auth.value is TdAuthorizationState.WaitPassword) {
+            runCatching { send(TdApi.Close()) }
+            withTimeoutOrNull(5_000L) { auth.first { it is TdAuthorizationState.Closed } }
+            client = null
+            ensureClient()
+            withTimeoutOrNull(8_000L) { auth.first { it is TdAuthorizationState.WaitPhoneNumber } }
+        }
         sendAuth(TdApi.RequestQrCodeAuthentication(longArrayOf()))
     }
 
@@ -190,20 +229,51 @@ class RealTdlibGateway(
 
     override suspend fun logout() {
         if (!config.enabled) return
-        auth.value = TdAuthorizationState.LoggingOut
-        runCatching { send(TdApi.LogOut()) }
-        // O TDLib exige um cliente NOVO para autenticar após LogOut. Esperamos o fechamento
-        // (LogOut → Closed), zeramos o cliente e criamos um novo, que fluirá para WaitPhoneNumber
-        // via updates — momento em que a UI pede o QR. Sem isso, o re-login não gerava QR.
-        withTimeoutOrNull(5_000L) { auth.first { it is TdAuthorizationState.Closed } }
-        client = null
-        // ensureClient() cria um cliente novo e já reseta o guard de parâmetros (onClientCreated).
-        runCatching { ensureClient() }
+        // Logout VOLUNTÁRIO: a queda que se segue (LoggingOut → Closed → WaitPhoneNumber) não deve
+        // ser classificada como revogação externa.
+        userInitiatedLogout = true
+        wasReady = false
+        try {
+            auth.value = TdAuthorizationState.LoggingOut
+            runCatching { send(TdApi.LogOut()) }
+            // O TDLib exige um cliente NOVO para autenticar após LogOut. Esperamos o fechamento
+            // (LogOut → Closed), zeramos o cliente e criamos um novo, que fluirá para WaitPhoneNumber
+            // via updates — momento em que a UI pede o QR. Sem isso, o re-login não gerava QR.
+            withTimeoutOrNull(5_000L) { auth.first { it is TdAuthorizationState.Closed } }
+            client = null
+            // ensureClient() cria um cliente novo e já reseta o guard de parâmetros (onClientCreated).
+            runCatching { ensureClient() }
+        } finally {
+            userInitiatedLogout = false
+        }
     }
 
     override suspend fun close() {
         if (!config.enabled) return
-        send(TdApi.Close())
+        userInitiatedLogout = true
+        try {
+            send(TdApi.Close())
+        } finally {
+            userInitiatedLogout = false
+        }
+    }
+
+    override suspend fun verifySessionActive() {
+        if (!config.enabled || client == null) return
+        // Só faz sentido quando julgamos estar logados: um GetMe que volta 401 = sessão revogada.
+        if (auth.value !is TdAuthorizationState.Ready) return
+        val result = runCatching { send(TdApi.GetMe()) }.getOrNull() ?: return
+        if (result is TdApi.Error && isUnauthorized(result)) onSessionRevoked()
+    }
+
+    /** Erro do TDLib que indica sessão inválida/revogada (não um erro de request qualquer). */
+    private fun isUnauthorized(error: TdApi.Error): Boolean {
+        if (error.code == 401) return true
+        val msg = error.message ?: return false
+        return msg.contains("UNAUTHORIZED", ignoreCase = true) ||
+            msg.contains("AUTH_KEY_UNREGISTERED", ignoreCase = true) ||
+            msg.contains("SESSION_REVOKED", ignoreCase = true) ||
+            msg.contains("SESSION_EXPIRED", ignoreCase = true)
     }
 
     override suspend fun listChats(limit: Int): List<TelegramChatSummary> {
@@ -395,19 +465,26 @@ class RealTdlibGateway(
         searchVideos(chatId, query = query, fromMessageId = fromMessageId, limit = limit)
 
     /** Resolve o vídeo de uma mensagem (busca via índice): só o necessário para reproduzir — o card
-     *  rico já vem do índice, então aqui basta fileId/duração/nome. */
+     *  rico já vem do índice, então aqui basta fileId/duração/nome. Se o id apontado não for um
+     *  vídeo (ex.: caiu na mensagem de texto do post), procura o vídeo do MESMO post. */
     override suspend fun getVideoByMessage(chatId: Long, messageId: Long): TelegramVideoMessage? {
         ensureConfigured()
         runCatching { send(TdApi.GetChat(chatId)) }
-        val msg = send(TdApi.GetMessage(chatId, messageId)) as? TdApi.Message ?: return null
-        val content = msg.content as? TdApi.MessageVideo ?: return null
+        // O índice guarda o message_id do Bot API (server id); o TDLib usa o id deslocado 20 bits.
+        // Se vier um id "pequeno" (server id), converte para o formato do TDLib.
+        val tdMessageId = if (messageId in 1..0xFFFFF) messageId shl 20 else messageId
+        val direct = send(TdApi.GetMessage(chatId, tdMessageId)) as? TdApi.Message
+        val videoMsg = direct?.takeIf { it.content is TdApi.MessageVideo }
+            ?: findVideoNearPoster(chatId, tdMessageId)
+            ?: return null
+        val content = videoMsg.content as? TdApi.MessageVideo ?: return null
         val video = content.video ?: return null
         val tdFile = video.video ?: return null
         return TelegramVideoMessage(
-            mediaId = "${msg.chatId}_${msg.id}",
-            chatId = msg.chatId,
-            messageId = msg.id,
-            title = content.caption?.text?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "Video ${msg.id}",
+            mediaId = "${videoMsg.chatId}_${videoMsg.id}",
+            chatId = videoMsg.chatId,
+            messageId = videoMsg.id,
+            title = content.caption?.text?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "Video ${videoMsg.id}",
             caption = content.caption?.text,
             fileName = video.fileName.ifBlank { null },
             durationSeconds = video.duration,
@@ -678,6 +755,18 @@ class RealTdlibGateway(
     }
 
     private fun mapAuthorizationState(state: TdApi.AuthorizationState) {
+        // TDLib às vezes NOTIFICA a revogação (Ready → WaitPhoneNumber/Closed/LoggingOut sem ação do
+        // usuário). Classifica antes do reduce, para navegar ao Login em vez de só "parar de carregar".
+        if (!userInitiatedLogout && wasReady && (
+                state is TdApi.AuthorizationStateWaitPhoneNumber ||
+                state is TdApi.AuthorizationStateClosed ||
+                state is TdApi.AuthorizationStateLoggingOut
+            )
+        ) {
+            onSessionRevoked()
+            return
+        }
+
         val update = when (state) {
             is TdApi.AuthorizationStateWaitTdlibParameters -> TdlibAuthReducer.Update.WaitTdlibParameters
             is TdApi.AuthorizationStateWaitPhoneNumber -> TdlibAuthReducer.Update.WaitPhoneNumber
@@ -716,6 +805,7 @@ class RealTdlibGateway(
                         .joinToString(" ")
                         .ifBlank { null }
                 }
+                wasReady = true
                 auth.value = TdAuthorizationState.Ready(
                     userId = me?.id ?: 0L,
                     displayName = display
@@ -790,7 +880,7 @@ class RealTdlibGateway(
 
     private suspend fun send(function: TdApi.Function<out TdApi.Object>): TdApi.Object {
         val activeClient = client ?: throw IllegalStateException("TDLib client not initialized")
-        return suspendCancellableCoroutine { continuation ->
+        val result = suspendCancellableCoroutine { continuation ->
             activeClient.send(
                 function,
                 Client.ResultHandler { result -> continuation.resume(result) },
@@ -799,6 +889,10 @@ class RealTdlibGateway(
                 }
             )
         }
+        // Uma requisição comum que volta 401 estando logado = a sessão foi revogada fora do app.
+        // (Comandos de login nunca estão Ready, então o guard wasReady em onSessionRevoked os ignora.)
+        if (result is TdApi.Error && isUnauthorized(result)) onSessionRevoked()
+        return result
     }
 }
 

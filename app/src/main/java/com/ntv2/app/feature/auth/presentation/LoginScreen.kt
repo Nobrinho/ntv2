@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
@@ -67,7 +68,9 @@ private enum class LoginStep { Qr, Phone, Code, Password, Success }
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel,
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: () -> Unit,
+    // Sessão encerrada fora do app (revogada/deslogada em outro dispositivo): exibe um aviso.
+    sessionEndedNotice: Boolean = false
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -78,9 +81,13 @@ fun LoginScreen(
     val step = when {
         state.isAuthorized -> LoginStep.Success
         state.authStep is AuthStep.WaitingPassword -> LoginStep.Password
+        // "Voltar" no passo de código: mostra o telefone para corrigir, mesmo com TDLib em WaitCode.
+        state.editingPhone -> LoginStep.Phone
+        // Modo QR tem prioridade: ao alternar para QR (mesmo vindo do passo de código), mostra o QR
+        // (spinner enquanto ele é gerado) em vez de continuar na confirmação de código.
+        state.loginMode == LoginMode.QrCode -> LoginStep.Qr
         state.authStep is AuthStep.WaitingCode -> LoginStep.Code
-        state.loginMode == LoginMode.Phone -> LoginStep.Phone
-        else -> LoginStep.Qr
+        else -> LoginStep.Phone
     }
 
     val adaptive = rememberAdaptiveLayoutInfo()
@@ -126,6 +133,10 @@ fun LoginScreen(
                 )
             }
 
+            if (sessionEndedNotice && step != LoginStep.Success) {
+                SessionEndedBanner(compact = compact)
+            }
+
             Card(compact = compact) {
                 when (step) {
                 LoginStep.Success -> SuccessStep()
@@ -141,17 +152,18 @@ fun LoginScreen(
                     value = state.code,
                     loading = state.isLoading,
                     error = state.errorMessage,
+                    resendCooldownSeconds = state.resendCooldownSeconds,
                     onChange = { viewModel.onAction(LoginAction.UpdateCode(it)) },
                     onSubmit = { viewModel.onAction(LoginAction.SubmitCode) },
-                    onResend = { viewModel.onAction(LoginAction.SubmitPhone) },
-                    onBack = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.Phone)) }
+                    onResend = { viewModel.onAction(LoginAction.ResendCode) },
+                    onBack = { viewModel.onAction(LoginAction.EditPhone) }
                 )
                 LoginStep.Phone -> PhoneStep(
                     value = state.phoneNumber,
                     loading = state.isLoading,
                     error = state.errorMessage,
-                    // Autofoco só na TV (dpad). No celular abriria o teclado sozinho — só ao tocar.
-                    autoFocus = !compact,
+                    // Nunca foca automaticamente: o teclado/cursor só abre ao tocar no campo.
+                    autoFocus = false,
                     onChange = { viewModel.onAction(LoginAction.UpdatePhone(it)) },
                     onSubmit = { viewModel.onAction(LoginAction.SubmitPhone) },
                     onUseQr = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }
@@ -165,6 +177,33 @@ fun LoginScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SessionEndedBanner(compact: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = CARD_WIDTH_DP.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0x33F2B01E))
+            .border(1.dp, Color(0x66F2B01E), RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Info,
+            contentDescription = null,
+            tint = Color(0xFFF2B01E),
+            modifier = Modifier.size(if (compact) 20.dp else 22.dp)
+        )
+        Text(
+            text = "Sua sessão do Telegram foi encerrada em outro dispositivo. Entre novamente para continuar.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFFF3E3C0)
+        )
     }
 }
 
@@ -313,13 +352,14 @@ private fun PhoneStep(
         color = BRAND,
         textAlign = TextAlign.Center
     )
-    Text("Informe o número com DDI e DDD", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
+    Text("Número do Brasil (+55) — informe DDD e celular", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
     OutlinedTextField(
         modifier = Modifier.fillMaxWidth().focusRequester(focus),
         value = value,
         onValueChange = onChange,
         singleLine = true,
-        placeholder = { Text("+55 (11) 99999-9999", color = Color(0xFF6A6A6A)) },
+        prefix = { Text("+55", color = Color(0xFFB0B0B0)) },
+        placeholder = { Text("(11) 99999-9999", color = Color(0xFF6A6A6A)) },
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done)
     )
@@ -345,6 +385,7 @@ private fun CodeStep(
     value: String,
     loading: Boolean,
     error: String?,
+    resendCooldownSeconds: Int,
     onChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onResend: () -> Unit,
@@ -374,7 +415,10 @@ private fun CodeStep(
         Text(if (loading) "Validando…" else "Confirmar")
     }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(onClick = onResend) { Text("Reenviar código") }
+        val canResend = resendCooldownSeconds <= 0
+        Button(onClick = onResend, enabled = canResend) {
+            Text(if (canResend) "Reenviar código" else "Reenviar em ${resendCooldownSeconds}s")
+        }
         Button(onClick = onBack) { Text("Voltar") }
     }
 }

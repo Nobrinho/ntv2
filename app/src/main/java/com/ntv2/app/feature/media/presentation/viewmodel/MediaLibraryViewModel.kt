@@ -35,6 +35,7 @@ sealed interface MediaLibraryAction {
     data class SearchChanged(val query: String) : MediaLibraryAction
     data object SubmitSearch : MediaLibraryAction
     data object LoadMoreSearch : MediaLibraryAction
+    data object ClearOpenVideoState : MediaLibraryAction
     data class VideoFocused(val mediaId: String) : MediaLibraryAction
     data class OpenVideo(val media: MediaCardUi) : MediaLibraryAction
     data class LoadMoreChannel(val channelId: Long) : MediaLibraryAction
@@ -131,6 +132,9 @@ class MediaLibraryViewModel(
             }
 
             MediaLibraryAction.LoadMoreSearch -> loadMoreSearch()
+
+            MediaLibraryAction.ClearOpenVideoState ->
+                _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = false) }
 
             is MediaLibraryAction.LoadMoreChannel -> loadMore(action.channelId)
 
@@ -337,17 +341,26 @@ class MediaLibraryViewModel(
         }
         // Card do índice (sem fileId): resolve a mensagem no TDLib para obter o fileId e reproduzir.
         val messageId = media.mediaId.substringAfterLast('_').toLongOrNull() ?: return
-        _uiState.update { it.copy(lastFocusedMediaId = media.mediaId, returnToDetailsMediaId = media.mediaId) }
+        _uiState.update {
+            it.copy(
+                isOpeningVideo = true,
+                openVideoFailed = false,
+                lastFocusedMediaId = media.mediaId,
+                returnToDetailsMediaId = media.mediaId
+            )
+        }
         viewModelScope.launch {
             val resolved = withContext(ioDispatcher) {
                 runCatching { mediaRepository.getVideoByMessage(media.channelId, media.channelName, messageId) }.getOrNull()
             }
             if (resolved == null || resolved.fileId == 0) {
-                _uiState.update { it.copy(errorMessage = "Não foi possível abrir este vídeo.") }
+                _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = true) }
                 return@launch
             }
             _uiState.update {
                 it.copy(
+                    isOpeningVideo = false,
+                    openVideoFailed = false,
                     pendingNavigation = MediaNavigationPayload(
                         mediaId = media.mediaId,
                         fileId = resolved.fileId,
@@ -382,6 +395,7 @@ class MediaLibraryViewModel(
         genres = genres.joinToString(", ").ifBlank { null },
         originalTitle = originalTitle,
         backdropPath = backdropUrl,
+        cast = cast,
         tmdbId = tmdbId.toString()
     )
 

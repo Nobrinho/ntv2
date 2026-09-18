@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,6 +24,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.ntv2.app.feature.auth.domain.model.AuthState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExitToApp
@@ -84,6 +89,42 @@ fun AppNavHost(
     val atRoot = currentEntry != null && navController.previousBackStackEntry == null
     BackHandler(enabled = atRoot) { showExitDialog = true }
 
+    // Sessão do Telegram revogada/deslogada FORA do app: detecção + reação global.
+    val rootScope = rememberCoroutineScope()
+    val authUi by appContainer.authRepository.authState.collectAsState(initial = AuthState())
+    val lifecycleOwner = LocalLifecycleOwner.current
+    // Ao voltar ao foreground, sonda a sessão (GetMe leve): se foi revogada, vira sessionExpired.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                rootScope.launch { runCatching { appContainer.authRepository.verifySessionActive() } }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    // Quando cai a sessão estando numa tela autenticada, volta ao Login (o aviso é exibido lá).
+    // Mantém os canais escolhidos: ao relogar, o usuário retorna direto à biblioteca.
+    val currentRoute = currentEntry?.destination?.route
+    LaunchedEffect(authUi.sessionExpired, currentRoute) {
+        if (authUi.sessionExpired && currentRoute != null &&
+            currentRoute != RoutePath.LOGIN && !loggingOut
+        ) {
+            // MESMA mecânica do logout manual (overlay "Saindo…" + logout completo): a sessão foi
+            // revogada, então canais/mídias/estado anteriores não valem mais. logout() recria o
+            // cliente TDLib; limpamos canais + canal ativo para o próximo login ser um "primeiro
+            // login" (checa canais → seleção), evitando grade vazia presa carregando dados inacessíveis.
+            loggingOut = true
+            runCatching { appContainer.authRepository.logout() }
+            runCatching { appContainer.channelRepository.clearSelectedChannels() }
+            runCatching { appContainer.settingsRepository.updateActiveChannelId(0L) }
+            navController.navigate(RoutePath.LOGIN) {
+                popUpTo(navController.graph.id) { inclusive = true }
+            }
+            loggingOut = false
+        }
+    }
+
   Box(modifier = Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
@@ -99,6 +140,7 @@ fun AppNavHost(
             val scope = rememberCoroutineScope()
             LoginScreen(
                 viewModel = loginViewModel,
+                sessionEndedNotice = authUi.sessionExpired,
                 onLoginSuccess = {
                     // Já logado: se já há canais escolhidos, pula a seleção e vai direto para a
                     // biblioteca; só mostra a seleção de canais na primeira vez (nenhum selecionado).

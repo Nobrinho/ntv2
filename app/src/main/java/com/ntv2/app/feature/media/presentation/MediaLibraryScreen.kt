@@ -324,7 +324,10 @@ fun MediaLibraryScreen(
                             onCardFocused = { id ->
                                 viewModel.onAction(MediaLibraryAction.VideoFocused(id))
                             },
-                            onCardClick = { media -> detailsMedia = media },
+                            onCardClick = { media ->
+                                viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                                detailsMedia = media
+                            },
                             loadMoreFocus = loadMoreFocus,
                             onLoadMore = {
                                 lastIdBeforeLoad = state.items.lastOrNull()?.mediaId
@@ -359,7 +362,9 @@ fun MediaLibraryScreen(
                     // via returnToDetailsMediaId.
                     viewModel.onAction(MediaLibraryAction.OpenVideo(media))
                 },
-                onDismiss = { detailsMedia = null }
+                onDismiss = { detailsMedia = null },
+                playLoading = state.isOpeningVideo,
+                playFailed = state.openVideoFailed
             )
         }
 
@@ -414,6 +419,7 @@ fun MediaLibraryScreen(
                     onLoadMore = { viewModel.onAction(MediaLibraryAction.LoadMoreSearch) },
                     onSubmit = { viewModel.onAction(MediaLibraryAction.SubmitSearch) },
                     onSelect = { media ->
+                        viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                         detailsMedia = media
                         searching = false
                         viewModel.onAction(MediaLibraryAction.SearchChanged(""))
@@ -1292,7 +1298,9 @@ private fun MovieDetailsOverlay(
     showCastPhotos: Boolean,
     lowRamPlaybackWarnings: Boolean,
     onPlay: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    playLoading: Boolean = false,
+    playFailed: Boolean = false
 ) {
     BackHandler(enabled = true) { onDismiss() }
     val playFocus = remember { FocusRequester() }
@@ -1321,7 +1329,9 @@ private fun MovieDetailsOverlay(
                 DetailsInfo(
                     media, details, showCastPhotos, lowRamPlaybackWarnings, playFocus, onPlay, onDismiss,
                     actionsFirst = false,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+                    playLoading = playLoading,
+                    playFailed = playFailed
                 )
             }
         } else {
@@ -1342,7 +1352,9 @@ private fun MovieDetailsOverlay(
                 actionsFirst = compactLandscape,
                 modifier = Modifier.fillMaxWidth(0.62f).align(Alignment.CenterStart)
                     .then(if (compactLandscape) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                    .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp)
+                    .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp),
+                playLoading = playLoading,
+                playFailed = playFailed
             )
         }
     }
@@ -1361,7 +1373,9 @@ private fun DetailsInfo(
     onPlay: () -> Unit,
     onDismiss: () -> Unit,
     actionsFirst: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    playLoading: Boolean = false,
+    playFailed: Boolean = false
 ) {
     val title = details?.title ?: media.title
     val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
@@ -1394,7 +1408,7 @@ private fun DetailsInfo(
             )
         }
         if (actionsFirst) {
-            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss)
+            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed)
         }
         details?.genres?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
@@ -1437,7 +1451,7 @@ private fun DetailsInfo(
         }
 
         if (!actionsFirst) {
-            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss)
+            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed)
         }
     }
 }
@@ -1448,18 +1462,23 @@ private fun DetailsActionRow(
     showPlaybackWarning: Boolean,
     playFocus: FocusRequester,
     onPlay: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    playLoading: Boolean = false,
+    playFailed: Boolean = false
 ) {
     Row(modifier = Modifier.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         DetailButton(
             icon = Icons.Filled.PlayArrow,
             label = when {
+                playLoading -> "Abrindo…"
+                playFailed -> "Falhou — tentar de novo"
                 showPlaybackWarning -> "Tentar assistir"
                 media.progress > 0f -> "Continuar"
                 else -> "Assistir"
             },
             primary = true,
             modifier = Modifier.focusRequester(playFocus),
+            loading = playLoading,
             onClick = onPlay
         )
         DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss)
@@ -1472,7 +1491,8 @@ private fun DetailButton(
     label: String,
     primary: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    loading: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
     val bg = when {
@@ -1485,14 +1505,19 @@ private fun DetailButton(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
+            // Enquanto carrega, ignora novos toques (evita disparos duplicados).
+            .clickable(enabled = !loading, onClick = onClick)
             .background(bg)
             .then(if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
             .padding(horizontal = 24.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
+        if (loading) {
+            CircularProgressIndicator(color = content, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+        } else {
+            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
+        }
         Text(label, color = content, style = MaterialTheme.typography.titleMedium)
     }
 }

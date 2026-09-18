@@ -3,6 +3,7 @@
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 sealed interface TdAuthorizationState {
@@ -15,11 +16,16 @@ sealed interface TdAuthorizationState {
     data class Ready(val userId: Long, val displayName: String?) : TdAuthorizationState
     data object LoggingOut : TdAuthorizationState
     data class Closed(val reason: String? = null) : TdAuthorizationState
+    /** Sessão encerrada externamente (revogada/deslogada em outro dispositivo), sem ação do usuário. */
+    data object SessionExpired : TdAuthorizationState
     data class Error(val message: String) : TdAuthorizationState
 }
 
 interface TdlibAuthGateway {
     val authorizationState: Flow<TdAuthorizationState>
+
+    /** Sinal one-shot: a sessão foi revogada externamente. Robusto contra conflação do StateFlow. */
+    val sessionRevoked: Flow<Unit>
 
     suspend fun initialize()
     suspend fun requestQrCodeAuthentication()
@@ -28,11 +34,21 @@ interface TdlibAuthGateway {
     suspend fun checkAuthenticationPassword(password: String)
     suspend fun logout()
     suspend fun close()
+
+    /** Sonda leve (GetMe): se a sessão foi revogada, dispara [sessionRevoked]. No-op se deslogado. */
+    suspend fun verifySessionActive()
 }
 
 class FakeTdlibAuthGateway : TdlibAuthGateway {
     private val state = MutableStateFlow<TdAuthorizationState>(TdAuthorizationState.Unknown)
     override val authorizationState: Flow<TdAuthorizationState> = state.asStateFlow()
+
+    private val revoked = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(replay = 1)
+    override val sessionRevoked: Flow<Unit> = revoked.asSharedFlow()
+
+    override suspend fun verifySessionActive() {
+        // Fake: sessão nunca é revogada externamente.
+    }
 
     override suspend fun initialize() {
         delay(100)

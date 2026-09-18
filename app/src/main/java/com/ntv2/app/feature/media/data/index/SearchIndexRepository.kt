@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import com.ntv2.app.core.telegram.media.CastMemberMeta
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -19,6 +20,7 @@ data class IndexMovie(
     val backdropUrl: String?,
     val overview: String?,
     val genres: List<String>,
+    val cast: List<CastMemberMeta>,
     val videoMessageId: Long
 ) {
     val searchKey: String = normalizeForIndex(listOfNotNull(title, originalTitle).joinToString(" "))
@@ -76,6 +78,12 @@ class SearchIndexRepository(
                 ?: (mids?.let { if (it.length() > 0) it.optLong(it.length() - 1) else 0L } ?: 0L)
             val genresArr = o.optJSONArray("genres")
             val genres = if (genresArr != null) (0 until genresArr.length()).map { genresArr.optString(it) } else emptyList()
+            val castArr = o.optJSONArray("cast")
+            val cast = if (castArr != null) (0 until castArr.length()).mapNotNull { ci ->
+                val co = castArr.optJSONObject(ci) ?: return@mapNotNull null
+                val nome = co.optString("name").ifBlank { null } ?: return@mapNotNull null
+                CastMemberMeta(name = nome, photoUrl = co.optString("photo_url").ifBlank { null })
+            } else emptyList()
             movies += IndexMovie(
                 tmdbId = o.optLong("tmdb_id"),
                 title = o.optString("title").ifBlank { "Filme" },
@@ -85,6 +93,7 @@ class SearchIndexRepository(
                 backdropUrl = o.optString("backdrop_url").ifBlank { null },
                 overview = o.optString("overview").ifBlank { null },
                 genres = genres,
+                cast = cast,
                 videoMessageId = videoMsg
             )
         }

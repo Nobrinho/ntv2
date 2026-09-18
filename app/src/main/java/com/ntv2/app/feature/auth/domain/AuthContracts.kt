@@ -14,4 +14,8 @@ interface AuthRepository {
     suspend fun submitPassword(password: String)
     suspend fun restoreSession(): AuthSession
     suspend fun logout()
+
+    /** Verifica se a sessão do Telegram ainda é válida (ex.: ao voltar ao foreground). Se foi
+     *  revogada externamente, [authState] passa a emitir `sessionExpired = true`. */
+    suspend fun verifySessionActive()
 }

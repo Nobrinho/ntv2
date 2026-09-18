@@ -32,6 +32,22 @@ class TdlibTelegramAuthDataSource(
                 mapTdState(tdState)
             }
         }
+        // Sinal robusto de revogação externa: limpa a sessão e marca o aviso para a navegação.
+        scope.launch {
+            tdlibGateway.sessionRevoked.collect { onSessionRevoked() }
+        }
+    }
+
+    private fun onSessionRevoked() {
+        scope.launch { runCatching { sessionStore.clear() } }
+        state.update {
+            it.copy(
+                isLoading = false,
+                sessionExpired = true,
+                qrCodePayload = null,
+                session = AuthSession(isLoggedIn = false, userId = null, displayName = null)
+            )
+        }
     }
 
     override suspend fun initialize() {
@@ -133,6 +149,10 @@ class TdlibTelegramAuthDataSource(
 
     override suspend fun currentSession(): AuthSession = sessionStore.session.first()
 
+    override suspend fun verifySessionActive() {
+        runCatching { tdlibGateway.verifySessionActive() }
+    }
+
     private fun mapTdState(tdState: TdAuthorizationState) {
         when (tdState) {
             TdAuthorizationState.Unknown,
@@ -181,10 +201,13 @@ class TdlibTelegramAuthDataSource(
                     it.copy(
                         step = AuthStep.Authorized,
                         errorMessage = null,
+                        sessionExpired = false,
                         session = authSession
                     )
                 }
             }
+
+            TdAuthorizationState.SessionExpired -> onSessionRevoked()
 
             TdAuthorizationState.LoggingOut -> {
                 state.update { it.copy(isLoading = true) }

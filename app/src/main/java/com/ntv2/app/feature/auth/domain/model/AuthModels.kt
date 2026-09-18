@@ -27,5 +27,8 @@ data class AuthState(
     val qrCodePayload: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    /** A sessão do Telegram foi encerrada FORA do app (revogada/deslogada em outro dispositivo).
+     *  Sinaliza a navegação a voltar ao Login e a exibir um aviso. Zera ao logar novamente. */
+    val sessionExpired: Boolean = false,
     val session: AuthSession = AuthSession(isLoggedIn = false, userId = null, displayName = null)
 )

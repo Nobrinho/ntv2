@@ -39,4 +39,8 @@ class TelegramAuthRepository(
     override suspend fun logout() {
         dataSource.logout()
     }
+
+    override suspend fun verifySessionActive() {
+        dataSource.verifySessionActive()
+    }
 }

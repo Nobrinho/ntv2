@@ -70,6 +70,10 @@ data class MediaLibraryUiState(
     /** Exibir fotos do elenco na tela de detalhes — toggle das Configurações. */
     val castPhotos: Boolean = true,
     val isLoading: Boolean = false,
+    /** Resolvendo o vídeo (card do índice) antes de abrir o player — feedback no botão Assistir. */
+    val isOpeningVideo: Boolean = false,
+    /** Falha ao resolver/abrir o vídeo — feedback de erro no botão Assistir. */
+    val openVideoFailed: Boolean = false,
     val isSearchPending: Boolean = false,
     val isSearchLoading: Boolean = false,
     /** Há mais páginas de busca para carregar (paginação infinita). */

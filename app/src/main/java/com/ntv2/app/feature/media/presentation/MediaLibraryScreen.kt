@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
@@ -476,6 +477,7 @@ fun MediaLibraryScreen(
                     // via returnToDetailsMediaId.
                     viewModel.onAction(MediaLibraryAction.OpenVideo(media))
                 },
+                onRestart = { viewModel.onAction(MediaLibraryAction.RestartVideo(media)) },
                 onDismiss = {
                     detailsMedia = null
                     viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
@@ -1730,7 +1732,8 @@ private fun MovieDetailsOverlay(
     onPlay: () -> Unit,
     onDismiss: () -> Unit,
     playLoading: Boolean = false,
-    playFailed: Boolean = false
+    playFailed: Boolean = false,
+    onRestart: () -> Unit = {}
 ) {
     BackHandler(enabled = true) { onDismiss() }
     val playFocus = remember { FocusRequester() }
@@ -1762,7 +1765,8 @@ private fun MovieDetailsOverlay(
                     actionsFirst = false,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
                     playLoading = playLoading,
-                    playFailed = playFailed
+                    playFailed = playFailed,
+                    onRestart = onRestart
                 )
             }
         } else {
@@ -1786,7 +1790,8 @@ private fun MovieDetailsOverlay(
                     .verticalScroll(rememberScrollState())
                     .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp),
                 playLoading = playLoading,
-                playFailed = playFailed
+                playFailed = playFailed,
+                onRestart = onRestart
             )
         }
     }
@@ -1807,7 +1812,8 @@ private fun DetailsInfo(
     actionsFirst: Boolean,
     modifier: Modifier = Modifier,
     playLoading: Boolean = false,
-    playFailed: Boolean = false
+    playFailed: Boolean = false,
+    onRestart: () -> Unit = {}
 ) {
     val title = details?.title ?: media.title
     val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
@@ -1840,7 +1846,7 @@ private fun DetailsInfo(
             )
         }
         if (actionsFirst) {
-            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed)
+            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart)
         }
         details?.genres?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
@@ -1881,7 +1887,7 @@ private fun DetailsInfo(
         }
 
         if (!actionsFirst) {
-            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed)
+            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart)
         }
     }
 }
@@ -1926,7 +1932,8 @@ private fun DetailsActionRow(
     onPlay: () -> Unit,
     onDismiss: () -> Unit,
     playLoading: Boolean = false,
-    playFailed: Boolean = false
+    playFailed: Boolean = false,
+    onRestart: () -> Unit = {}
 ) {
     Row(modifier = Modifier.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         DetailButton(
@@ -1943,6 +1950,11 @@ private fun DetailsActionRow(
             loading = playLoading,
             onClick = onPlay
         )
+        // Vídeo parado no meio: "Recomeçar" zera o progresso e toca do início (útil também quando
+        // o download a partir do ponto salvo não anda).
+        if (media.progress > 0f && !playLoading) {
+            DetailButton(icon = Icons.Filled.Replay, label = "Recomeçar", primary = false, onClick = onRestart)
+        }
         DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss)
     }
 }

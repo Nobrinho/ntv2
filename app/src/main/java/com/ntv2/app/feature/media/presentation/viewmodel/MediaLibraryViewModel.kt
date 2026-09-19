@@ -38,6 +38,8 @@ sealed interface MediaLibraryAction {
     data object ClearOpenVideoState : MediaLibraryAction
     data class VideoFocused(val mediaId: String) : MediaLibraryAction
     data class OpenVideo(val media: MediaCardUi) : MediaLibraryAction
+    /** Toca do início: apaga o progresso salvo antes de abrir o player. */
+    data class RestartVideo(val media: MediaCardUi) : MediaLibraryAction
     data class LoadMoreChannel(val channelId: Long) : MediaLibraryAction
     data object LoadMore : MediaLibraryAction
     data class SelectActiveChannel(val channelId: Long) : MediaLibraryAction
@@ -164,6 +166,14 @@ class MediaLibraryViewModel(
                 // O player assume o arquivo: o pré-download não é mais cancelado.
                 prefetching.remove(action.media.mediaId)
                 openVideo(action.media)
+            }
+            is MediaLibraryAction.RestartVideo -> {
+                prefetching.remove(action.media.mediaId)
+                viewModelScope.launch {
+                    // Limpa ANTES de navegar: o player lê a posição salva ao preparar.
+                    withContext(ioDispatcher) { runCatching { progressStore.clear(action.media.mediaId) } }
+                    openVideo(action.media.copy(progress = 0f))
+                }
             }
             is MediaLibraryAction.DetailsOpened -> startPrefetch(action.media)
             is MediaLibraryAction.DetailsClosed -> {

@@ -46,6 +46,12 @@ class RoomPlaybackProgressStore(
 
     override suspend fun savedPositions(mediaIds: List<String>): Map<String, Long> {
         if (mediaIds.isEmpty()) return emptyMap()
-        return dao.getAll(mediaIds).associate { it.mediaId to it.positionMs }
+        // Lê a tabela inteira e cruza na memória: ela só tem os filmes começados (poucas linhas),
+        // enquanto a grade pode ter até 1.000 cards — um IN (...) com todos os ids era mais caro e
+        // estourava o limite de 999 parâmetros do SQLite antes do Android 11.
+        val wanted = mediaIds.toHashSet()
+        return dao.getAll()
+            .filter { it.mediaId in wanted }
+            .associate { it.mediaId to it.positionMs }
     }
 }

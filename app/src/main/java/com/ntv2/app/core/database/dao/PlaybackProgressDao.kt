@@ -11,8 +11,9 @@ interface PlaybackProgressDao {
     @Query("SELECT * FROM playback_progress WHERE mediaId = :mediaId")
     suspend fun get(mediaId: String): PlaybackProgressEntity?
 
-    @Query("SELECT * FROM playback_progress WHERE mediaId IN (:mediaIds)")
-    suspend fun getAll(mediaIds: List<String>): List<PlaybackProgressEntity>
+    /** Todos os progressos salvos (só filmes começados: dezenas de linhas, não milhares). */
+    @Query("SELECT * FROM playback_progress")
+    suspend fun getAll(): List<PlaybackProgressEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: PlaybackProgressEntity)

@@ -20,6 +20,7 @@ tdlib = "v1.8.8-20221107"
 zxing = "3.5.3"
 profileinstaller = "1.4.1"
 junit = "4.13.2"
+desugarJdkLibs = "2.1.5"
 turbine = "1.1.0"
 
 [libraries]
@@ -52,6 +53,7 @@ tdlib = { group = "ca.denisab85", name = "tdlib", version.ref = "tdlib" }
 androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 

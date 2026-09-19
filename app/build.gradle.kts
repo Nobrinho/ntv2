@@ -113,6 +113,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // APIs do Java 8+ (ex.: ConcurrentHashMap.computeIfAbsent) também no Android 6 (minSdk 23).
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -179,6 +181,8 @@ dependencies {
     // Instala o baseline profile (src/main/baseline-prof.txt + perfis das libs) também em
     // instalação por sideload, para o ART pré-compilar o código quente e evitar JIT na reprodução.
     implementation(libs.androidx.profileinstaller)
+
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

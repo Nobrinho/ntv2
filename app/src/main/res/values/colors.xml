@@ -2,5 +2,4 @@
 <resources>
     <!-- Cor de marca do Nbr PLAY (fundo do ícone adaptativo e accent). -->
     <color name="ic_launcher_background">#2CE84B</color>
-    <color name="brand_green">#2CE84B</color>
 </resources>

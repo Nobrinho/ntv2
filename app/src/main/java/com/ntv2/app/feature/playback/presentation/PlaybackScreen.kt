@@ -1583,28 +1583,6 @@ private fun FullscreenControlButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun PortraitTextAction(
-    text: String,
-    contentDescription: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var focused by remember { mutableStateOf(false) }
-    Text(
-        text = text,
-        color = if (focused) Color.Black else Color.White,
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.Bold,
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color.Transparent)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-    )
-}
-
-@Composable
 private fun PortraitSeekButton(
     label: String,
     onClick: () -> Unit

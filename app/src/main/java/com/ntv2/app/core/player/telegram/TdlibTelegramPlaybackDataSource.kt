@@ -141,20 +141,6 @@ class TdlibTelegramPlaybackDataSource(
     override suspend fun downloadedPrefixFrom(fileId: Int, offset: Long): Long =
         runCatching { playbackGateway.downloadedPrefixSize(fileId, offset) }.getOrDefault(0L)
 
-    override suspend fun awaitReadableBeyond(fileId: Int, position: Long) {
-        val flow = states[fileId] ?: run {
-            delay(200L)
-            return
-        }
-        // Espera até que [position] esteja DENTRO da região contígua baixada (início <= position < fim),
-        // ou o download concluir. Só checar o fim causava leitura de lixo quando o offset estava à
-        // frente da posição (após seek); e loop ocupado quando a região não cobria a posição.
-        flow.first { state ->
-            state.isDownloadComplete ||
-                (state.downloadOffset <= position && position < state.downloadOffset + state.downloadedPrefixBytes)
-        }
-    }
-
     private fun TdlibPlaybackFileState.toHandle(): PlaybackFileHandle {
         return PlaybackFileHandle(
             fileId = fileId,

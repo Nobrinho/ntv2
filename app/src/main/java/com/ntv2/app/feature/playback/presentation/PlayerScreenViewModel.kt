@@ -30,7 +30,6 @@ data class PlayerScreenUiState(
     val thumbnailPath: String? = null,
     val isPlaceholderMode: Boolean = true,
     val statusMessage: String = "reprodução ainda não inicializada",
-    val seekMinutes: Int = 5,
     /** Detalhes ricos (pôster/sinopse/metadados) do filme, quando disponíveis. */
     val details: MovieDetails? = null,
     /** Progresso do download enquanto o vídeo não começa (null = não exibir). */

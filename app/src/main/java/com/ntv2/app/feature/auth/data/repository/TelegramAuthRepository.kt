@@ -32,10 +32,6 @@ class TelegramAuthRepository(
         dataSource.submitPassword(password)
     }
 
-    override suspend fun restoreSession(): AuthSession {
-        return dataSource.currentSession()
-    }
-
     override suspend fun logout() {
         dataSource.logout()
     }

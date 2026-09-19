@@ -28,7 +28,8 @@ interface SettingsRepository {
     suspend fun updateNativeBlurGlow(value: Boolean) = Unit
 }
 
-class FakeSettingsRepository(
+/** Configurações persistidas no DataStore (implementação real). */
+class DataStoreSettingsRepository(
     private val dataStore: UserPreferencesDataStore
 ) : SettingsRepository {
     override val minDurationMinutes: Flow<Int> = dataStore.minDurationMinutes

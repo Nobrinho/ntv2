@@ -43,7 +43,6 @@ data class MediaTracksInfo(
     val subtitles: List<MediaTrackOption> = emptyList()
 ) {
     /** true se há uma legenda ativa no momento. */
-    val hasSubtitleSelected: Boolean get() = subtitles.any { it.isSelected }
 }
 
 data class PlaybackSnapshot(

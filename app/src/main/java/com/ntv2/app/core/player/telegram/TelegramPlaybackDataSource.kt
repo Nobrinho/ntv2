@@ -28,12 +28,6 @@ interface PartialFileAccessor {
     fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int)
 
     /**
-     * Suspende até [contiguousReadableEnd] ultrapassar [position] (qualquer avanço) ou o
-     * download concluir. Permite espera reativa no lugar de polling.
-     */
-    suspend fun awaitReadableBeyond(fileId: Int, position: Long)
-
-    /**
      * Bytes contíguos já baixados a partir de [offset], consultando o TDLib diretamente.
      * Reconhece bytes no disco em QUALQUER região (frente e fim), ao contrário do prefixo
      * relativo ao offset único de download.

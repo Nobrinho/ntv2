@@ -15,7 +15,6 @@ data class AdaptiveLayoutInfo(
     val isPortrait: Boolean
 ) {
     val isCompact: Boolean get() = widthDp < 600
-    val isMedium: Boolean get() = widthDp in 600 until 840
     val isExpanded: Boolean get() = widthDp >= 840
     val useTvLayout: Boolean get() = isTv || (isExpanded && !isPortrait)
     val usePhoneLayout: Boolean get() = !useTvLayout && isCompact

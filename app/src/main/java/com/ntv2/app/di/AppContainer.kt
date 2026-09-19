@@ -4,11 +4,9 @@ import android.content.Context
 import androidx.room.Room
 import com.ntv2.app.core.database.AppDatabase
 import com.ntv2.app.core.player.PlaybackCoordinator
-import com.ntv2.app.core.player.cache.PlaybackCacheManager
 import com.ntv2.app.core.player.controller.DefaultPlaybackController
 import com.ntv2.app.core.player.controller.PlaybackController
 import com.ntv2.app.core.player.config.PlaybackTuning
-import com.ntv2.app.core.player.download.ProgressiveDownloadPlanner
 import com.ntv2.app.core.player.exoplayer.DefaultExoPlayerProvider
 import com.ntv2.app.core.player.exoplayer.ExoPlayerProvider
 import com.ntv2.app.core.player.io.DiskWindowPolicy
@@ -47,7 +45,7 @@ import com.ntv2.app.feature.media.data.index.SearchIndexRepository
 import com.ntv2.app.feature.media.data.repository.DefaultMediaRepository
 import com.ntv2.app.feature.media.domain.MediaRepository
 import com.ntv2.app.feature.media.domain.MediaDetailsCache
-import com.ntv2.app.feature.settings.domain.FakeSettingsRepository
+import com.ntv2.app.feature.settings.domain.DataStoreSettingsRepository
 import com.ntv2.app.feature.settings.domain.SettingsRepository
 import com.ntv2.app.core.storage.PendingFileDeletions
 import com.ntv2.app.core.storage.SharedPrefsPendingFileDeletions
@@ -166,25 +164,12 @@ class DefaultAppContainer(
         TdlibTelegramPlaybackDataSource(tdlibPlaybackGateway)
     }
 
-    private val playbackCacheManager: PlaybackCacheManager by lazy {
-        PlaybackCacheManager(
-            cacheDir = File(appContext.cacheDir, "telegram-playback"),
-            maxBytes = playbackTuning.cacheMaxBytes,
-            trimTargetBytes = playbackTuning.cacheTrimTargetBytes,
-            maxFiles = playbackTuning.maxCachedFiles
-        )
-    }
-
     private val exoPlayerProvider: ExoPlayerProvider by lazy {
         DefaultExoPlayerProvider(appContext)
     }
 
     private val playbackResourceManager: PlaybackResourceManager by lazy {
         PlaybackResourceManager(exoPlayerProvider)
-    }
-
-    private val progressivePlanner: ProgressiveDownloadPlanner by lazy {
-        ProgressiveDownloadPlanner(playbackTuning)
     }
 
     private val growingFileDataSourceFactory: GrowingFileDataSourceFactory by lazy {
@@ -211,8 +196,6 @@ class DefaultAppContainer(
         DefaultPlaybackCoordinator(
             playbackDataSource = telegramPlaybackDataSource,
             resourceManager = playbackResourceManager,
-            cacheManager = playbackCacheManager,
-            planner = progressivePlanner,
             dataSourceFactory = growingFileDataSourceFactory,
             progressStore = playbackProgressStore
         )
@@ -266,7 +249,7 @@ class DefaultAppContainer(
     }
 
     override val settingsRepository: SettingsRepository by lazy {
-        FakeSettingsRepository(userPreferencesDataStore)
+        DataStoreSettingsRepository(userPreferencesDataStore)
     }
 
     override val mediaDetailsCache: MediaDetailsCache by lazy { MediaDetailsCache() }

@@ -17,8 +17,6 @@ import com.ntv2.app.core.player.PlaybackCoordinator
 import com.ntv2.app.core.player.PlaybackMedia
 import com.ntv2.app.core.player.PlaybackSnapshot
 import com.ntv2.app.core.player.PlaybackState
-import com.ntv2.app.core.player.cache.PlaybackCacheManager
-import com.ntv2.app.core.player.download.ProgressiveDownloadPlanner
 import com.ntv2.app.core.player.io.GrowingFileDataSourceFactory
 import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
@@ -32,7 +30,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.File
 
 private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
 // Vídeo congelado: tocando (áudio/relógio avançando) sem nenhum quadro novo por esse tempo.
@@ -43,8 +40,6 @@ private const val MAX_FREEZE_RECOVERIES = 5
 class DefaultPlaybackCoordinator(
     private val playbackDataSource: TelegramPlaybackDataSource,
     private val resourceManager: PlaybackResourceManager,
-    private val cacheManager: PlaybackCacheManager,
-    private val planner: ProgressiveDownloadPlanner,
     private val dataSourceFactory: GrowingFileDataSourceFactory,
     private val progressStore: PlaybackProgressStore
 ) : PlaybackCoordinator {
@@ -61,7 +56,6 @@ class DefaultPlaybackCoordinator(
     private var lastTracks: Tracks? = null
     private var currentMedia: PlaybackMedia? = null
     private var observeJob: Job? = null
-    private var downloadJob: Job? = null
     private var progressJob: Job? = null
     private var freezeJob: Job? = null
     // Fechamento/remoção do arquivo da sessão anterior (roda em segundo plano).
@@ -148,7 +142,6 @@ class DefaultPlaybackCoordinator(
         // "Arquivo não encontrado" → Source error). Vale também para sair e reabrir o mesmo vídeo.
         cleanupJob?.join()
         cleanupJob = null
-        cacheManager.trimIfNeeded()
 
         snapshotState.update {
             it.copy(
@@ -161,9 +154,6 @@ class DefaultPlaybackCoordinator(
 
         currentMedia = media
         val handle = playbackDataSource.open(media.fileId)
-        val activeFile = File(handle.localPath)
-        cacheManager.markActivePlaybackFile(activeFile)
-        cacheManager.touch(activeFile)
         snapshotState.update {
             it.copy(
                 downloadedBytes = handle.downloadedBytes,
@@ -171,15 +161,9 @@ class DefaultPlaybackCoordinator(
             )
         }
 
-        if (!handle.isDownloadComplete) {
-            // Preload mínimo para reduzir tempo de start sem download integral.
-            playbackDataSource.requestChunk(
-                fileId = media.fileId,
-                offsetBytes = 0L,
-                lengthBytes = planner.initialChunk(),
-                priority = 2
-            )
-        }
+        // Sem pedido extra do início aqui: open() já pede os primeiros MB, e o TDLib tem UM trecho
+        // de download por arquivo — um segundo pedido em 0 puxava o download de volta ao começo
+        // justo quando o player pede a posição de retomada.
 
         val playerInstance = resourceManager.acquire()
         exoPlayer = playerInstance
@@ -203,9 +187,6 @@ class DefaultPlaybackCoordinator(
         observeFileState(media)
         startProgressSaving(media)
         startFreezeWatch(media)
-        if (!handle.isDownloadComplete) {
-            startProgressiveLoop(media)
-        }
     }
 
     private fun startProgressSaving(media: PlaybackMedia) {
@@ -377,22 +358,6 @@ class DefaultPlaybackCoordinator(
                         expectedBytes = fileState.expectedBytes
                     )
                 }
-                cacheManager.touch(File(fileState.localPath))
-            }
-        }
-    }
-
-    private fun startProgressiveLoop(media: PlaybackMedia) {
-        downloadJob?.cancel()
-        downloadJob = scope.launch {
-            // A GrowingFileDataSource é a ÚNICA a emitir DownloadFile (segue exatamente o que o
-            // ExoPlayer lê). O TDLib com DownloadFile(offset, limit=0) já baixa adiante sozinho.
-            // Não emitimos requisições concorrentes aqui: um DownloadFile com outro offset move o
-            // offset único do TDLib e picota o download — era o que travava MKV (índice no fim),
-            // pois o loop puxava o começo enquanto o player esperava o fim.
-            while (true) {
-                cacheManager.trimIfNeeded()
-                kotlinx.coroutines.delay(planner.checkIntervalMs())
             }
         }
     }
@@ -469,8 +434,6 @@ class DefaultPlaybackCoordinator(
     private fun stopInternal(closeSession: Boolean, deleteFile: Boolean = false) {
         observeJob?.cancel()
         observeJob = null
-        downloadJob?.cancel()
-        downloadJob = null
         progressJob?.cancel()
         progressJob = null
         freezeJob?.cancel()
@@ -500,7 +463,6 @@ class DefaultPlaybackCoordinator(
             }
             currentMedia = null
         }
-        cacheManager.markActivePlaybackFile(null)
         lastTracks = null
 
         snapshotState.update {

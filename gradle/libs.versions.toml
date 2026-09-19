@@ -18,6 +18,7 @@ coil = "2.7.0"
 material = "1.12.0"
 tdlib = "v1.8.8-20221107"
 zxing = "3.5.3"
+profileinstaller = "1.4.1"
 junit = "4.13.2"
 turbine = "1.1.0"
 
@@ -48,6 +49,7 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 google-material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 tdlib = { group = "ca.denisab85", name = "tdlib", version.ref = "tdlib" }
+androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }

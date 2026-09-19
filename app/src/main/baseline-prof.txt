@@ -1,0 +1,25 @@
+# Baseline profile: código pré-compilado (AOT) na instalação.
+# Motivo: no Fire TV, cada compilação JIT faz um mprotect no code cache que trava o mapa de memória
+# do processo inteiro; com o sistema sob pressão isso chegou a ~1 s e congelou a thread
+# ExoPlayer:Playback (underrun de áudio + frame parado). Pré-compilando o caminho da reprodução,
+# o JIT praticamente não roda durante o vídeo.
+
+# Player (Media3 + decoder FFmpeg)
+HSPLandroidx/media3/**->**(**)**
+Landroidx/media3/**;
+
+# Coroutines / Kotlin stdlib (usados pelo coordinator, data sources e UI)
+HSPLkotlinx/coroutines/**->**(**)**
+Lkotlinx/coroutines/**;
+HSPLkotlin/**->**(**)**
+Lkotlin/**;
+
+# TDLib (bindings Java usados pelo data source de streaming)
+HSPLorg/drinkless/tdlib/**->**(**)**
+Lorg/drinkless/tdlib/**;
+
+# Código do app ligado à reprodução
+HSPLcom/ntv2/app/core/player/**->**(**)**
+Lcom/ntv2/app/core/player/**;
+HSPLcom/ntv2/app/feature/playback/**->**(**)**
+Lcom/ntv2/app/feature/playback/**;

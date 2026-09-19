@@ -166,6 +166,9 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.zxing.core)
+    // Instala o baseline profile (src/main/baseline-prof.txt + perfis das libs) também em
+    // instalação por sideload, para o ART pré-compilar o código quente e evitar JIT na reprodução.
+    implementation(libs.androidx.profileinstaller)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

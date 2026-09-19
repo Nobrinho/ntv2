@@ -26,3 +26,6 @@ Thumbs.db
 
 # Banco local do dispositivo/dev
 ntv2-device.db
+
+# Traces do Perfetto (diagnóstico local)
+*.pftrace

@@ -1,5 +1,10 @@
 ﻿package com.ntv2.app.core.navigation
 
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+
 import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
@@ -72,7 +77,12 @@ fun AppNavHost(
         if (activityManager?.isLowRamDevice == true) 60 else null
     }
     var showExitDialog by remember { mutableStateOf(false) }
+    // Sinal para a tela de baixo restaurar o foco quando o "Fechar o aplicativo?" é cancelado.
+    var focusRestoreSignal by remember { mutableStateOf(0) }
     var openChannelPickerRequest by remember { mutableStateOf(0) }
+    // Pedidos vindos do rail das Configurações: abrir a busca / atualizar a Biblioteca.
+    var openSearchRequest by remember { mutableStateOf(0) }
+    var refreshLibraryRequest by remember { mutableStateOf(0) }
     // Cobre a tela com feedback enquanto o logout (recriação do cliente TDLib) acontece.
     var loggingOut by remember { mutableStateOf(false) }
     // Splash como OVERLAY: o app real (Login → Biblioteca) monta e carrega POR TRÁS enquanto a
@@ -126,6 +136,9 @@ fun AppNavHost(
     }
 
   Box(modifier = Modifier.fillMaxSize()) {
+   androidx.compose.runtime.CompositionLocalProvider(
+       com.ntv2.app.core.ui.LocalFocusRestoreSignal provides focusRestoreSignal
+   ) {
     NavHost(
         navController = navController,
         startDestination = RoutePath.LOGIN
@@ -217,6 +230,10 @@ fun AppNavHost(
                 viewModel = mediaViewModel,
                 openChannelPickerRequest = openChannelPickerRequest,
                 onChannelPickerConsumed = { openChannelPickerRequest = 0 },
+                openSearchRequest = openSearchRequest,
+                onSearchRequestConsumed = { openSearchRequest = 0 },
+                refreshRequest = refreshLibraryRequest,
+                onRefreshRequestConsumed = { refreshLibraryRequest = 0 },
                 lowRamPlaybackWarnings = lowRamMaxCards != null,
                 onOpenSettings = { navController.navigate(RoutePath.SETTINGS) { launchSingleTop = true } },
                 onOpenPlaybackPlaceholder = { mediaId, fileId, title, channelName, durationSeconds, fileName, thumbnailPath ->
@@ -287,6 +304,20 @@ fun AppNavHost(
                         loggingOut = false
                     }
                 },
+                onSearch = {
+                    openSearchRequest += 1
+                    navController.navigate(RoutePath.MEDIA_LIBRARY) {
+                        popUpTo(RoutePath.MEDIA_LIBRARY) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                onRefresh = {
+                    refreshLibraryRequest += 1
+                    navController.navigate(RoutePath.MEDIA_LIBRARY) {
+                        popUpTo(RoutePath.MEDIA_LIBRARY) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
                 onOpenLibrary = {
                     // Volta para a Biblioteca EXISTENTE (colapsa a pilha) em vez de empilhar outra —
                     // sem isso, alternar Config/Biblioteca acumulava telas e o "voltar" refazia todo
@@ -337,6 +368,8 @@ fun AppNavHost(
         }
     }
 
+   }
+
     // Intro de marca por cima de tudo, enquanto o app carrega por trás.
     if (showSplash) {
         SplashScreen(onFinished = { showSplash = false })
@@ -353,7 +386,7 @@ fun AppNavHost(
             cancelIcon = Icons.Filled.Close,
             destructive = true,
             onConfirm = { (context as? Activity)?.finish() },
-            onDismiss = { showExitDialog = false }
+            onDismiss = { showExitDialog = false; focusRestoreSignal++ }
         )
     }
 
@@ -366,10 +399,16 @@ fun AppNavHost(
 
 @Composable
 private fun LogoutOverlay() {
+    // Segura o foco e engole todas as teclas: nada da tela de trás pode ser acionado no logout.
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF20E0E0E)),
+            .background(Color(0xF20E0E0E))
+            .focusRequester(focus)
+            .focusable()
+            .onPreviewKeyEvent { true },
         contentAlignment = Alignment.Center
     ) {
         Column(

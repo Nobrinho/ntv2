@@ -60,6 +60,11 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import kotlinx.coroutines.launch
+import com.ntv2.app.core.ui.trapFocus
+import com.ntv2.app.core.ui.LocalFocusRestoreSignal
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -117,6 +122,10 @@ fun MediaLibraryScreen(
     viewModel: MediaLibraryViewModel,
     openChannelPickerRequest: Int,
     onChannelPickerConsumed: () -> Unit = {},
+    openSearchRequest: Int = 0,
+    onSearchRequestConsumed: () -> Unit = {},
+    refreshRequest: Int = 0,
+    onRefreshRequestConsumed: () -> Unit = {},
     lowRamPlaybackWarnings: Boolean,
     onOpenSettings: () -> Unit,
     onOpenPlaybackPlaceholder: (
@@ -140,7 +149,8 @@ fun MediaLibraryScreen(
     var detailsMedia by remember { mutableStateOf<MediaCardUi?>(null) }
     // TV: resultado da busca que abriu os Detalhes. Ao fechar os Detalhes, a busca reabre com a
     // mesma consulta e o foco volta nesse resultado (redigitar pelo D-pad é caro).
-    var searchReturnMediaId by remember { mutableStateOf<String?>(null) }
+    // Saveable: sobrevive à ida ao player (a Biblioteca sai da composição durante a reprodução).
+    var searchReturnMediaId by rememberSaveable { mutableStateOf<String?>(null) }
     // Controle de foco do "Carregar mais": ao clicar, o card sai da árvore quando os itens chegam
     // e o foco se perde (direcional depois "pula" pro último). Movemos o foco de forma explícita.
     val loadMoreFocus = remember { FocusRequester() }
@@ -150,6 +160,41 @@ fun MediaLibraryScreen(
     var lastIdBeforeLoad by remember { mutableStateOf<String?>(null) }
     val gridState = rememberLazyStaggeredGridState()
     val adaptive = rememberAdaptiveLayoutInfo()
+    val scope = rememberCoroutineScope()
+    // Último card focado. NÃO é estado observável: guardar no ViewModel a cada movimento do D-pad
+    // recompunha a tela inteira (travava em TVs fracas). Só vai ao ViewModel ao abrir um card.
+    val lastFocusedCard = remember { arrayOfNulls<String>(1) }
+    val firstEntry = remember { booleanArrayOf(true) }
+    // Foco estava no rail (e não num card)? Usado ao cancelar o "Fechar o aplicativo?".
+    val focusInRail = remember { booleanArrayOf(false) }
+    val railChannelsFocus = remember { FocusRequester() }
+    val railSettingsFocus = remember { FocusRequester() }
+    // Saiu pelo botão "Config" do rail: ao voltar, o foco retorna a ele (e não ao último card).
+    var returnToSettingsButton by rememberSaveable { mutableStateOf(false) }
+    // "Escolher canal" aberto pelo rail: ao fechar com Voltar, o foco volta ao botão Canais.
+    var pickerFromRail by remember { mutableStateOf(false) }
+    val restoreSignal = LocalFocusRestoreSignal.current
+
+    // Devolve o foco a um card (rola até ele se preciso); sem cards, vai para a barra de ações.
+    fun focusCard(mediaId: String?) {
+        scope.launch {
+            val items = state.items
+            val id = mediaId?.takeIf { wanted -> items.any { it.mediaId == wanted } }
+                ?: items.firstOrNull()?.mediaId
+            val index = items.indexOfFirst { it.mediaId == id }
+            if (id != null && index >= 0 &&
+                gridState.layoutInfo.visibleItemsInfo.none { it.index == index }
+            ) {
+                gridState.scrollToItem(index)
+            }
+            // Espera o overlay (que prende o foco) sair da árvore antes de pedir o foco.
+            withFrameNanos { }
+            withFrameNanos { }
+            val ok = id?.let { cardFocusRequesters[it] }
+                ?.let { r -> runCatching { r.requestFocus() }.isSuccess } ?: false
+            if (!ok) runCatching { initialActionsFocus.requestFocus() }
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -162,8 +207,34 @@ fun MediaLibraryScreen(
     }
 
     // Foca a barra de busca ao entrar e ao fechar o teclado (não abre teclado sozinho).
+    // Ao voltar de outra tela com um card já aberto antes, quem restaura o foco é o
+    // focusRestoreNonce (no card); aqui não disputa com ele.
     LaunchedEffect(searching) {
-        if (!searching) initialActionsFocus.requestFocus()
+        if (searching) return@LaunchedEffect
+        val restoring = firstEntry[0] && (state.lastFocusedMediaId != null || returnToSettingsButton)
+        firstEntry[0] = false
+        if (!restoring) runCatching { initialActionsFocus.requestFocus() }
+    }
+    // Voltou das Configurações abertas pelo rail: foco no botão Config.
+    LaunchedEffect(Unit) {
+        if (returnToSettingsButton) {
+            withFrameNanos { }
+            withFrameNanos { }
+            returnToSettingsButton = false
+            if (runCatching { railSettingsFocus.requestFocus() }.isFailure) {
+                runCatching { initialActionsFocus.requestFocus() }
+            }
+        }
+    }
+    // Cancelou o "Fechar o aplicativo?": volta ao card (ou ao rail) onde o foco estava.
+    LaunchedEffect(restoreSignal) {
+        if (restoreSignal == 0 || searching || detailsMedia != null || channelPicker) return@LaunchedEffect
+        if (focusInRail[0]) {
+            withFrameNanos { }
+            runCatching { initialActionsFocus.requestFocus() }
+        } else {
+            focusCard(lastFocusedCard[0])
+        }
     }
 
     // Só abre o modal de canais por um PEDIDO novo (botão). Antes, ao voltar de outra tela a
@@ -173,6 +244,19 @@ fun MediaLibraryScreen(
         if (openChannelPickerRequest > 0) {
             channelPicker = true
             onChannelPickerConsumed()
+        }
+    }
+
+    LaunchedEffect(openSearchRequest) {
+        if (openSearchRequest > 0) {
+            searching = true
+            onSearchRequestConsumed()
+        }
+    }
+    LaunchedEffect(refreshRequest) {
+        if (refreshRequest > 0) {
+            viewModel.onAction(MediaLibraryAction.Refresh)
+            onRefreshRequestConsumed()
         }
     }
 
@@ -191,6 +275,10 @@ fun MediaLibraryScreen(
     }
 
     LaunchedEffect(state.focusRestoreNonce, state.lastFocusedMediaId) {
+        // Voltando do player os Detalhes reabrem (e focam o Assistir): não disputa o foco.
+        if (returnToSettingsButton || detailsMedia != null || state.returnToDetailsMediaId != null) {
+            return@LaunchedEffect
+        }
         val mediaId = state.lastFocusedMediaId ?: return@LaunchedEffect
         val index = state.items.indexOfFirst { it.mediaId == mediaId }
         if (index >= 0) {
@@ -201,11 +289,17 @@ fun MediaLibraryScreen(
         cardFocusRequesters[mediaId]?.requestFocus()
     }
 
-    LaunchedEffect(state.returnToDetailsMediaId, state.items) {
+    // Saiu do player: reabre os Detalhes de onde ele foi aberto (o player só é acessível por eles).
+    // Com os Detalhes ainda na tela (acabou de apertar Assistir) não faz nada; o pedido só é
+    // consumido quando os Detalhes são fechados — assim ele sobrevive à ida ao player, quando a
+    // Biblioteca sai da composição e o estado local (detailsMedia) é perdido.
+    LaunchedEffect(state.returnToDetailsMediaId) {
         val mediaId = state.returnToDetailsMediaId ?: return@LaunchedEffect
-        val media = state.items.firstOrNull { it.mediaId == mediaId } ?: return@LaunchedEffect
+        if (detailsMedia != null) return@LaunchedEffect
+        val media = state.returnToDetailsMedia?.takeIf { it.mediaId == mediaId }
+            ?: state.items.firstOrNull { it.mediaId == mediaId }
+            ?: return@LaunchedEffect
         detailsMedia = media
-        viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
     }
 
     // Após "Carregar mais": leva a fronteira (1º item novo, achado por identidade) à vista e foca.
@@ -241,16 +335,20 @@ fun MediaLibraryScreen(
         Row(modifier = Modifier.fillMaxSize()) {
             // Rail lateral de navegação (logo + ações), estilo TV.
             if (useTvLayout) {
-                NavRail(
-                    firstItemFocus = initialActionsFocus,
-                    searchActive = false,
-                    showClearFilter = false,
-                    onSearch = { searching = true },
-                    onClearFilter = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
-                    onChannels = { channelPicker = true },
-                    onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
-                    onSettings = onOpenSettings
-                )
+                Box(modifier = Modifier.onFocusChanged { if (it.hasFocus) focusInRail[0] = true }) {
+                    NavRail(
+                        firstItemFocus = initialActionsFocus,
+                        channelsFocus = railChannelsFocus,
+                        settingsFocus = railSettingsFocus,
+                        searchActive = false,
+                        showClearFilter = false,
+                        onSearch = { searching = true },
+                        onClearFilter = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
+                        onChannels = { pickerFromRail = true; channelPicker = true },
+                        onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
+                        onSettings = { returnToSettingsButton = true; onOpenSettings() }
+                    )
+                }
             }
 
             // Conteúdo do canal ativo (grade plana de aspecto misto).
@@ -328,9 +426,18 @@ fun MediaLibraryScreen(
                                 cardFocusRequesters.getOrPut(id) { FocusRequester() }
                             },
                             onCardFocused = { id ->
-                                viewModel.onAction(MediaLibraryAction.VideoFocused(id))
+                                lastFocusedCard[0] = id
+                                focusInRail[0] = false
+                                // Paginação pelo foco (como na busca): perto do fim já pede a próxima página.
+                                val items = state.items
+                                if (state.hasMore && !loadMoreRequested &&
+                                    items.indexOfFirst { it.mediaId == id } >= items.size - AUTO_LOAD_THRESHOLD
+                                ) {
+                                    viewModel.onAction(MediaLibraryAction.LoadMore)
+                                }
                             },
                             onCardClick = { media ->
+                                viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
                                 viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                                 detailsMedia = media
                             },
@@ -370,7 +477,8 @@ fun MediaLibraryScreen(
                 },
                 onDismiss = {
                     detailsMedia = null
-                    if (searchReturnMediaId != null) searching = true
+                    viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
+                    if (searchReturnMediaId != null) searching = true else focusCard(media.mediaId)
                 },
                 playLoading = state.isOpeningVideo,
                 playFailed = state.openVideoFailed
@@ -384,8 +492,29 @@ fun MediaLibraryScreen(
                 onSelect = { id ->
                     viewModel.onAction(MediaLibraryAction.SelectActiveChannel(id))
                     channelPicker = false
+                    pickerFromRail = false
+                    // A grade vai recarregar: foco estável na barra de ações.
+                    scope.launch {
+                        withFrameNanos { }
+                        withFrameNanos { }
+                        runCatching { initialActionsFocus.requestFocus() }
+                    }
                 },
-                onDismiss = { channelPicker = false }
+                onDismiss = {
+                    channelPicker = false
+                    if (pickerFromRail) {
+                        pickerFromRail = false
+                        scope.launch {
+                            withFrameNanos { }
+                            withFrameNanos { }
+                            if (runCatching { railChannelsFocus.requestFocus() }.isFailure) {
+                                focusCard(lastFocusedCard[0])
+                            }
+                        }
+                    } else {
+                        focusCard(lastFocusedCard[0])
+                    }
+                }
             )
         }
 
@@ -602,6 +731,10 @@ private fun TvSearchOverlay(
     val firstKeyId = KEYBOARD_ROWS.first().first().toString()
     var lastKeyId by remember { mutableStateOf(firstKeyId) }
     var lastResultIndex by remember { mutableStateOf(0) }
+    // Tecla do teclado virtual: lembra a última focada (voltar dos resultados cai nela).
+    fun keyMod(id: String) = Modifier
+        .focusRequester(keyRequester(id))
+        .onFocusChanged { if (it.isFocused) lastKeyId = id }
     var focusInResults by remember { mutableStateOf(false) }
     // "Buscar" pressionado: leva o foco ao 1º resultado assim que a busca terminar.
     var focusResultsWhenReady by remember { mutableStateOf(false) }
@@ -753,7 +886,7 @@ private fun TvSearchOverlay(
                                         label = id,
                                         modifier = Modifier
                                             .then(if (colIndex == row.lastIndex) enterResultsOnRight else Modifier)
-                                            .focusRequester(keyRequester(id))
+                                            .then(keyMod(id))
                                             .size(keySize),
                                         onClick = { lastKeyId = id; typeChar(c) }
                                     )
@@ -770,7 +903,7 @@ private fun TvSearchOverlay(
                             KeyButton(
                                 label = "Espaço",
                                 modifier = Modifier
-                                    .focusRequester(keyRequester("space"))
+                                    .then(keyMod("space"))
                                     .weight(1f)
                                     .height(actionHeight),
                                 onClick = { lastKeyId = "space"; typeChar(' ') }
@@ -786,7 +919,7 @@ private fun TvSearchOverlay(
                                             onBackspace(); true
                                         } else false
                                     }
-                                    .focusRequester(keyRequester("backspace"))
+                                    .then(keyMod("backspace"))
                                     .weight(1f)
                                     .height(actionHeight),
                                 onClick = { lastKeyId = "backspace"; onBackspace() }
@@ -799,7 +932,7 @@ private fun TvSearchOverlay(
                             KeyButton(
                                 label = "Buscar",
                                 modifier = Modifier
-                                    .focusRequester(keyRequester("submit"))
+                                    .then(keyMod("submit"))
                                     .weight(1f)
                                     .height(actionHeight),
                                 onClick = {
@@ -813,7 +946,7 @@ private fun TvSearchOverlay(
                             KeyButton(
                                 label = "Limpar",
                                 modifier = Modifier
-                                    .focusRequester(keyRequester("clear"))
+                                    .then(keyMod("clear"))
                                     .weight(1f)
                                     .height(actionHeight),
                                 onClick = { lastKeyId = "clear"; onClear() }
@@ -821,6 +954,7 @@ private fun TvSearchOverlay(
                             KeyButton(
                                 label = "Fechar",
                                 modifier = enterResultsOnRight
+                                    .then(keyMod("close"))
                                     .weight(1f)
                                     .height(actionHeight),
                                 onClick = onClose
@@ -1244,6 +1378,8 @@ private const val GRID_TARGET_COL_DP = 130f
 private fun columnsForWidthDp(widthDp: Float): Int =
     (widthDp / GRID_TARGET_COL_DP).toInt().coerceIn(2, 6)
 private val GRID_GAP = 12.dp
+// Quantos cards antes do fim o foco dispara o carregamento da próxima página.
+private const val AUTO_LOAD_THRESHOLD = 10
 private val CARD_TITLE_H = 56.dp
 
 @Composable
@@ -1261,6 +1397,33 @@ private fun LazyMediaGrid(
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scope = rememberCoroutineScope()
+    // Grade de alturas mistas: a busca espacial padrão do ↑/↓ às vezes pula de coluna.
+    // Aqui ↑/↓ seguem a mesma coluna (lane); se o alvo não está visível, rola um card e tenta de novo.
+    fun moveInLane(mediaId: String, down: Boolean): Boolean {
+        val cur = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == mediaId } ?: return false
+        fun target() = state.layoutInfo.visibleItemsInfo
+            .filter { it.lane == cur.lane && it.key != "load-more" }
+            .filter { if (down) it.index > cur.index else it.index < cur.index }
+            .let { l -> if (down) l.minByOrNull { it.index } else l.maxByOrNull { it.index } }
+        fun focusLoadMore(): Boolean = down && hasMore &&
+            runCatching { loadMoreFocus.requestFocus() }.isSuccess
+        target()?.let { t ->
+            runCatching { focusRequesterFor(t.key as String).requestFocus() }
+            return true
+        }
+        if (state.layoutInfo.visibleItemsInfo.any { it.key == "load-more" } && focusLoadMore()) return true
+        val canScroll = if (down) state.canScrollForward else state.canScrollBackward
+        if (!canScroll) return false
+        scope.launch {
+            val step = (cur.size.height + GRID_GAP.value * 2).toFloat()
+            state.scrollBy(if (down) step else -step)
+            withFrameNanos { }
+            val t = target()
+            if (t != null) runCatching { focusRequesterFor(t.key as String).requestFocus() } else focusLoadMore()
+        }
+        return true
+    }
     BoxWithConstraints(modifier = modifier) {
         val columns = columnsForWidthDp(maxWidth.value)
         LazyVerticalStaggeredGrid(
@@ -1282,7 +1445,15 @@ private fun LazyMediaGrid(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(requester)
-                        .onFocusChanged { if (it.isFocused) onCardFocused(media.mediaId) },
+                        .onFocusChanged { if (it.isFocused) onCardFocused(media.mediaId) }
+                        .onPreviewKeyEvent { e ->
+                            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            when (e.key) {
+                                Key.DirectionDown -> moveInLane(media.mediaId, down = true)
+                                Key.DirectionUp -> moveInLane(media.mediaId, down = false)
+                                else -> false
+                            }
+                        },
                     onClick = { onCardClick(media) }
                 )
             }
@@ -1563,7 +1734,8 @@ private fun MovieDetailsOverlay(
     val backdrop = details?.backdropPath ?: media.posterPath ?: media.thumbnailPath
     LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF050505))) {
+    // trapFocus: a grade continua composta por trás — o foco não pode escapar para ela.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF050505)).trapFocus()) {
         val portrait = maxHeight > maxWidth
         val compactLandscape = !portrait && maxHeight < 520.dp
         if (portrait) {
@@ -1606,7 +1778,8 @@ private fun MovieDetailsOverlay(
                 media, details, showCastPhotos, lowRamPlaybackWarnings, playFocus, onPlay, onDismiss,
                 actionsFirst = compactLandscape,
                 modifier = Modifier.fillMaxWidth(0.62f).align(Alignment.CenterStart)
-                    .then(if (compactLandscape) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                    // Rolável sempre: ao focar os botões, a coluna rola até eles (nunca ficam cortados).
+                    .verticalScroll(rememberScrollState())
                     .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp),
                 playLoading = playLoading,
                 playFailed = playFailed
@@ -1668,9 +1841,7 @@ private fun DetailsInfo(
         details?.genres?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
         }
-        details?.synopsis?.takeIf { it.isNotBlank() }?.let {
-            Text(it, color = Color(0xFFDCDCDC), style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
-        }
+        details?.synopsis?.takeIf { it.isNotBlank() }?.let { SynopsisText(it) }
         details?.director?.takeIf { it.isNotBlank() }?.let {
             Text("Diretor: $it", color = Color(0xFFB6B6B6), style = MaterialTheme.typography.bodySmall)
         }
@@ -1707,6 +1878,38 @@ private fun DetailsInfo(
 
         if (!actionsFirst) {
             DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed)
+        }
+    }
+}
+
+// Sinopse: 4 linhas; focável pelo D-pad e OK expande/recolhe o texto completo.
+@Composable
+private fun SynopsisText(text: String) {
+    var expanded by remember(text) { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable { expanded = !expanded }
+            .background(if (focused) Color(0x1FFFFFFF) else Color.Transparent)
+            .then(if (focused) Modifier.border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp)) else Modifier)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text,
+            color = Color(0xFFDCDCDC),
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = if (expanded) Int.MAX_VALUE else 4,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (focused) {
+            Text(
+                if (expanded) "OK para recolher" else "OK para ler tudo",
+                color = Color(0xFF9A9A9A),
+                style = MaterialTheme.typography.labelSmall
+            )
         }
     }
 }
@@ -1818,6 +2021,8 @@ private fun ChannelPickerOverlay(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .widthIn(max = 680.dp)
+                .padding(vertical = 24.dp)
+                .trapFocus()
                 .clip(RoundedCornerShape(14.dp))
                 .background(Color(0xFF1E1E1E))
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp))
@@ -1830,14 +2035,19 @@ private fun ChannelPickerOverlay(
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xCCFFFFFF)
             )
+            // Lista rolável (muitos canais não cabem na tela); foco inicial no canal ativo.
+            val focusIndex = channels.indexOfFirst { it.id == activeId }.coerceAtLeast(0)
             Column(
-                modifier = Modifier.focusGroup(),
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .focusGroup(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 channels.forEachIndexed { index, ch ->
                     val selected = ch.id == activeId
                     var focused by remember { mutableStateOf(false) }
-                    val mod = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                    val mod = if (index == focusIndex) Modifier.focusRequester(firstFocus) else Modifier
                     val accent = Color(0xFF2BEE34)
                     Row(
                         modifier = mod

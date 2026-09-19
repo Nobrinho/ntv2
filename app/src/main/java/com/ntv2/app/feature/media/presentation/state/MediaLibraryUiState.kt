@@ -84,6 +84,8 @@ data class MediaLibraryUiState(
     val emptyState: MediaLibraryEmptyState? = null,
     val lastFocusedMediaId: String? = null,
     val returnToDetailsMediaId: String? = null,
+    // Card completo dos Detalhes que abriram o player (resultados da busca não estão em items).
+    val returnToDetailsMedia: MediaCardUi? = null,
     val focusRestoreNonce: Long = 0,
     val pendingNavigation: MediaNavigationPayload? = null
 )

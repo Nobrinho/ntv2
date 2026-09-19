@@ -155,7 +155,7 @@ class MediaLibraryViewModel(
             }
 
             MediaLibraryAction.ConsumeReturnToDetails -> {
-                _uiState.update { it.copy(returnToDetailsMediaId = null) }
+                _uiState.update { it.copy(returnToDetailsMediaId = null, returnToDetailsMedia = null) }
             }
 
             MediaLibraryAction.ScreenResumed -> {
@@ -334,7 +334,8 @@ class MediaLibraryViewModel(
                         thumbnailPath = media.thumbnailPath
                     ),
                     lastFocusedMediaId = media.mediaId,
-                    returnToDetailsMediaId = media.mediaId
+                    returnToDetailsMediaId = media.mediaId,
+                    returnToDetailsMedia = media
                 )
             }
             return
@@ -346,7 +347,8 @@ class MediaLibraryViewModel(
                 isOpeningVideo = true,
                 openVideoFailed = false,
                 lastFocusedMediaId = media.mediaId,
-                returnToDetailsMediaId = media.mediaId
+                returnToDetailsMediaId = media.mediaId,
+                returnToDetailsMedia = media
             )
         }
         viewModelScope.launch {

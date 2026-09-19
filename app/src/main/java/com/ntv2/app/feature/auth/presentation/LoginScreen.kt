@@ -1,5 +1,22 @@
 package com.ntv2.app.feature.auth.presentation
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -91,6 +108,11 @@ fun LoginScreen(
     }
 
     val adaptive = rememberAdaptiveLayoutInfo()
+    // Voltar em camadas: código → telefone; telefone → QR (TV, onde o QR é o início).
+    BackHandler(enabled = step == LoginStep.Code) { viewModel.onAction(LoginAction.EditPhone) }
+    BackHandler(enabled = step == LoginStep.Phone && adaptive.isTv) {
+        viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode))
+    }
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF0E0E0E))) {
         val compact = adaptive.usePhoneLayout || maxWidth < 600.dp
         val logoGlow = if (compact) 124.dp else 180.dp
@@ -225,7 +247,9 @@ private fun Card(compact: Boolean, content: @Composable () -> Unit) {
 @Composable
 private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhone: () -> Unit) {
     val phoneFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { phoneFocus.requestFocus() } }
+    // Também ao cancelar o "Fechar o aplicativo?" (sinal global), o foco volta ao botão.
+    val restoreSignal = com.ntv2.app.core.ui.LocalFocusRestoreSignal.current
+    LaunchedEffect(restoreSignal) { runCatching { phoneFocus.requestFocus() } }
 
     Text("Entre na sua conta", style = MaterialTheme.typography.headlineSmall, color = Color.White)
     Text(
@@ -305,7 +329,7 @@ private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhon
         color = Color(0xFF8A8A8A),
         textAlign = TextAlign.Center
     )
-    Button(
+    LoginButton(
         modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
         onClick = onUsePhone
     ) {
@@ -354,7 +378,7 @@ private fun PhoneStep(
     )
     Text("Número do Brasil (+55) — informe DDD e celular", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB0B0B0))
     OutlinedTextField(
-        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        modifier = Modifier.fillMaxWidth().focusRequester(focus).dpadVerticalExit(),
         value = value,
         onValueChange = onChange,
         singleLine = true,
@@ -364,7 +388,7 @@ private fun PhoneStep(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done)
     )
     error?.let { ErrorText(it) }
-    Button(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
+    LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
         Text(if (loading) "Enviando…" else "Continuar")
     }
 
@@ -376,7 +400,7 @@ private fun PhoneStep(
         color = Color(0xFF8A8A8A),
         textAlign = TextAlign.Center
     )
-    Button(modifier = Modifier.fillMaxWidth(), onClick = onUseQr) { Text("Entrar com QR Code") }
+    LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onUseQr) { Text("Entrar com QR Code") }
 }
 
 @Composable
@@ -402,7 +426,7 @@ private fun CodeStep(
         textAlign = TextAlign.Center
     )
     OutlinedTextField(
-        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        modifier = Modifier.fillMaxWidth().focusRequester(focus).dpadVerticalExit(),
         value = value,
         onValueChange = onChange,
         singleLine = true,
@@ -411,15 +435,15 @@ private fun CodeStep(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done)
     )
     error?.let { ErrorText(it) }
-    Button(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
+    LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
         Text(if (loading) "Validando…" else "Confirmar")
     }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val canResend = resendCooldownSeconds <= 0
-        Button(onClick = onResend, enabled = canResend) {
+        LoginButton(onClick = onResend, enabled = canResend) {
             Text(if (canResend) "Reenviar código" else "Reenviar em ${resendCooldownSeconds}s")
         }
-        Button(onClick = onBack) { Text("Voltar") }
+        LoginButton(onClick = onBack) { Text("Voltar") }
     }
 }
 
@@ -442,7 +466,7 @@ private fun PasswordStep(
         textAlign = TextAlign.Center
     )
     OutlinedTextField(
-        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        modifier = Modifier.fillMaxWidth().focusRequester(focus).dpadVerticalExit(),
         value = value,
         onValueChange = onChange,
         singleLine = true,
@@ -451,7 +475,7 @@ private fun PasswordStep(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done)
     )
     error?.let { ErrorText(it) }
-    Button(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
+    LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
         Text(if (loading) "Entrando…" else "Entrar")
     }
 }
@@ -504,4 +528,51 @@ private fun generateQrBitmap(content: String, size: Int): Bitmap? {
         }
         Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
     }.getOrNull()
+}
+
+// Botão do login com destaque de foco visível na TV (o Button do Material 3 quase não muda com foco).
+@Composable
+private fun LoginButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val contentColor = if (focused) Color.Black else Color.Unspecified
+    Button(
+        onClick = onClick,
+        modifier = modifier
+            .onFocusChanged { focused = it.isFocused }
+            .then(if (focused) Modifier.scale(1.03f) else Modifier),
+        enabled = enabled,
+        colors = if (focused) {
+            ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
+        } else {
+            ButtonDefaults.buttonColors()
+        },
+        border = if (focused) BorderStroke(2.dp, BRAND) else null
+    ) {
+        if (focused) {
+            CompositionLocalProvider(androidx.tv.material3.LocalContentColor provides contentColor) {
+                content()
+            }
+        } else {
+            content()
+        }
+    }
+}
+
+// Campo de texto no D-pad: ← / → movem o cursor; ↑ / ↓ sempre saem do campo.
+@Composable
+private fun Modifier.dpadVerticalExit(): Modifier {
+    val focusManager = LocalFocusManager.current
+    return this.onPreviewKeyEvent { e ->
+        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+        when (e.key) {
+            Key.DirectionDown -> focusManager.moveFocus(FocusDirection.Down)
+            Key.DirectionUp -> focusManager.moveFocus(FocusDirection.Up)
+            else -> false
+        }
+    }
 }

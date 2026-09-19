@@ -1,5 +1,7 @@
 package com.ntv2.app.feature.channels.presentation
 
+import androidx.compose.runtime.withFrameNanos
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -81,11 +83,37 @@ fun ChannelSelectionScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val firstActionFocusRequester = remember { FocusRequester() }
+    val firstCardFocus = remember { FocusRequester() }
+    val continueFocus = remember { FocusRequester() }
+    val logoutFocus = remember { FocusRequester() }
     var confirmLogout by remember { mutableStateOf(false) }
+    var logoutAsked by remember { mutableStateOf(false) }
     val hasSelection = state.selectedChannelIds.isNotEmpty()
 
-    LaunchedEffect(Unit) {
-        firstActionFocusRequester.requestFocus()
+    // Foco inicial no 1º canal (não em "Atualizar", onde um OK por engano recarregava a lista);
+    // sem canais (carregando/erro), fica em Atualizar.
+    LaunchedEffect(state.channels.isNotEmpty()) {
+        withFrameNanos { }
+        if (state.channels.isNotEmpty() && runCatching { firstCardFocus.requestFocus() }.isSuccess) {
+            return@LaunchedEffect
+        }
+        runCatching { firstActionFocusRequester.requestFocus() }
+    }
+    // Cancelou o "Fechar o aplicativo?": volta ao 1º canal (ou Atualizar, sem canais).
+    val restoreSignal = com.ntv2.app.core.ui.LocalFocusRestoreSignal.current
+    LaunchedEffect(restoreSignal) {
+        if (restoreSignal == 0 || confirmLogout) return@LaunchedEffect
+        withFrameNanos { }
+        if (state.channels.isEmpty() || runCatching { firstCardFocus.requestFocus() }.isFailure) {
+            runCatching { firstActionFocusRequester.requestFocus() }
+        }
+    }
+    // Cancelou "Sair da conta?": devolve o foco ao botão Sair.
+    LaunchedEffect(confirmLogout) {
+        if (!confirmLogout && logoutAsked) {
+            withFrameNanos { }
+            runCatching { logoutFocus.requestFocus() }
+        }
     }
     LaunchedEffect(state.navigateToLibrary) {
         if (state.navigateToLibrary) {
@@ -108,17 +136,24 @@ fun ChannelSelectionScreen(
                 ChannelActionsRail(
                     state = state,
                     firstActionFocusRequester = firstActionFocusRequester,
+                    continueFocus = continueFocus,
+                    logoutFocus = logoutFocus,
                     showBack = showBack,
                     hasSelection = hasSelection,
-                    onClear = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
+                    onClear = {
+                        // "Limpar" some ao limpar a seleção: move o foco antes para não perdê-lo.
+                        runCatching { firstActionFocusRequester.requestFocus() }
+                        viewModel.onAction(ChannelSelectionAction.ClearSelection)
+                    },
                     onRefresh = { viewModel.onAction(ChannelSelectionAction.Retry) },
                     onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
                     onBack = onBack,
-                    onLogout = { confirmLogout = true }
+                    onLogout = { logoutAsked = true; confirmLogout = true }
                 )
                 ChannelContent(
                     state = state,
                     compact = false,
+                    firstCardFocus = firstCardFocus,
                     onRetry = { viewModel.onAction(ChannelSelectionAction.Retry) },
                     onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
                 )
@@ -168,6 +203,8 @@ fun ChannelSelectionScreen(
 private fun ChannelActionsRail(
     state: ChannelSelectionUiState,
     firstActionFocusRequester: FocusRequester,
+    continueFocus: FocusRequester,
+    logoutFocus: FocusRequester,
     showBack: Boolean,
     hasSelection: Boolean,
     onClear: () -> Unit,
@@ -176,7 +213,8 @@ private fun ChannelActionsRail(
     onBack: () -> Unit,
     onLogout: () -> Unit
 ) {
-    RailColumn {
+    // Vindo da grade (←) com canais escolhidos, o foco entra direto em "Continuar".
+    RailColumn(enterFocus = { if (state.canContinue) continueFocus else null }) {
         // Foco inicial na Atualizar (sempre presente); Limpar só aparece com seleção.
         RailButton(
             icon = Icons.Filled.Refresh,
@@ -192,12 +230,18 @@ private fun ChannelActionsRail(
             label = "Continuar",
             enabled = state.canContinue,
             primary = state.canContinue,
+            modifier = Modifier.focusRequester(continueFocus),
             onClick = onContinue
         )
         if (showBack) {
             RailButton(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", onClick = onBack)
         }
-        RailButton(Icons.AutoMirrored.Filled.Logout, "Sair", onClick = onLogout)
+        RailButton(
+            Icons.AutoMirrored.Filled.Logout,
+            "Sair",
+            modifier = Modifier.focusRequester(logoutFocus),
+            onClick = onLogout
+        )
     }
 }
 
@@ -303,6 +347,7 @@ private fun CompactActionChip(
 private fun ChannelContent(
     state: ChannelSelectionUiState,
     compact: Boolean,
+    firstCardFocus: FocusRequester? = null,
     onRetry: () -> Unit,
     onToggle: (Long) -> Unit
 ) {
@@ -333,7 +378,7 @@ private fun ChannelContent(
             state.emptyState == ChannelSelectionEmptyState.NoEligibleChannels -> {
                 Text("Nenhum canal elegível encontrado", color = Color.White)
             }
-            else -> ChannelsGrid(state = state, compact = compact, onToggle = onToggle)
+            else -> ChannelsGrid(state = state, compact = compact, firstCardFocus = firstCardFocus, onToggle = onToggle)
         }
     }
 }
@@ -342,6 +387,7 @@ private fun ChannelContent(
 private fun ChannelsGrid(
     state: ChannelSelectionUiState,
     compact: Boolean,
+    firstCardFocus: FocusRequester? = null,
     onToggle: (Long) -> Unit
 ) {
     LazyVerticalGrid(
@@ -351,7 +397,12 @@ private fun ChannelsGrid(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(state.channels, key = { it.id }) { item ->
-            ChannelCard(item = item, onToggle = { onToggle(item.id) })
+            val first = firstCardFocus != null && item.id == state.channels.first().id
+            ChannelCard(
+                item = item,
+                modifier = if (first) Modifier.focusRequester(firstCardFocus!!) else Modifier,
+                onToggle = { onToggle(item.id) }
+            )
         }
     }
 }
@@ -425,13 +476,14 @@ private fun ChannelsGridSkeleton(compact: Boolean) {
 @Composable
 private fun ChannelCard(
     item: ChannelItemUi,
+    modifier: Modifier = Modifier,
     onToggle: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     val selected = item.isSelected
     val accent = MaterialTheme.colorScheme.primary
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }

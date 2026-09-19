@@ -1,5 +1,6 @@
 package com.ntv2.app.core.ui
 
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,12 +48,17 @@ private val BRAND = Color(0xFF2BEE34)
 
 /** Coluna base do rail (logo Nbr PLAY no topo + slot de itens), compartilhada entre telas. */
 @Composable
-fun RailColumn(content: @Composable ColumnScope.() -> Unit) {
+fun RailColumn(
+    // Ao entrar no rail pelo D-pad (← da grade), o foco vai para este item em vez do mais próximo.
+    enterFocus: (() -> FocusRequester?)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
             .width(116.dp)
             .background(Color(0xFF0C0C0C))
+            .then(if (enterFocus != null) Modifier.focusEnterTo(enterFocus) else Modifier)
             .focusGroup()
             .padding(vertical = 24.dp, horizontal = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -82,6 +88,8 @@ fun RailButton(
     highlighted: Boolean = false,
     enabled: Boolean = true,
     primary: Boolean = false,
+    // false = só indicador (ex.: tela atual): não recebe foco nem clique, mas mantém o destaque.
+    interactive: Boolean = true,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -105,7 +113,7 @@ fun RailButton(
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (enabled && interactive) Modifier.clickable(onClick = onClick) else Modifier)
             .background(background)
             // Foco sobre o CTA verde: borda branca para não "sumir" o realce de foco.
             .then(
@@ -135,6 +143,8 @@ fun RailButton(
 @Composable
 fun NavRail(
     firstItemFocus: FocusRequester? = null,
+    channelsFocus: FocusRequester? = null,
+    settingsFocus: FocusRequester? = null,
     searchActive: Boolean = false,
     settingsActive: Boolean = false,
     showClearFilter: Boolean = false,
@@ -144,7 +154,7 @@ fun NavRail(
     onRefresh: () -> Unit,
     onSettings: () -> Unit
 ) {
-    RailColumn {
+    RailColumn(enterFocus = firstItemFocus?.let { f -> { f } }) {
         RailButton(
             icon = Icons.Filled.Search,
             label = "Busca",
@@ -156,8 +166,20 @@ fun NavRail(
         if (showClearFilter) {
             RailButton(Icons.Filled.FilterAltOff, "Limpar", onClick = onClearFilter)
         }
-        RailButton(Icons.Filled.Subscriptions, "Canais", onClick = onChannels)
+        RailButton(
+            Icons.Filled.Subscriptions,
+            "Canais",
+            modifier = if (channelsFocus != null) Modifier.focusRequester(channelsFocus) else Modifier,
+            onClick = onChannels
+        )
         RailButton(Icons.Filled.Refresh, "Atualizar", onClick = onRefresh)
-        RailButton(Icons.Filled.Settings, "Config", highlighted = settingsActive, onClick = onSettings)
+        RailButton(
+            Icons.Filled.Settings,
+            "Config",
+            highlighted = settingsActive,
+            interactive = !settingsActive,
+            modifier = if (settingsFocus != null) Modifier.focusRequester(settingsFocus) else Modifier,
+            onClick = onSettings
+        )
     }
 }

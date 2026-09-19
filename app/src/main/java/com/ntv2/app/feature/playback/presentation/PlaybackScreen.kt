@@ -77,7 +77,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
@@ -110,6 +114,19 @@ import kotlin.math.roundToInt
 private const val DPAD_SEEK_MS = 10_000L
 private const val CONTROLS_TIMEOUT_MS = 6_000L
 private const val GESTURE_ADJUSTMENT_TIMEOUT_MS = 900L
+// Seek do dpad é acumulado e só aplicado ao player após essa pausa sem teclas.
+private const val SEEK_COMMIT_DELAY_MS = 500L
+private const val BACK_EXIT_WINDOW_MS = 2_000L
+
+/** Passo do seek do dpad com aceleração conforme a tecla é segurada (repetições). */
+private fun dpadSeekStep(event: KeyEvent): Long {
+    val repeat = event.nativeKeyEvent.repeatCount
+    return when {
+        repeat < 10 -> DPAD_SEEK_MS
+        repeat < 30 -> 30_000L
+        else -> 60_000L
+    }
+}
 
 private enum class TrackPicker { Audio, Subtitle, Settings }
 private enum class PlayerGestureTarget { Volume, Brightness }
@@ -258,18 +275,43 @@ fun PlaybackScreen(
     // Feedback central de seek (segundos acumulados na "rajada" de ← / →); some após ~1s.
     var seekFeedbackMs by remember { mutableStateOf(0L) }
     var seekNonce by remember { mutableStateOf(0) }
+    // Alvo do seek em andamento (rajada de ← / →); aplicado ao player após SEEK_COMMIT_DELAY_MS.
+    var pendingSeekMs by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(seekNonce) {
         if (seekNonce > 0) {
-            delay(900)
+            delay(SEEK_COMMIT_DELAY_MS)
+            pendingSeekMs?.let { target ->
+                viewModel.onAction(PlayerScreenAction.SeekTo(target))
+                positionMs = target
+            }
+            pendingSeekMs = null
+            delay(400)
             seekFeedbackMs = 0L
+        }
+    }
+    val displayPositionMs = pendingSeekMs ?: positionMs
+
+    // "Voltar" duas vezes para sair (TV), quando os controles estão ocultos.
+    var backArmed by remember { mutableStateOf(false) }
+    LaunchedEffect(backArmed) {
+        if (backArmed) {
+            delay(BACK_EXIT_WINDOW_MS)
+            backArmed = false
         }
     }
 
     // Seletor de faixa (legenda) aberto sobre o player.
     var trackPicker by remember { mutableStateOf<TrackPicker?>(null) }
-    // Ao fechar o modal, devolve o foco aos controles (evita o dpad ficar sem foco).
+    // Sub-seletor (áudio/legenda) aberto a partir de Opções: Voltar retorna para Opções.
+    var pickerFromSettings by remember { mutableStateOf(false) }
+    // Ao fechar o modal, devolve o foco ao botão Opções (ou à linha do tempo, se indisponível).
+    val settingsFocus = remember { FocusRequester() }
     LaunchedEffect(trackPicker) {
-        if (trackPicker == null && controlsVisible) runCatching { scrubberFocus.requestFocus() }
+        if (trackPicker == null && controlsVisible) {
+            if (runCatching { settingsFocus.requestFocus() }.isFailure) {
+                runCatching { scrubberFocus.requestFocus() }
+            }
+        }
     }
 
     // Gestos verticais em tela cheia: esquerda controla volume, direita controla brilho.
@@ -347,15 +389,20 @@ fun PlaybackScreen(
 
     fun seekBy(delta: Long) {
         if (state.isPlaceholderMode) return
-        viewModel.onAction(PlayerScreenAction.SeekBy(delta))
-        seekFeedbackMs += delta
+        val base = pendingSeekMs ?: viewModel.player?.currentPosition ?: positionMs
+        val max = if (durationMs > 0L) durationMs else Long.MAX_VALUE
+        val target = (base + delta).coerceIn(0L, max)
+        seekFeedbackMs += target - base
+        pendingSeekMs = target
         seekNonce++
         controlsNonce++
     }
 
     fun seekTo(position: Long) {
         if (state.isPlaceholderMode) return
+        pendingSeekMs = null
         viewModel.onAction(PlayerScreenAction.SeekTo(position))
+        positionMs = position
         controlsNonce++
     }
 
@@ -368,8 +415,35 @@ fun PlaybackScreen(
 
     // Back fecha a barra de controles em vez de sair, quando ela está visível.
     BackHandler(enabled = controlsVisible) { controlsVisible = false }
+    BackHandler(enabled = adaptive.isTv && !controlsVisible && trackPicker == null) {
+        if (backArmed) onBack() else backArmed = true
+    }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // Qualquer tecla com os controles visíveis reinicia o timer de ocultar.
+                if (controlsVisible) controlsNonce++
+                if (event.key != Key.Back) backArmed = false
+                // Teclas de mídia do controle remoto.
+                when (event.key) {
+                    Key.MediaPlayPause -> { togglePlay(); reveal(); true }
+                    Key.MediaPlay -> {
+                        if (!state.snapshot.isPlaying) togglePlay()
+                        reveal(); true
+                    }
+                    Key.MediaPause -> {
+                        if (state.snapshot.isPlaying) togglePlay()
+                        reveal(); true
+                    }
+                    Key.MediaFastForward -> { seekBy(dpadSeekStep(event)); reveal(); true }
+                    Key.MediaRewind -> { seekBy(-dpadSeekStep(event)); reveal(); true }
+                    else -> false
+                }
+            }
+    ) {
         Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
             Box(
                 modifier = Modifier
@@ -385,7 +459,8 @@ fun PlaybackScreen(
                     playbackState = state.snapshot.state,
                     statusMessage = state.statusMessage,
                     player = { viewModel.player },
-                    seekFeedbackMs = seekFeedbackMs,
+                    // Com os controles visíveis a linha do tempo já mostra o alvo; evita sobrepor o play.
+                    seekFeedbackMs = if (controlsVisible) 0L else seekFeedbackMs,
                     verticalAdjustmentEnabled = videoIsFullscreen && !controlsVisible,
                     onReveal = { reveal() },
                     onSeek = { delta -> seekBy(delta); reveal() },
@@ -408,10 +483,11 @@ fun PlaybackScreen(
                         title = state.title,
                         tracks = state.snapshot.tracks,
                         isPlaying = state.snapshot.isPlaying,
-                        positionMs = positionMs,
+                        positionMs = displayPositionMs,
                         bufferedMs = state.snapshot.bufferedPositionMs,
                         durationMs = durationMs,
                         scrubberFocus = scrubberFocus,
+                        settingsFocus = settingsFocus,
                         compact = compactControls,
                         isTv = adaptive.isTv,
                         showFullscreen = compactControls,
@@ -420,10 +496,10 @@ fun PlaybackScreen(
                         onInteract = { controlsNonce++ },
                         onSeek = { delta -> seekBy(delta) },
                         onSeekTo = { position -> seekTo(position) },
-                        onRestart = { seekBy(-positionMs) },
+                        onRestart = { seekBy(-displayPositionMs) },
                         onToggle = { togglePlay(); controlsNonce++ },
-                        onOpenAudio = { trackPicker = TrackPicker.Audio },
-                        onOpenSubtitle = { trackPicker = TrackPicker.Subtitle },
+                        onOpenAudio = { pickerFromSettings = false; trackPicker = TrackPicker.Audio },
+                        onOpenSubtitle = { pickerFromSettings = false; trackPicker = TrackPicker.Subtitle },
                         onToggleSubtitle = {
                             val subtitles = state.snapshot.tracks.subtitles
                             if (subtitles.isNotEmpty()) {
@@ -442,13 +518,26 @@ fun PlaybackScreen(
             }
         }
 
+        if (backArmed) {
+            Text(
+                text = "Pressione Voltar novamente para sair",
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 48.dp)
+                    .background(Color(0xCC000000), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+            )
+        }
+
         trackPicker?.let { picker ->
             val tracks = state.snapshot.tracks
             when (picker) {
                 TrackPicker.Settings -> PlayerSettingsOverlay(
                     tracks = tracks,
-                    onOpenAudio = { trackPicker = TrackPicker.Audio; controlsNonce++ },
-                    onOpenSubtitle = { trackPicker = TrackPicker.Subtitle; controlsNonce++ },
+                    onOpenAudio = { pickerFromSettings = true; trackPicker = TrackPicker.Audio; controlsNonce++ },
+                    onOpenSubtitle = { pickerFromSettings = true; trackPicker = TrackPicker.Subtitle; controlsNonce++ },
                     onDismiss = { trackPicker = null; controlsNonce++ }
                 )
                 TrackPicker.Audio,
@@ -463,9 +552,14 @@ fun PlaybackScreen(
                             TrackPicker.Settings -> Unit
                         }
                         trackPicker = null
+                        pickerFromSettings = false
                         controlsNonce++
                     },
-                    onDismiss = { trackPicker = null; controlsNonce++ }
+                    onDismiss = {
+                        trackPicker = if (pickerFromSettings) TrackPicker.Settings else null
+                        pickerFromSettings = false
+                        controlsNonce++
+                    }
                 )
             }
         }
@@ -500,11 +594,10 @@ private fun VideoSurface(
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
-                    Key.DirectionUp -> { onReveal(); true }
-                    Key.DirectionLeft -> { onSeek(-DPAD_SEEK_MS); true }
-                    Key.DirectionRight -> { onSeek(DPAD_SEEK_MS); true }
+                    Key.DirectionUp, Key.DirectionDown -> { onReveal(); true }
+                    Key.DirectionLeft -> { onSeek(-dpadSeekStep(event)); true }
+                    Key.DirectionRight -> { onSeek(dpadSeekStep(event)); true }
                     Key.DirectionCenter, Key.Enter -> { onToggle(); true }
-                    // ↓ deixa o foco descer para a seção de informações (rolagem).
                     else -> false
                 }
             }
@@ -654,6 +747,7 @@ private fun StreamingControlsOverlay(
     bufferedMs: Long,
     durationMs: Long,
     scrubberFocus: FocusRequester,
+    settingsFocus: FocusRequester,
     compact: Boolean,
     isTv: Boolean,
     showFullscreen: Boolean,
@@ -706,6 +800,7 @@ private fun StreamingControlsOverlay(
         bufferedMs = bufferedMs,
         durationMs = durationMs,
         scrubberFocus = scrubberFocus,
+        settingsFocus = settingsFocus,
         isTv = isTv,
         showFullscreen = showFullscreen,
         onBack = onBack,
@@ -730,6 +825,7 @@ private fun LandscapeControlsOverlay(
     bufferedMs: Long,
     durationMs: Long,
     scrubberFocus: FocusRequester,
+    settingsFocus: FocusRequester,
     isTv: Boolean,
     showFullscreen: Boolean,
     onBack: () -> Unit,
@@ -743,13 +839,13 @@ private fun LandscapeControlsOverlay(
     onFullscreen: () -> Unit
 ) {
     // Amarração de foco para o dpad da TV: barra superior <-> controles centrais <-> scrubber,
-    // e a linha da barra superior (Fechar -> Legenda -> Velocidade -> Opções).
-    val topBarFocus = remember { FocusRequester() }
+    // e a linha da barra superior (Fechar -> Legenda -> Opções).
+    val topBarFocus = settingsFocus
     val centerFocus = remember { FocusRequester() }
     val closeFocus = remember { FocusRequester() }
     val ccFocus = remember { FocusRequester() }
-    val speedFocus = remember { FocusRequester() }
     val ccEnabled = tracks.subtitles.isNotEmpty()
+    val settingsEnabled = tracks.audios.size > 1 || tracks.subtitles.isNotEmpty()
     // Link horizontal explícito só na TV (dpad); no celular deixa a navegação espacial/toque.
     fun Modifier.hLink(left: FocusRequester? = null, right: FocusRequester? = null): Modifier =
         if (!isTv) this else this.focusProperties {
@@ -811,7 +907,7 @@ private fun LandscapeControlsOverlay(
                         onBack,
                         modifier = Modifier
                             .focusRequester(closeFocus)
-                            .hLink(right = if (ccEnabled) ccFocus else speedFocus)
+                            .hLink(right = if (ccEnabled) ccFocus else if (settingsEnabled) topBarFocus else null)
                     )
                     // PiP não se aplica à TV.
                     if (!isTv) {
@@ -831,24 +927,17 @@ private fun LandscapeControlsOverlay(
                         active = tracks.subtitles.any { it.isSelected },
                         modifier = Modifier
                             .focusRequester(ccFocus)
-                            .hLink(left = closeFocus, right = speedFocus)
+                            .hLink(left = closeFocus, right = if (settingsEnabled) topBarFocus else null)
                     )
-                    PortraitTextAction(
-                        "1x",
-                        "Velocidade",
-                        onInteract,
-                        modifier = Modifier
-                            .focusRequester(speedFocus)
-                            .hLink(left = if (ccEnabled) ccFocus else closeFocus, right = topBarFocus)
-                    )
+                    // Velocidade (1x) removida temporariamente: função ainda não implementada.
                     PortraitTopIcon(
                         Icons.Filled.Settings,
                         "Opções",
                         { onOpenSettings(); onInteract() },
-                        enabled = tracks.audios.size > 1 || tracks.subtitles.isNotEmpty(),
+                        enabled = settingsEnabled,
                         modifier = Modifier
                             .focusRequester(topBarFocus)
-                            .hLink(left = speedFocus)
+                            .hLink(left = if (ccEnabled) ccFocus else closeFocus)
                     )
                 }
             }
@@ -866,7 +955,7 @@ private fun LandscapeControlsOverlay(
         Row(
             modifier = Modifier
                 .align(Alignment.Center)
-                .focusProperties { up = topBarFocus },
+                .focusProperties { up = if (settingsEnabled) topBarFocus else closeFocus },
             horizontalArrangement = Arrangement.spacedBy(72.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -900,6 +989,8 @@ private fun LandscapeControlsOverlay(
                 positionMs = positionMs,
                 bufferedMs = bufferedMs,
                 durationMs = durationMs,
+                showTimeBubble = isTv,
+                onToggle = { onToggle(); onInteract() },
                 onSeek = { delta -> onSeek(delta); onInteract() },
                 onSeekTo = { position -> onSeekTo(position); onInteract() }
             )
@@ -988,7 +1079,7 @@ private fun PortraitControlsOverlay(
                         enabled = tracks.subtitles.isNotEmpty(),
                         active = tracks.subtitles.any { it.isSelected }
                     )
-                PortraitTextAction("1x", "Velocidade", onInteract)
+                // Velocidade (1x) removida temporariamente: função ainda não implementada.
                 PortraitTopIcon(
                     Icons.Filled.Settings,
                     "Opções",
@@ -1029,6 +1120,7 @@ private fun PortraitControlsOverlay(
                     positionMs = positionMs,
                     bufferedMs = bufferedMs,
                     durationMs = durationMs,
+                    onToggle = { onToggle(); onInteract() },
                     onSeek = { delta -> onSeek(delta); onInteract() },
                     onSeekTo = { position -> onSeekTo(position); onInteract() }
                 )
@@ -1161,16 +1253,19 @@ private fun PortraitSeekButton(
     label: String,
     onClick: () -> Unit
 ) {
+    var focused by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .size(62.dp)
             .clip(CircleShape)
-            .clickable(onClick = onClick),
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(if (focused) Color.White else Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            color = Color.White,
+            color = if (focused) Color.Black else Color.White,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
@@ -1273,7 +1368,9 @@ private fun Scrubber(
     bufferedMs: Long,
     durationMs: Long,
     onSeek: (Long) -> Unit,
-    onSeekTo: ((Long) -> Unit)? = null
+    onSeekTo: ((Long) -> Unit)? = null,
+    onToggle: (() -> Unit)? = null,
+    showTimeBubble: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
     val played = if (durationMs > 0L) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
@@ -1283,15 +1380,18 @@ private fun Scrubber(
         val target = ((x / width).coerceIn(0f, 1f) * durationMs).toLong()
         onSeekTo?.invoke(target)
     }
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .height(28.dp)
             .onFocusChanged { focused = it.isFocused }
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
-                    Key.DirectionLeft -> { onSeek(-DPAD_SEEK_MS); true }
-                    Key.DirectionRight -> { onSeek(DPAD_SEEK_MS); true }
+                    Key.DirectionLeft -> { onSeek(-dpadSeekStep(event)); true }
+                    Key.DirectionRight -> { onSeek(dpadSeekStep(event)); true }
+                    Key.DirectionCenter, Key.Enter -> {
+                        if (onToggle == null) false else { onToggle(); true }
+                    }
                     else -> false
                 }
             }
@@ -1313,7 +1413,8 @@ private fun Scrubber(
         Canvas(modifier = Modifier.fillMaxWidth().height(28.dp)) {
             val w = size.width
             val cy = size.height / 2f
-            val trackH = 6.dp.toPx()
+            // Com foco (dpad), trilho mais grosso para ser legível à distância.
+            val trackH = if (focused) 10.dp.toPx() else 6.dp.toPx()
             val radius = CornerRadius(trackH / 2f, trackH / 2f)
             // Trilho
             drawRoundRect(
@@ -1339,8 +1440,28 @@ private fun Scrubber(
                 cornerRadius = radius
             )
             // Knob
-            val knobR = if (focused) 10.dp.toPx() else 7.dp.toPx()
+            val knobR = if (focused) 13.dp.toPx() else 7.dp.toPx()
+            if (focused) {
+                drawCircle(color = Color(0x55FFFFFF), radius = knobR + 6.dp.toPx(), center = Offset(w * played, cy))
+            }
             drawCircle(color = Color.White, radius = knobR, center = Offset(w * played, cy))
+        }
+        // Tempo sobre o knob enquanto a linha do tempo está focada (TV).
+        if (showTimeBubble && focused) {
+            val bubbleW = 96.dp
+            val x = (maxWidth * played - bubbleW / 2).coerceIn(0.dp, (maxWidth - bubbleW).coerceAtLeast(0.dp))
+            Text(
+                text = formatTime(positionMs),
+                color = Color.Black,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier
+                    .offset(x = x, y = (-44).dp)
+                    .width(bubbleW)
+                    .background(Color.White, RoundedCornerShape(8.dp))
+                    .padding(vertical = 4.dp)
+            )
         }
     }
 }
@@ -1390,7 +1511,8 @@ private fun PlayerSettingsOverlay(
                     label = "Legendas",
                     value = selectedSubtitle,
                     enabled = tracks.subtitles.isNotEmpty(),
-                    modifier = Modifier.focusRequester(firstFocus),
+                    // Foco inicial na primeira linha habilitada (desabilitada não recebe foco).
+                    modifier = if (tracks.subtitles.isNotEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
                     onClick = onOpenSubtitle
                 )
                 PlayerSettingsRow(
@@ -1398,6 +1520,7 @@ private fun PlayerSettingsOverlay(
                     label = "Áudio",
                     value = selectedAudio,
                     enabled = tracks.audios.size > 1,
+                    modifier = if (tracks.subtitles.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
                     onClick = onOpenAudio
                 )
             }

@@ -126,7 +126,7 @@ fun ConfirmDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusGroup(),
+                    .trapFocus(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DialogButton(

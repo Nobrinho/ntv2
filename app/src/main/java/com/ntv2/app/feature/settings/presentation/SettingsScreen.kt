@@ -1,5 +1,10 @@
 package com.ntv2.app.feature.settings.presentation
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.focus.focusProperties
+import com.ntv2.app.core.ui.trapFocus
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -88,13 +93,26 @@ fun SettingsScreen(
     onManageChannels: () -> Unit,
     onOpenListedChannels: () -> Unit,
     onLogout: () -> Unit,
-    onOpenLibrary: () -> Unit
+    onOpenLibrary: () -> Unit,
+    // Rail: Busca abre a busca da Biblioteca; Atualizar recarrega a Biblioteca.
+    onSearch: () -> Unit = onOpenLibrary,
+    onRefresh: () -> Unit = onOpenLibrary
 ) {
-    val firstItemFocus = remember { FocusRequester() }
     var confirmLogout by remember { mutableStateOf(false) }
     var showPrivacy by remember { mutableStateOf(false) }
     val adaptive = rememberAdaptiveLayoutInfo()
-    LaunchedEffect(Unit) { runCatching { firstItemFocus.requestFocus() } }
+    // Um FocusRequester por item; o último focado é lembrado (inclusive ao voltar de outra tela
+    // ou fechar um modal), em vez de sempre voltar ao primeiro.
+    val itemFocus = remember { List(SETTINGS_ITEM_COUNT) { FocusRequester() } }
+    var lastFocusIndex by rememberSaveable { mutableIntStateOf(0) }
+    fun itemMod(index: Int) = Modifier
+        .focusRequester(itemFocus[index])
+        .onFocusChanged { if (it.isFocused) lastFocusIndex = index }
+    LaunchedEffect(showPrivacy, confirmLogout) {
+        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout) {
+            runCatching { itemFocus[lastFocusIndex].requestFocus() }
+        }
+    }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF0E0E0E))) {
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
@@ -103,9 +121,9 @@ fun SettingsScreen(
             if (useTvLayout) {
                 NavRail(
                     settingsActive = true,
-                    onSearch = onOpenLibrary,
+                    onSearch = onSearch,
                     onChannels = onOpenListedChannels,
-                    onRefresh = onOpenLibrary,
+                    onRefresh = onRefresh,
                     onSettings = {}
                 )
             }
@@ -133,7 +151,7 @@ fun SettingsScreen(
                         title = "Capas",
                         subtitle = "Exibir capas dos conteúdos na interface",
                         value = showCovers,
-                        modifier = if (useTvLayout) Modifier.focusRequester(firstItemFocus) else Modifier,
+                        modifier = itemMod(0),
                         onToggle = { onToggleCovers(!showCovers) }
                     )
                     ToggleCard(
@@ -141,7 +159,7 @@ fun SettingsScreen(
                         title = "Animações",
                         subtitle = "Ativar animações e transições da interface",
                         value = animationsEnabled,
-                        modifier = Modifier,
+                        modifier = itemMod(1),
                         onToggle = { onToggleAnimations(!animationsEnabled) }
                     )
                     ToggleCard(
@@ -149,14 +167,16 @@ fun SettingsScreen(
                         title = "Fotos do elenco",
                         subtitle = "Mostrar rostos do elenco nos detalhes (senão, só nomes)",
                         value = castPhotos,
-                        modifier = Modifier,
+                        modifier = itemMod(2),
                         onToggle = { onToggleCastPhotos(!castPhotos) }
                     )
                     DurationCard(
+                        modifier = itemMod(3),
                         value = minDurationMinutes,
                         onChange = onChangeMinDuration
                     )
                     MaxCardsCard(
+                        modifier = itemMod(4),
                         value = maxCards,
                         limit = maxCardsLimit,
                         gridStep = gridStep,
@@ -167,6 +187,7 @@ fun SettingsScreen(
                         title = "Seleção de canais",
                         subtitle = "Gerenciar os canais disponíveis",
                         destructive = false,
+                        modifier = itemMod(5),
                         onClick = onManageChannels
                     )
                     NavCard(
@@ -174,6 +195,7 @@ fun SettingsScreen(
                         title = "Política de privacidade",
                         subtitle = "Como o app trata seus dados",
                         destructive = false,
+                        modifier = itemMod(6),
                         onClick = { showPrivacy = true }
                     )
                     Spacer(Modifier.size(8.dp))
@@ -182,6 +204,7 @@ fun SettingsScreen(
                         title = "Sair da conta",
                         subtitle = "Encerrar a sessão neste dispositivo",
                         destructive = true,
+                        modifier = itemMod(7),
                         onClick = { confirmLogout = true }
                     )
                 }
@@ -244,15 +267,19 @@ private fun ToggleCard(
     }
 }
 
+private const val SETTINGS_ITEM_COUNT = 8
+
 private val DURATION_STEPS = listOf(0, 5, 10, 15, 20, 30, 45, 60, 90, 120)
 
 @Composable
 private fun DurationCard(
+    modifier: Modifier = Modifier,
     value: Int,
     onChange: (Int) -> Unit
 ) {
     val idx = DURATION_STEPS.indexOfFirst { it >= value }.let { if (it < 0) DURATION_STEPS.lastIndex else it }
     StepperSettingCard(
+        modifier = modifier,
         icon = Icons.Filled.Timer,
         title = "Duração mínima",
         subtitle = "Oculta vídeos mais curtos que o tempo escolhido.",
@@ -268,6 +295,7 @@ private val MAX_CARDS_STEPS = listOf(60, 90, 120, 150, 200, 250, 300)
 
 @Composable
 private fun MaxCardsCard(
+    modifier: Modifier = Modifier,
     value: Int,
     limit: Int?,
     gridStep: Int,
@@ -288,6 +316,7 @@ private fun MaxCardsCard(
         "Limita quantos itens ficam carregados na biblioteca."
     }
     StepperSettingCard(
+        modifier = modifier,
         icon = Icons.Filled.ViewModule,
         title = "Cards na grade",
         subtitle = subtitle,
@@ -301,6 +330,7 @@ private fun MaxCardsCard(
 
 @Composable
 private fun StepperSettingCard(
+    modifier: Modifier = Modifier,
     icon: ImageVector,
     title: String,
     subtitle: String,
@@ -312,14 +342,15 @@ private fun StepperSettingCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     BoxWithConstraints(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .onKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (e.key) {
-                    Key.DirectionLeft -> { if (canDecrease) onDecrease(); true }
+                    // No mínimo, ← não é consumido: o foco pode sair para o rail.
+                    Key.DirectionLeft -> if (canDecrease) { onDecrease(); true } else false
                     Key.DirectionRight -> { if (canIncrease) onIncrease(); true }
                     else -> false
                 }
@@ -339,6 +370,7 @@ private fun StepperSettingCard(
                 StepperSettingText(icon, title, subtitle, Modifier.fillMaxWidth())
                 StepperControl(
                     valueText = valueText,
+                    focused = focused,
                     canDecrease = canDecrease,
                     canIncrease = canIncrease,
                     onDecrease = onDecrease,
@@ -354,6 +386,7 @@ private fun StepperSettingCard(
                 StepperSettingText(icon, title, subtitle, Modifier.weight(1f))
                 StepperControl(
                     valueText = valueText,
+                    focused = focused,
                     canDecrease = canDecrease,
                     canIncrease = canIncrease,
                     onDecrease = onDecrease,
@@ -388,6 +421,7 @@ private fun StepperSettingText(
 @Composable
 private fun StepperControl(
     valueText: String,
+    focused: Boolean,
     canDecrease: Boolean,
     canIncrease: Boolean,
     onDecrease: () -> Unit,
@@ -403,7 +437,8 @@ private fun StepperControl(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        StepTouchButton("-", canDecrease, onDecrease)
+        // Com foco (D-pad): setas indicam que ← / → ajustam o valor.
+        StepTouchButton(if (focused) "◀" else "-", canDecrease, onDecrease)
         Text(
             valueText,
             color = BRAND,
@@ -412,7 +447,7 @@ private fun StepperControl(
             maxLines = 1,
             modifier = Modifier.weight(1f)
         )
-        StepTouchButton("+", canIncrease, onIncrease)
+        StepTouchButton(if (focused) "▶" else "+", canIncrease, onIncrease)
     }
 }
 
@@ -426,6 +461,8 @@ private fun StepTouchButton(
         modifier = Modifier
             .size(40.dp)
             .clip(RoundedCornerShape(20.dp))
+            // Só toque: no D-pad quem ajusta é o card (← / →); o botão não recebe foco.
+            .focusProperties { canFocus = false }
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
             .background(if (enabled) Color(0x2BFFFFFF) else Color.Transparent),
         contentAlignment = Alignment.Center
@@ -440,12 +477,14 @@ private fun NavCard(
     title: String,
     subtitle: String,
     destructive: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     SettingCardShell(
         icon = icon,
         title = title,
         subtitle = subtitle,
+        modifier = modifier,
         titleColor = if (destructive) Color(0xFFFF6B6B) else Color.White,
         onClick = onClick
     ) {
@@ -516,7 +555,8 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
         Column(
             modifier = Modifier
                 .then(if (compact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.82f).widthIn(max = 760.dp))
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .trapFocus(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Cabeçalho: título + X discreto para fechar.
@@ -541,7 +581,11 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
                         if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
                         when (e.key) {
                             Key.DirectionDown -> { scope.launch { scroll.animateScrollBy(320f) }; true }
-                            Key.DirectionUp -> { scope.launch { scroll.animateScrollBy(-320f) }; true }
+                            // No topo do texto, ↑ sobe para o botão X.
+                            Key.DirectionUp -> if (scroll.value > 0) {
+                                scope.launch { scroll.animateScrollBy(-320f) }; true
+                            } else false
+                            Key.DirectionLeft, Key.DirectionRight -> true
                             else -> false
                         }
                     }
@@ -555,7 +599,7 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
                 )
             }
             Text(
-                if (compact) "Deslize para rolar · toque no X para fechar" else "Use ↑ / ↓ para rolar · Voltar para fechar",
+                if (compact) "Deslize para rolar · toque no X para fechar" else "Use ↑ / ↓ para rolar · ↑ no topo vai ao X · Voltar para fechar",
                 color = Color(0xFF9A9A9A),
                 style = MaterialTheme.typography.bodySmall
             )

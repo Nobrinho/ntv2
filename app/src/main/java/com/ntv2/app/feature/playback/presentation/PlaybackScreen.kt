@@ -133,6 +133,23 @@ import com.ntv2.app.core.player.MediaTracksInfo
 import com.ntv2.app.core.player.PlaybackState
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
 
 private const val DPAD_SEEK_MS = 10_000L
 private const val CONTROLS_TIMEOUT_MS = 6_000L
@@ -515,10 +532,13 @@ fun PlaybackScreen(
                     )
                 }
 
-                if (controlsVisible) {
+                // Aparecer/sumir dos controles com fade (ligado ao toggle "Animações" das configurações).
+                val controlsOverlay: @Composable () -> Unit = {
                     StreamingControlsOverlay(
                         modifier = Modifier.fillMaxSize(),
                         title = state.title,
+                        year = titleYear(state.title, state.details?.year, state.fileName),
+                        animationsEnabled = animationsEnabled,
                         tracks = state.snapshot.tracks,
                         isPlaying = state.snapshot.isPlaying,
                         positionMs = displayPositionMs,
@@ -552,6 +572,16 @@ fun PlaybackScreen(
                             controlsNonce++
                         }
                     )
+                }
+                if (animationsEnabled) {
+                    // FQN: dentro do Column externo o Kotlin escolheria ColumnScope.AnimatedVisibility.
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = controlsVisible,
+                        enter = fadeIn(tween(CONTROLS_FADE_IN_MS)),
+                        exit = fadeOut(tween(CONTROLS_FADE_OUT_MS))
+                    ) { controlsOverlay() }
+                } else if (controlsVisible) {
+                    controlsOverlay()
                 }
             }
         }
@@ -1056,6 +1086,8 @@ private fun GestureAdjustmentOverlay(
 private fun StreamingControlsOverlay(
     modifier: Modifier,
     title: String,
+    year: Int?,
+    animationsEnabled: Boolean,
     tracks: MediaTracksInfo,
     isPlaying: Boolean,
     positionMs: Long,
@@ -1109,6 +1141,8 @@ private fun StreamingControlsOverlay(
     LandscapeControlsOverlay(
         modifier = modifier,
         title = title,
+        year = year,
+        animationsEnabled = animationsEnabled,
         tracks = tracks,
         isPlaying = isPlaying,
         positionMs = positionMs,
@@ -1134,6 +1168,8 @@ private fun StreamingControlsOverlay(
 private fun LandscapeControlsOverlay(
     modifier: Modifier,
     title: String,
+    year: Int?,
+    animationsEnabled: Boolean,
     tracks: MediaTracksInfo,
     isPlaying: Boolean,
     positionMs: Long,
@@ -1168,6 +1204,9 @@ private fun LandscapeControlsOverlay(
             left?.let { this.left = it }
             right?.let { this.right = it }
         }
+    // Margem lateral: TV respeita a área segura de overscan (48dp); celular usa quase toda a
+    // largura, somando o recorte da câmera quando ele fica na lateral.
+    val sidePadding = if (isTv) 48.dp else 24.dp
     Box(
         modifier = modifier
             .background(Color(0x26000000))
@@ -1205,14 +1244,15 @@ private fun LandscapeControlsOverlay(
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 88.dp, vertical = 24.dp),
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
+                .padding(horizontal = sidePadding, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            // Uma linha só: ícones da esquerda · título (ano) · ícones da direita.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusProperties { down = centerFocus },
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1229,6 +1269,15 @@ private fun LandscapeControlsOverlay(
                         PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onDismiss)
                     }
                 }
+                ScrollingTitle(
+                    title = title,
+                    year = year,
+                    fontSize = if (isTv) 22.sp else 20.sp,
+                    animate = animationsEnabled,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 20.dp)
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Espelhamento/transmissão não se aplica à TV.
                     if (!isTv) {
@@ -1256,15 +1305,6 @@ private fun LandscapeControlsOverlay(
                     )
                 }
             }
-
-            Text(
-                text = title,
-                color = Color.White,
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
         }
 
         Row(
@@ -1292,7 +1332,8 @@ private fun LandscapeControlsOverlay(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(start = 88.dp, end = 88.dp, bottom = 34.dp),
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
+                .padding(start = sidePadding, end = sidePadding, bottom = 34.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Scrubber(
@@ -2059,4 +2100,96 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+
+private const val CONTROLS_FADE_IN_MS = 220
+private const val CONTROLS_FADE_OUT_MS = 280
+// Velocidade de leitura do título que não cabe na linha.
+private const val TITLE_SCROLL_DP_PER_SEC = 40f
+private val YEAR_IN_TEXT = Regex("(?<!\\d)(19[2-9]\\d|20[0-4]\\d)(?!\\d)")
+
+/** Ano do filme: dos detalhes (índice/TMDB) ou, na falta, do nome do arquivo. Null se já está no título. */
+private fun titleYear(title: String, detailsYear: Int?, fileName: String?): Int? {
+    val year = detailsYear ?: fileName?.let { YEAR_IN_TEXT.find(it)?.value?.toIntOrNull() }
+    return year?.takeIf { !title.contains(it.toString()) }
+}
+
+/**
+ * Título "Nome (ano)" numa linha só. Se não couber, o excedente some num degradê e, a cada vez que
+ * os controles aparecem, o texto rola até o fim para completar a leitura, volta ao início e repete
+ * enquanto estiver visível. Com animações desligadas fica parado, só com o degradê no fim.
+ */
+@Composable
+private fun ScrollingTitle(
+    title: String,
+    year: Int?,
+    fontSize: TextUnit,
+    animate: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val scroll = rememberScrollState()
+    val density = LocalDensity.current
+    val text = remember(title, year) {
+        buildAnnotatedString {
+            append(title)
+            if (year != null) {
+                withStyle(SpanStyle(color = Color(0xB3FFFFFF), fontWeight = FontWeight.Normal)) {
+                    append(" ($year)")
+                }
+            }
+        }
+    }
+    LaunchedEffect(text, animate, scroll.maxValue) {
+        if (!animate || scroll.maxValue <= 0) {
+            scroll.scrollTo(0)
+            return@LaunchedEffect
+        }
+        val pxPerSecond = with(density) { TITLE_SCROLL_DP_PER_SEC.dp.toPx() }
+        while (true) {
+            delay(1_500L)
+            val max = scroll.maxValue
+            val durationMs = (max / pxPerSecond * 1_000f).toInt().coerceAtLeast(400)
+            scroll.animateScrollTo(max, tween(durationMs, easing = LinearEasing))
+            delay(2_000L)
+            scroll.animateScrollTo(0, tween(600, easing = FastOutSlowInEasing))
+        }
+    }
+    val fadeWidthPx = with(density) { 28.dp.toPx() }
+    Text(
+        text = text,
+        color = Color.White,
+        fontSize = fontSize,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        softWrap = false,
+        modifier = modifier
+            // Offscreen: o DstIn recorta a transparência só do próprio texto (degradê nas bordas).
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val fade = fadeWidthPx.coerceAtMost(size.width / 2f)
+                if (scroll.value > 0) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(0f to Color.Transparent, 1f to Color.Black, startX = 0f, endX = fade),
+                        size = Size(fade, size.height),
+                        blendMode = BlendMode.DstIn
+                    )
+                }
+                if (scroll.value < scroll.maxValue) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            0f to Color.Black,
+                            1f to Color.Transparent,
+                            startX = size.width - fade,
+                            endX = size.width
+                        ),
+                        topLeft = Offset(size.width - fade, 0f),
+                        size = Size(fade, size.height),
+                        blendMode = BlendMode.DstIn
+                    )
+                }
+            }
+            .horizontalScroll(scroll, enabled = false)
+    )
 }

@@ -160,7 +160,7 @@ fun SettingsScreen(
                     ToggleCard(
                         icon = Icons.Filled.AutoAwesome,
                         title = "Animações",
-                        subtitle = "Animações e transições (inclui a luz pulsante ao carregar um vídeo)",
+                        subtitle = "Animações e transições (luz pulsante ao carregar, controles do player e rolagem do título)",
                         value = animationsEnabled,
                         modifier = itemMod(1),
                         onToggle = { onToggleAnimations(!animationsEnabled) }

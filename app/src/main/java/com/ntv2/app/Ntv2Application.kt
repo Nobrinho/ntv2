@@ -41,6 +41,10 @@ class Ntv2Application : Application(), ImageLoaderFactory {
             .bitmapConfig(Bitmap.Config.RGB_565)
             .allowRgb565(true)
             .crossfade(false)
+            // Capas do TMDB nunca mudam no mesmo endereço: usa o disco direto, sem revalidar na rede.
+            .respectCacheHeaders(false)
+            // Tempo de carregamento das capas em lotes (logcat, tag NtvCovers).
+            .eventListener(com.ntv2.app.core.ui.CoverTimingListener())
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.25)
@@ -72,13 +76,21 @@ class Ntv2Application : Application(), ImageLoaderFactory {
             val composite = CompositeX509TrustManager(managers)
             val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(composite), null) }
             OkHttpClient.Builder()
+                .dispatcher(coverDispatcher())
                 .sslSocketFactory(ssl.socketFactory, composite)
                 .dns(Ipv4PreferredDns)
                 .build()
         }.getOrElse {
             android.util.Log.e("Ntv2Ssl", "Falha ao montar OkHttp com CAs embutidas; usando padrão", it)
-            OkHttpClient()
+            OkHttpClient.Builder().dispatcher(coverDispatcher()).build()
         }
+    }
+
+    // O padrão do OkHttp é 5 requisições simultâneas por servidor: todas as capas vêm do
+    // image.tmdb.org e carregavam em fila de 5 em 5. O TMDB usa HTTP/2 (multiplexa numa conexão).
+    private fun coverDispatcher() = okhttp3.Dispatcher().apply {
+        maxRequests = 64
+        maxRequestsPerHost = 16
     }
 
     /** Prefere endereços IPv4 (evita timeout em redes/emuladores com IPv6 quebrado). */

@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -203,6 +204,16 @@ fun MediaLibraryScreen(
             viewModel.onAction(MediaLibraryAction.Refresh)
             onRefreshRequestConsumed()
         }
+    }
+
+    // Pré-carrega no disco as capas remotas da página recém-carregada (as linhas de baixo ficam
+    // prontas antes de rolar). Só dispara quando o conjunto de capas muda.
+    val coverContext = LocalContext.current
+    val coverUrls = remember(state.items, state.showCovers) {
+        if (state.showCovers) state.items.mapNotNull { it.posterPath ?: it.thumbnailPath } else emptyList()
+    }
+    LaunchedEffect(coverUrls) {
+        if (coverUrls.isNotEmpty()) com.ntv2.app.core.ui.prefetchCovers(coverContext, coverUrls)
     }
 
     LaunchedEffect(state.pendingNavigation) {

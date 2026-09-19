@@ -35,6 +35,10 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
+// Vídeo congelado: tocando (áudio/relógio avançando) sem nenhum quadro novo por esse tempo.
+private const val VIDEO_FREEZE_RECOVER_MS = 3_000L
+// Limite de recuperações por mídia (evita laço se o arquivo realmente não decodifica).
+private const val MAX_FREEZE_RECOVERIES = 5
 
 class DefaultPlaybackCoordinator(
     private val playbackDataSource: TelegramPlaybackDataSource,
@@ -59,8 +63,11 @@ class DefaultPlaybackCoordinator(
     private var observeJob: Job? = null
     private var downloadJob: Job? = null
     private var progressJob: Job? = null
+    private var freezeJob: Job? = null
     // Fechamento/remoção do arquivo da sessão anterior (roda em segundo plano).
     private var cleanupJob: Job? = null
+    private var freezeRecoveries = 0
+    private var freezeRecoveriesMediaId: String? = null
     private var wasPlayingBeforeStop: Boolean = false
     // Recuperação de troca de áudio: se a faixa escolhida não puder ser decodificada, o player dá
     // erro; voltamos ao áudio padrão e retomamos da mesma posição em vez de travar.
@@ -195,6 +202,7 @@ class DefaultPlaybackCoordinator(
 
         observeFileState(media)
         startProgressSaving(media)
+        startFreezeWatch(media)
         if (!handle.isDownloadComplete) {
             startProgressiveLoop(media)
         }
@@ -208,6 +216,53 @@ class DefaultPlaybackCoordinator(
             while (true) {
                 kotlinx.coroutines.delay(PROGRESS_SAVE_INTERVAL_MS)
                 persistCurrentProgress(media)
+            }
+        }
+    }
+
+    /**
+     * Detecta vídeo congelado com áudio tocando: o decodificador de hardware pode morrer sem
+     * reportar erro ao ExoPlayer (visto no MediaTek do Fire TV com PPS repetido a cada
+     * quadro-chave: "Fail to parse PPS"). Sem quadros novos por [VIDEO_FREEZE_RECOVER_MS] enquanto
+     * a posição avança → prepara de novo na mesma posição, o que recria o decodificador.
+     */
+    private fun startFreezeWatch(media: PlaybackMedia) {
+        freezeJob?.cancel()
+        if (freezeRecoveriesMediaId != media.mediaId) {
+            freezeRecoveriesMediaId = media.mediaId
+            freezeRecoveries = 0
+        }
+        freezeJob = scope.launch(Dispatchers.Main) {
+            var lastFrames = -1L
+            var lastPositionMs = 0L
+            var frozenForMs = 0L
+            while (true) {
+                kotlinx.coroutines.delay(1_000L)
+                val player = exoPlayer ?: continue
+                val counters = player.videoDecoderCounters
+                if (counters == null || !player.isPlaying || player.playbackState != Player.STATE_READY) {
+                    lastFrames = -1L
+                    frozenForMs = 0L
+                    continue
+                }
+                counters.ensureUpdated()
+                val frames = counters.renderedOutputBufferCount.toLong() +
+                    counters.droppedBufferCount + counters.skippedOutputBufferCount
+                val positionMs = player.currentPosition
+                val clockAdvanced = positionMs - lastPositionMs >= 700L
+                frozenForMs = if (lastFrames >= 0L && frames == lastFrames && clockAdvanced) frozenForMs + 1_000L else 0L
+                lastFrames = frames
+                lastPositionMs = positionMs
+                if (frozenForMs >= VIDEO_FREEZE_RECOVER_MS && freezeRecoveries < MAX_FREEZE_RECOVERIES) {
+                    freezeRecoveries++
+                    android.util.Log.w(
+                        "NtvPlayer",
+                        "vídeo congelado há ${frozenForMs}ms em ${positionMs}ms — recriando decodificador " +
+                            "($freezeRecoveries/$MAX_FREEZE_RECOVERIES)"
+                    )
+                    retry()
+                    return@launch
+                }
             }
         }
     }
@@ -418,6 +473,8 @@ class DefaultPlaybackCoordinator(
         downloadJob = null
         progressJob?.cancel()
         progressJob = null
+        freezeJob?.cancel()
+        freezeJob = null
 
         val media = currentMedia
         // Captura a posição ANTES de parar o player (currentPosition zera após stop) e salva.

@@ -42,6 +42,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextAlign
+import com.ntv2.app.core.ui.trapFocus
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Close
@@ -115,6 +121,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
@@ -287,6 +295,11 @@ fun PlaybackScreen(
     }
     // Foco inicial no vídeo.
     LaunchedEffect(Unit) { runCatching { videoFocusRequester.requestFocus() } }
+    // Fechou a tela de erro (Tentar novamente): o foco volta ao vídeo para o D-pad seguir funcionando.
+    val hasLoadError = state.loadError != null
+    LaunchedEffect(hasLoadError) {
+        if (!hasLoadError) runCatching { videoFocusRequester.requestFocus() }
+    }
 
     // Feedback central de seek (segundos acumulados na "rajada" de ← / →); some após ~1s.
     var seekFeedbackMs by remember { mutableStateOf(0L) }
@@ -434,6 +447,8 @@ fun PlaybackScreen(
     BackHandler(enabled = adaptive.isTv && !controlsVisible && trackPicker == null) {
         if (backArmed) onBack() else backArmed = true
     }
+    // Com a tela de erro aberta, Voltar sai do player direto.
+    BackHandler(enabled = state.loadError != null) { onBack() }
 
     Box(
         modifier = Modifier
@@ -474,6 +489,8 @@ fun PlaybackScreen(
                     title = state.title,
                     playbackState = state.snapshot.state,
                     statusMessage = state.statusMessage,
+                    downloadProgress = state.downloadProgress,
+                    loadingHint = state.loadingHint,
                     player = { viewModel.player },
                     // Com os controles visíveis a linha do tempo já mostra o alvo; evita sobrepor o play.
                     seekFeedbackMs = if (controlsVisible) 0L else seekFeedbackMs,
@@ -549,6 +566,14 @@ fun PlaybackScreen(
             )
         }
 
+        state.loadError?.let { error ->
+            LoadErrorOverlay(
+                error = error,
+                onRetry = { viewModel.onAction(PlayerScreenAction.RetryLoad) },
+                onBack = onBack
+            )
+        }
+
         trackPicker?.let { picker ->
             val tracks = state.snapshot.tracks
             when (picker) {
@@ -594,6 +619,8 @@ private fun VideoSurface(
     title: String,
     playbackState: PlaybackState,
     statusMessage: String,
+    downloadProgress: DownloadProgress?,
+    loadingHint: String?,
     player: () -> Player?,
     seekFeedbackMs: Long,
     animationsEnabled: Boolean,
@@ -679,6 +706,7 @@ private fun VideoSurface(
                 ) {
                     CircularProgressIndicator(color = Color.White)
                     Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                    LoadingProgress(downloadProgress, loadingHint)
                 }
             }
             // Feedback central de seek: seta + segundos acumulados.
@@ -703,6 +731,7 @@ private fun VideoSurface(
             ) {
                 CircularProgressIndicator(color = Color.White)
                 Text(statusMessage, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                LoadingProgress(downloadProgress, loadingHint)
             }
         }
     }
@@ -716,19 +745,35 @@ private fun VideoSurface(
  *   a ampliação já espalha as cores; roda em qualquer versão e é leve.
  * [animate] liga a luz "respirando" (pulso lento), vinculada ao toggle Animações.
  */
+/** Saturação 1.7x e leve ganho de brilho para a luz da versão compatível. */
+private fun vividGlowMatrix(): ColorMatrix {
+    val saturation = ColorMatrix().apply { setToSaturation(1.7f) }
+    val gain = 1.15f
+    val brightness = ColorMatrix(
+        floatArrayOf(
+            gain, 0f, 0f, 0f, 0f,
+            0f, gain, 0f, 0f, 0f,
+            0f, 0f, gain, 0f, 0f,
+            0f, 0f, 0f, 1f, 0f
+        )
+    )
+    saturation.timesAssign(brightness)
+    return saturation
+}
+
 @Composable
 private fun AmbientPoster(url: String, title: String, nativeBlur: Boolean, animate: Boolean) {
     val useNativeBlur = nativeBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val glowAlpha = if (animate) {
         val transition = rememberInfiniteTransition(label = "ambient-glow")
         transition.animateFloat(
-            initialValue = 0.55f,
-            targetValue = 0.9f,
+            initialValue = 0.7f,
+            targetValue = 1f,
             animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
             label = "ambient-glow-alpha"
         ).value
     } else {
-        0.75f
+        0.9f
     }
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         val glowModifier = Modifier
@@ -747,12 +792,16 @@ private fun AmbientPoster(url: String, title: String, nativeBlur: Boolean, anima
             )
         } else {
             val context = LocalContext.current
-            val tiny = remember(url) { ImageRequest.Builder(context).data(url).size(24).build() }
+            // 32 px: poucos pixels = cores bem espalhadas, mas sem virar uma média única.
+            val tiny = remember(url) { ImageRequest.Builder(context).data(url).size(32).build() }
             AsyncImage(
                 model = tiny,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 filterQuality = FilterQuality.High,
+                // Reduzir a imagem "lava" as cores (média): recupera saturação e brilho para a luz
+                // ficar viva como no desfoque nativo (vermelho vermelho, não marrom).
+                colorFilter = remember { ColorFilter.colorMatrix(vividGlowMatrix()) },
                 modifier = glowModifier
             )
         }
@@ -760,7 +809,7 @@ private fun AmbientPoster(url: String, title: String, nativeBlur: Boolean, anima
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.radialGradient(0f to Color(0x22000000), 1f to Color(0xCC000000)))
+                .background(Brush.radialGradient(0f to Color(0x11000000), 1f to Color(0x99000000)))
         )
         AsyncImage(
             model = url,
@@ -769,7 +818,134 @@ private fun AmbientPoster(url: String, title: String, nativeBlur: Boolean, anima
             modifier = Modifier.fillMaxSize().padding(vertical = 28.dp)
         )
         // Leve escurecimento geral para o spinner/rótulo por cima continuarem legíveis.
-        Box(modifier = Modifier.fillMaxSize().background(Color(0x40000000)))
+        Box(modifier = Modifier.fillMaxSize().background(Color(0x26000000)))
+    }
+}
+
+/** Progresso do download durante a espera: "12,3 MB de 1,4 GB · 850 KB/s" + barra + aviso. */
+@Composable
+private fun LoadingProgress(progress: DownloadProgress?, hint: String?) {
+    if (progress != null && progress.downloadedBytes > 0L) {
+        val text = buildString {
+            append(formatBytes(progress.downloadedBytes))
+            if (progress.expectedBytes > 0L) append(" de ").append(formatBytes(progress.expectedBytes))
+            if (progress.bytesPerSecond > 0L) append(" · ").append(formatBytes(progress.bytesPerSecond)).append("/s")
+        }
+        Text(text, color = Color(0xFFD0D0D0), style = MaterialTheme.typography.bodySmall)
+        if (progress.expectedBytes > 0L) {
+            val fraction = (progress.downloadedBytes.toFloat() / progress.expectedBytes).coerceIn(0f, 1f)
+            Box(
+                modifier = Modifier
+                    .width(220.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0x40FFFFFF))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(fraction)
+                        .background(Color.White)
+                )
+            }
+        }
+    }
+    if (hint != null) {
+        Text(
+            hint,
+            color = Color(0xFFFFD37A),
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 420.dp)
+        )
+    }
+}
+
+/**
+ * Falha ao carregar o vídeo: motivo em português + "Tentar novamente" (foco inicial, retoma o
+ * download de onde parou) e "Voltar". Prende o foco do D-pad nos botões.
+ */
+@Composable
+private fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBack: () -> Unit) {
+    val retryFocus = remember { FocusRequester() }
+    LaunchedEffect(error) { runCatching { retryFocus.requestFocus() } }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xB3000000)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .widthIn(max = 560.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xF21B1E22))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+                .padding(28.dp)
+                .trapFocus(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFFC857), modifier = Modifier.size(40.dp))
+            Text(
+                error.title,
+                color = Color.White,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                error.message,
+                color = Color(0xFFCFCFCF),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+            error.detail?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    it,
+                    color = Color(0xFF8A8A8A),
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                ErrorActionButton(
+                    icon = Icons.Filled.Refresh,
+                    label = "Tentar novamente",
+                    modifier = Modifier.focusRequester(retryFocus),
+                    onClick = onRetry
+                )
+                ErrorActionButton(icon = Icons.AutoMirrored.Filled.ArrowBack, label = "Voltar", onClick = onBack)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ErrorActionButton(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(if (focused) Color.White else Color(0x22FFFFFF))
+            .border(1.dp, if (focused) Color.White else Color(0x44FFFFFF), RoundedCornerShape(10.dp))
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val content = if (focused) Color.Black else Color.White
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
+        Text(label, color = content, style = MaterialTheme.typography.titleMedium)
     }
 }
 

@@ -32,8 +32,35 @@ data class PlayerScreenUiState(
     val statusMessage: String = "reprodução ainda não inicializada",
     val seekMinutes: Int = 5,
     /** Detalhes ricos (pôster/sinopse/metadados) do filme, quando disponíveis. */
-    val details: MovieDetails? = null
+    val details: MovieDetails? = null,
+    /** Progresso do download enquanto o vídeo não começa (null = não exibir). */
+    val downloadProgress: DownloadProgress? = null,
+    /** Aviso extra durante a espera (ex.: vídeo que precisa baixar mais antes de tocar). */
+    val loadingHint: String? = null,
+    /** Falha ao carregar: a tela mostra o motivo e os botões Tentar novamente / Voltar. */
+    val loadError: PlayerLoadError? = null
 )
+
+data class DownloadProgress(
+    val downloadedBytes: Long,
+    val expectedBytes: Long,
+    val bytesPerSecond: Long
+)
+
+data class PlayerLoadError(
+    val title: String,
+    val message: String,
+    /** Detalhe técnico (ex.: erro do TDLib), exibido em letra menor. */
+    val detail: String? = null
+)
+
+// Download sem nenhum byte novo por esse tempo = parado: reinicia no TDLib (até MAX_RESTARTS vezes).
+private const val STALL_RESTART_MS = 12_000L
+// Depois de esgotar as reinicializações, esse tempo parado vira erro.
+private const val STALL_FAIL_MS = 20_000L
+private const val MAX_RESTARTS = 2
+// Tocando há esse tempo sem o 1º quadro, mas baixando: avisa que o vídeo precisa de mais dados.
+private const val SLOW_START_HINT_MS = 20_000L
 
 sealed interface PlayerScreenAction {
     data class Prepare(
@@ -57,6 +84,8 @@ sealed interface PlayerScreenAction {
     data object OnAppStop : PlayerScreenAction
     data object OnAppResume : PlayerScreenAction
     data object Release : PlayerScreenAction
+    /** "Tentar novamente" da tela de erro: retoma o download/preparo de onde parou. */
+    data object RetryLoad : PlayerScreenAction
 }
 
 class PlayerScreenViewModel(
@@ -70,6 +99,8 @@ class PlayerScreenViewModel(
 
     val player: Player? get() = playbackController.player
     private var prepareJob: Job? = null
+    private var watchdogJob: Job? = null
+    private var lastRequest: PlaybackPrepareRequest? = null
     private var preparingFileId: Int = 0
 
     init {
@@ -131,12 +162,23 @@ class PlayerScreenViewModel(
             PlayerScreenAction.OnAppStop -> if (!uiState.value.isPlaceholderMode) playbackController.onAppStop()
             PlayerScreenAction.OnAppResume -> if (!uiState.value.isPlaceholderMode) playbackController.onAppResume()
             PlayerScreenAction.Release -> playbackController.release()
+            PlayerScreenAction.RetryLoad -> {
+                val request = lastRequest ?: return
+                _uiState.update { it.copy(loadError = null, loadingHint = null) }
+                if (uiState.value.isPlaceholderMode) {
+                    startPrepareLoop(request)
+                } else {
+                    playbackController.retry()
+                    startWatchdog()
+                }
+            }
         }
     }
 
     override fun onCleared() {
         observeJob?.cancel()
         prepareJob?.cancel()
+        watchdogJob?.cancel()
         playbackController.release()
         // Garante o cancelamento do download mesmo se a reprodução nunca iniciou (evita downloads
         // órfãos que acumulam e travam os próximos vídeos).
@@ -145,43 +187,97 @@ class PlayerScreenViewModel(
     }
 
     /**
-     * Tenta preparar a reprodução e, enquanto o arquivo ainda está baixando (fonte indisponível),
-     * reexecuta periodicamente até haver bytes suficientes — assim a tela inicia sozinha sem o
-     * usuário precisar voltar e reabrir o vídeo.
+     * Prepara a reprodução; enquanto o arquivo ainda baixa os bytes iniciais, reexecuta a cada 1s.
+     * Não há mais limite fixo de tempo: só desiste quando o download PARA de avançar. Download
+     * parado é reiniciado no TDLib algumas vezes antes de virar erro (com o motivo real).
      */
     private fun startPrepareLoop(request: PlaybackPrepareRequest) {
+        lastRequest = request
         prepareJob?.cancel()
+        watchdogJob?.cancel()
+        _uiState.update { it.copy(loadError = null, loadingHint = null, downloadProgress = null) }
         prepareJob = viewModelScope.launch {
-            var attempt = 0
-            val maxAttempts = 60 // ~60s aguardando bytes iniciais
+            var lastBytes = -1L
+            var lastProgressAt = now()
+            var restarts = 0
+            val speed = SpeedMeter()
+            var detail: String? = null
             while (true) {
                 when (val result = playbackController.prepare(request)) {
                     PlaybackPrepareResult.Started -> {
                         _uiState.update {
-                            it.copy(isPlaceholderMode = false, statusMessage = "reproduzindo")
+                            it.copy(isPlaceholderMode = false, statusMessage = "reproduzindo", downloadProgress = null)
                         }
+                        startWatchdog()
                         return@launch
                     }
 
                     is PlaybackPrepareResult.MissingSource -> {
-                        _uiState.update {
-                            it.copy(
-                                isPlaceholderMode = true,
-                                statusMessage = messageForMissingSource(result.availability)
-                            )
-                        }
-                        val retriable = when (result.availability) {
-                            is MediaAvailability.Downloading,
-                            MediaAvailability.LocalFileMissing,
-                            MediaAvailability.TdlibFileUnavailable -> true
-                            else -> false
-                        }
-                        if (!retriable) return@launch
-                        if (attempt++ >= maxAttempts) {
-                            // Esgotou as tentativas: aí sim é uma falha real (não o estado transitório).
-                            _uiState.update {
-                                it.copy(statusMessage = "não foi possível preparar o vídeo — tente novamente")
+                        val availability = result.availability
+                        result.detail?.let { detail = it }
+                        val t = now()
+                        when (availability) {
+                            is MediaAvailability.Downloading -> {
+                                if (availability.downloadedBytes > lastBytes) {
+                                    lastBytes = availability.downloadedBytes
+                                    lastProgressAt = t
+                                }
+                                val progress = DownloadProgress(
+                                    downloadedBytes = availability.downloadedBytes,
+                                    expectedBytes = availability.expectedBytes,
+                                    bytesPerSecond = speed.sample(availability.downloadedBytes, t)
+                                )
+                                _uiState.update {
+                                    it.copy(
+                                        isPlaceholderMode = true,
+                                        statusMessage = "baixando o início do vídeo…",
+                                        downloadProgress = progress
+                                    )
+                                }
                             }
+                            MediaAvailability.TdlibFileUnavailable,
+                            MediaAvailability.LocalFileMissing -> _uiState.update {
+                                it.copy(isPlaceholderMode = true, statusMessage = messageForMissingSource(availability))
+                            }
+                            else -> {
+                                fail(
+                                    PlayerLoadError(
+                                        title = "Vídeo inválido",
+                                        message = "Os dados deste vídeo estão incompletos. Volte e abra de novo."
+                                    )
+                                )
+                                return@launch
+                            }
+                        }
+
+                        val stalledFor = t - lastProgressAt
+                        if (stalledFor >= STALL_RESTART_MS && restarts < MAX_RESTARTS) {
+                            restarts++
+                            playbackController.restartDownload(request.fileId)
+                            lastProgressAt = t
+                            _uiState.update {
+                                it.copy(statusMessage = "download parado — reconectando ($restarts de $MAX_RESTARTS)…")
+                            }
+                        } else if (stalledFor >= STALL_FAIL_MS && restarts >= MAX_RESTARTS) {
+                            val neverStarted = lastBytes <= 0L
+                            fail(
+                                if (availability is MediaAvailability.TdlibFileUnavailable && neverStarted) {
+                                    PlayerLoadError(
+                                        title = "Arquivo indisponível no Telegram",
+                                        message = "O Telegram não liberou este arquivo. A postagem pode ter sido " +
+                                            "removida ou o canal pode ter restrições.",
+                                        detail = detail
+                                    )
+                                } else {
+                                    PlayerLoadError(
+                                        title = "Download parado",
+                                        message = "O Telegram parou de enviar este vídeo" +
+                                            (if (lastBytes > 0L) " (${formatBytes(lastBytes)} recebidos)" else "") +
+                                            ". Tente novamente em instantes.",
+                                        detail = detail
+                                    )
+                                }
+                            )
                             return@launch
                         }
                         delay(1_000L)
@@ -200,10 +296,123 @@ class PlayerScreenViewModel(
                                 )
                             )
                         }
+                        fail(
+                            PlayerLoadError(
+                                title = "Não foi possível abrir o vídeo",
+                                message = "O player não conseguiu iniciar este arquivo.",
+                                detail = result.message
+                            )
+                        )
                         return@launch
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Depois que o player iniciou: vigia a espera pelo 1º quadro / buffer. Download parado →
+     * reinicia a reprodução (até MAX_RESTARTS) e depois vira erro; download andando mas demorando
+     * → aviso de que o vídeo precisa baixar mais; erro do ExoPlayer → tela de erro.
+     */
+    private fun startWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = viewModelScope.launch {
+            val startedAt = now()
+            var lastBytes = playbackController.snapshot.value.downloadedBytes
+            var lastProgressAt = startedAt
+            var restarts = 0
+            var everPlayed = false
+            val speed = SpeedMeter()
+            while (true) {
+                delay(1_000L)
+                val snap = playbackController.snapshot.value
+                val t = now()
+                val state = snap.state
+                if (state is PlaybackState.Error) {
+                    fail(
+                        PlayerLoadError(
+                            title = "Erro na reprodução",
+                            message = "O vídeo não pôde ser reproduzido neste aparelho ou o arquivo está corrompido.",
+                            detail = state.message
+                        )
+                    )
+                    return@launch
+                }
+                if (state == PlaybackState.Ready || state == PlaybackState.Paused || state == PlaybackState.Ended) {
+                    everPlayed = everPlayed || state != PlaybackState.Paused || snap.currentPositionMs > 0L
+                }
+                val waiting = state == PlaybackState.Buffering || state == PlaybackState.Preparing
+                val complete = snap.expectedBytes?.let { it > 0L && snap.downloadedBytes >= it } == true
+                if (!waiting || complete) {
+                    lastProgressAt = t
+                    lastBytes = snap.downloadedBytes
+                    if (uiState.value.downloadProgress != null || uiState.value.loadingHint != null) {
+                        _uiState.update { it.copy(downloadProgress = null, loadingHint = null) }
+                    }
+                    continue
+                }
+                if (snap.downloadedBytes > lastBytes) {
+                    lastBytes = snap.downloadedBytes
+                    lastProgressAt = t
+                }
+                val hint = if (!everPlayed && t - startedAt >= SLOW_START_HINT_MS) {
+                    "Este vídeo precisa baixar mais dados antes de começar (índice no fim do arquivo)."
+                } else null
+                _uiState.update {
+                    it.copy(
+                        downloadProgress = DownloadProgress(
+                            downloadedBytes = snap.downloadedBytes,
+                            expectedBytes = snap.expectedBytes ?: 0L,
+                            bytesPerSecond = speed.sample(snap.downloadedBytes, t)
+                        ),
+                        loadingHint = hint
+                    )
+                }
+                val stalledFor = t - lastProgressAt
+                if (stalledFor >= STALL_RESTART_MS && restarts < MAX_RESTARTS) {
+                    restarts++
+                    lastProgressAt = t
+                    playbackController.retry()
+                } else if (stalledFor >= STALL_FAIL_MS && restarts >= MAX_RESTARTS) {
+                    fail(
+                        PlayerLoadError(
+                            title = "Download parado",
+                            message = "O Telegram parou de enviar este vídeo (${formatBytes(lastBytes)} recebidos). " +
+                                "Tente novamente em instantes."
+                        )
+                    )
+                    return@launch
+                }
+            }
+        }
+    }
+
+    private fun fail(error: PlayerLoadError) {
+        _uiState.update { it.copy(loadError = error, downloadProgress = null, loadingHint = null) }
+    }
+
+    private fun now(): Long = android.os.SystemClock.elapsedRealtime()
+
+    /** Velocidade de download suavizada (média móvel) a partir de amostras de bytes acumulados. */
+    private class SpeedMeter {
+        private var lastBytes = -1L
+        private var lastAt = 0L
+        private var speed = 0L
+        fun sample(bytes: Long, at: Long): Long {
+            if (lastBytes < 0L) {
+                lastBytes = bytes
+                lastAt = at
+                return speed
+            }
+            val dt = at - lastAt
+            if (dt >= 900L) {
+                val instant = (bytes - lastBytes).coerceAtLeast(0L) * 1000L / dt
+                speed = if (speed == 0L) instant else (speed * 2 + instant) / 3
+                lastBytes = bytes
+                lastAt = at
+            }
+            return speed
         }
     }
 
@@ -230,5 +439,18 @@ class PlayerScreenViewModelFactory(
             return PlayerScreenViewModel(playbackController, mediaDetailsCache) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+    }
+}
+
+/** "12,3 MB", "1,4 GB", "850 KB". */
+internal fun formatBytes(bytes: Long): String {
+    val kb = 1024.0
+    val mb = kb * 1024
+    val gb = mb * 1024
+    val br = java.util.Locale("pt", "BR")
+    return when {
+        bytes >= gb -> String.format(br, "%.1f GB", bytes / gb)
+        bytes >= mb -> String.format(br, "%.1f MB", bytes / mb)
+        else -> String.format(br, "%.0f KB", bytes / kb)
     }
 }

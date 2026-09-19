@@ -439,6 +439,7 @@ fun MediaLibraryScreen(
                             onCardClick = { media ->
                                 viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
                                 viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                                viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
                                 detailsMedia = media
                             },
                             loadMoreFocus = loadMoreFocus,
@@ -478,6 +479,7 @@ fun MediaLibraryScreen(
                 onDismiss = {
                     detailsMedia = null
                     viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
+                    viewModel.onAction(MediaLibraryAction.DetailsClosed(media.mediaId))
                     if (searchReturnMediaId != null) searching = true else focusCard(media.mediaId)
                 },
                 playLoading = state.isOpeningVideo,
@@ -536,6 +538,7 @@ fun MediaLibraryScreen(
                     onSelect = { media ->
                         // Mantém a consulta: ao fechar os Detalhes a busca reabre neste resultado.
                         viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                        viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
                         searchReturnMediaId = media.mediaId
                         detailsMedia = media
                         searching = false
@@ -573,6 +576,7 @@ fun MediaLibraryScreen(
                     onSubmit = { viewModel.onAction(MediaLibraryAction.SubmitSearch) },
                     onSelect = { media ->
                         viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                        viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
                         detailsMedia = media
                         searching = false
                         viewModel.onAction(MediaLibraryAction.SearchChanged(""))

@@ -65,6 +65,7 @@ interface AppContainer {
     val playbackSourceResolver: PlaybackSourceResolver
     val playbackController: PlaybackController
     val playbackProgressStore: PlaybackProgressStore
+    val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher
 
     val userPreferencesDataStore: UserPreferencesDataStore
     val authSessionStore: AuthSessionStore
@@ -182,6 +183,10 @@ class DefaultAppContainer(
 
     override val playbackSourceResolver: PlaybackSourceResolver by lazy {
         DefaultPlaybackSourceResolver(telegramPlaybackDataSource)
+    }
+
+    override val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher by lazy {
+        com.ntv2.app.core.player.prefetch.TdlibVideoPrefetcher(tdlibPlaybackGateway)
     }
 
     override val playbackController: PlaybackController by lazy {

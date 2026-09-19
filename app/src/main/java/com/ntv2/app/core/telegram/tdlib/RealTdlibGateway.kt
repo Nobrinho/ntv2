@@ -661,6 +661,8 @@ class RealTdlibGateway(
         // playback) em prioridade alta. limit=0 baixava o arquivo INTEIRO (enchia o disco →
         // abort do TDLib); a janela deslizante continua durante a reprodução.
         val result = send(TdApi.DownloadFile(fileId, 32, 0L, INITIAL_DOWNLOAD_LIMIT_BYTES, false))
+        // Propaga o motivo real do TDLib (ex.: arquivo removido, acesso negado) para a tela de erro.
+        if (result is TdApi.Error) throw IllegalStateException("TDLib ${result.code}: ${result.message}")
         val file = (result as? TdApi.File) ?: throw IllegalStateException("Invalid TDLib file for fileId=$fileId")
         return mapFileState(file).also { state ->
             fileStates.computeIfAbsent(fileId) { MutableStateFlow(state) }.value = state

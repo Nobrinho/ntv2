@@ -223,7 +223,8 @@ fun AppNavHost(
                     mediaDetailsCache = appContainer.mediaDetailsCache,
                     maxCardsLimit = lowRamMaxCards,
                     gridStep = mediaGridStep,
-                    searchIndexRepository = appContainer.searchIndexRepository
+                    searchIndexRepository = appContainer.searchIndexRepository,
+                    videoPrefetcher = appContainer.videoPrefetcher
                 )
             )
             MediaLibraryScreen(

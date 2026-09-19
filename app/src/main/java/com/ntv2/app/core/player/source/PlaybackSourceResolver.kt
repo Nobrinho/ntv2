@@ -45,7 +45,9 @@ sealed interface PlaybackSourceResolution {
     ) : PlaybackSourceResolution
 
     data class Missing(
-        val availability: MediaAvailability
+        val availability: MediaAvailability,
+        /** Detalhe técnico (ex.: erro do TDLib) para diagnóstico na tela de erro. */
+        val detail: String? = null
     ) : PlaybackSourceResolution
 }
 
@@ -65,7 +67,10 @@ class DefaultPlaybackSourceResolver(
         }
 
         val handle = telegramPlaybackDataSource.inspectFile(request.fileId)
-            ?: return PlaybackSourceResolution.Missing(MediaAvailability.TdlibFileUnavailable)
+            ?: return PlaybackSourceResolution.Missing(
+                MediaAvailability.TdlibFileUnavailable,
+                detail = telegramPlaybackDataSource.lastOpenError(request.fileId)
+            )
 
         if (handle.localPath.isBlank()) {
             return PlaybackSourceResolution.Missing(MediaAvailability.TdlibFileUnavailable)

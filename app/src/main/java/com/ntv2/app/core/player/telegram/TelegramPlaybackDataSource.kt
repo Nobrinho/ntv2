@@ -58,4 +58,7 @@ interface TelegramPlaybackDataSource : PartialFileAccessor {
 
     /** Encerra e remove a cópia local do arquivo (libera armazenamento). */
     suspend fun deleteFile(fileId: Int)
+
+    /** Motivo da última falha ao abrir o arquivo no TDLib (null se não houve). */
+    fun lastOpenError(fileId: Int): String? = null
 }

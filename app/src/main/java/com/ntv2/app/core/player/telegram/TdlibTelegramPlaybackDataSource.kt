@@ -22,11 +22,17 @@ class TdlibTelegramPlaybackDataSource(
     private val states = java.util.concurrent.ConcurrentHashMap<Int, MutableStateFlow<TdlibPlaybackFileState>>()
     private val observeJobs = java.util.concurrent.ConcurrentHashMap<Int, Job>()
 
+    private val openErrors = java.util.concurrent.ConcurrentHashMap<Int, String>()
+
     override suspend fun inspectFile(fileId: Int): PlaybackFileHandle? {
         return runCatching { playbackGateway.openFile(fileId) }
+            .onSuccess { openErrors.remove(fileId) }
+            .onFailure { error -> openErrors[fileId] = error.message ?: error.javaClass.simpleName }
             .getOrNull()
             ?.toHandle()
     }
+
+    override fun lastOpenError(fileId: Int): String? = openErrors[fileId]
 
     override suspend fun open(fileId: Int): PlaybackFileHandle {
         val opened = playbackGateway.openFile(fileId)

@@ -45,6 +45,10 @@ sealed interface MediaLibraryAction {
     data object ConsumeReturnToDetails : MediaLibraryAction
     data object ScreenResumed : MediaLibraryAction
     data object ClearError : MediaLibraryAction
+    /** Usuário abriu os Detalhes: começa a baixar o início do vídeo em segundo plano. */
+    data class DetailsOpened(val media: MediaCardUi) : MediaLibraryAction
+    /** Fechou os Detalhes sem assistir: cancela o pré-download. */
+    data class DetailsClosed(val mediaId: String) : MediaLibraryAction
 }
 
 class MediaLibraryViewModel(
@@ -59,8 +63,16 @@ class MediaLibraryViewModel(
     private val gridStep: Int = 2,
     // Índice de busca (canal rico) para busca local instantânea; null = sem índice.
     private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    // Pré-download do início do vídeo na tela de Detalhes (null = desligado, ex.: testes).
+    private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null
 ) : ViewModel() {
+
+    // mediaId -> fileId com pré-download em andamento (cancelado se sair sem assistir).
+    private val prefetching = mutableMapOf<String, Int>()
+    // Cards do índice (sem fileId) já resolvidos no TDLib: reaproveitados ao apertar Assistir.
+    private val resolvedVideos = mutableMapOf<String, MediaItemSummary>()
+    private var detailsOpenMediaId: String? = null
 
     private val _uiState = MutableStateFlow(MediaLibraryUiState(isLoading = true))
     val uiState: StateFlow<MediaLibraryUiState> = _uiState.asStateFlow()
@@ -148,7 +160,16 @@ class MediaLibraryViewModel(
                 _uiState.update { it.copy(lastFocusedMediaId = action.mediaId) }
             }
 
-            is MediaLibraryAction.OpenVideo -> openVideo(action.media)
+            is MediaLibraryAction.OpenVideo -> {
+                // O player assume o arquivo: o pré-download não é mais cancelado.
+                prefetching.remove(action.media.mediaId)
+                openVideo(action.media)
+            }
+            is MediaLibraryAction.DetailsOpened -> startPrefetch(action.media)
+            is MediaLibraryAction.DetailsClosed -> {
+                if (detailsOpenMediaId == action.mediaId) detailsOpenMediaId = null
+                prefetching.remove(action.mediaId)?.let { videoPrefetcher?.cancel(it) }
+            }
 
             MediaLibraryAction.ConsumeNavigation -> {
                 _uiState.update { it.copy(pendingNavigation = null) }
@@ -319,6 +340,32 @@ class MediaLibraryViewModel(
         }
     }
 
+    private fun startPrefetch(media: MediaCardUi) {
+        val prefetcher = videoPrefetcher ?: return
+        detailsOpenMediaId = media.mediaId
+        if (media.fileId != 0) {
+            prefetcher.prefetch(media.fileId)
+            prefetching[media.mediaId] = media.fileId
+            return
+        }
+        // Card do índice: resolve o fileId já agora (também acelera o Assistir) e pré-baixa.
+        val messageId = media.mediaId.substringAfterLast('_').toLongOrNull() ?: return
+        viewModelScope.launch {
+            val resolved = resolvedVideos[media.mediaId] ?: withContext(ioDispatcher) {
+                runCatching { mediaRepository.getVideoByMessage(media.channelId, media.channelName, messageId) }.getOrNull()
+            } ?: return@launch
+            if (resolved.fileId == 0) return@launch
+            resolvedVideos[media.mediaId] = resolved
+            // Só pré-baixa se os Detalhes desse vídeo ainda estão abertos e o player não assumiu.
+            if (detailsOpenMediaId == media.mediaId && !uiState.value.isOpeningVideo &&
+                uiState.value.pendingNavigation == null
+            ) {
+                prefetcher.prefetch(resolved.fileId)
+                prefetching[media.mediaId] = resolved.fileId
+            }
+        }
+    }
+
     private fun openVideo(media: MediaCardUi) {
         // Card normal (já tem fileId do TDLib): navega direto.
         if (media.fileId != 0) {
@@ -352,7 +399,7 @@ class MediaLibraryViewModel(
             )
         }
         viewModelScope.launch {
-            val resolved = withContext(ioDispatcher) {
+            val resolved = resolvedVideos[media.mediaId] ?: withContext(ioDispatcher) {
                 runCatching { mediaRepository.getVideoByMessage(media.channelId, media.channelName, messageId) }.getOrNull()
             }
             if (resolved == null || resolved.fileId == 0) {
@@ -690,7 +737,8 @@ class MediaLibraryViewModelFactory(
     private val mediaDetailsCache: MediaDetailsCache,
     private val maxCardsLimit: Int? = null,
     private val gridStep: Int = 2,
-    private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null
+    private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
+    private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -703,7 +751,8 @@ class MediaLibraryViewModelFactory(
                 mediaDetailsCache = mediaDetailsCache,
                 maxCardsLimit = maxCardsLimit,
                 gridStep = gridStep,
-                searchIndexRepository = searchIndexRepository
+                searchIndexRepository = searchIndexRepository,
+                videoPrefetcher = videoPrefetcher
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

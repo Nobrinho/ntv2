@@ -281,6 +281,11 @@ class DefaultPlaybackCoordinator(
         return TrackSelectionOverride(group.mediaTrackGroup, listOf(trackIndex))
     }
 
+    override suspend fun restartDownload(fileId: Int) {
+        if (fileId <= 0) return
+        runCatching { playbackDataSource.close(fileId) }
+    }
+
     override fun discardMedia(fileId: Int) {
         if (fileId <= 0) return
         scope.launch { playbackDataSource.deleteFile(fileId) }

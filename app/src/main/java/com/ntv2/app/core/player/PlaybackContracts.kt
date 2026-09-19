@@ -77,4 +77,10 @@ interface PlaybackCoordinator {
 
     /** Cancela e remove o download de um arquivo, mesmo que a reprodução nunca tenha iniciado. */
     fun discardMedia(fileId: Int)
+
+    /**
+     * Destrava um download parado ANTES da reprodução começar: cancela no TDLib mantendo o parcial;
+     * a próxima tentativa de preparo pede o arquivo de novo e retoma de onde parou.
+     */
+    suspend fun restartDownload(fileId: Int)
 }

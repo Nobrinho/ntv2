@@ -22,7 +22,8 @@ data class PlaybackPrepareRequest(
 sealed interface PlaybackPrepareResult {
     data object Started : PlaybackPrepareResult
     data class MissingSource(
-        val availability: MediaAvailability
+        val availability: MediaAvailability,
+        val detail: String? = null
     ) : PlaybackPrepareResult
     data class Failed(
         val stage: PlaybackPrepareErrorStage,
@@ -48,6 +49,9 @@ interface PlaybackController {
     fun selectAudioTrack(id: String)
     fun selectTextTrack(id: String?)
     fun discardMedia(fileId: Int)
+
+    /** Download travado: cancela e pede de novo ao TDLib (retoma de onde parou). */
+    suspend fun restartDownload(fileId: Int)
 }
 
 class DefaultPlaybackController(
@@ -71,7 +75,7 @@ class DefaultPlaybackController(
         val source = when (resolution) {
             is PlaybackSourceResolution.Available -> resolution.source
             is PlaybackSourceResolution.Missing -> {
-                return PlaybackPrepareResult.MissingSource(resolution.availability)
+                return PlaybackPrepareResult.MissingSource(resolution.availability, resolution.detail)
             }
         }
 
@@ -118,4 +122,6 @@ class DefaultPlaybackController(
     override fun selectTextTrack(id: String?) = coordinator.selectTextTrack(id)
 
     override fun discardMedia(fileId: Int) = coordinator.discardMedia(fileId)
+
+    override suspend fun restartDownload(fileId: Int) = coordinator.restartDownload(fileId)
 }

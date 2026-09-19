@@ -40,8 +40,11 @@ interface PartialFileAccessor {
      */
     fun evictedEnd(fileId: Int): Long = 0L
 
-    /** Registra que o trecho até [end] foi liberado do disco. */
-    fun markEvicted(fileId: Int, end: Long) = Unit
+    /**
+     * Libera do disco [start, end) em segundo plano. O trecho é marcado como liberado ANTES de
+     * liberar, para uma leitura/seek nele rebaixar em vez de ler zeros.
+     */
+    fun scheduleEviction(fileId: Int, start: Long, end: Long) = Unit
 
     /**
      * Apaga a cópia local (inclusive os trechos liberados) para o TDLib baixar de novo a partir

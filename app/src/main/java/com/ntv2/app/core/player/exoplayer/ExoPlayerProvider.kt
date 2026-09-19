@@ -8,6 +8,9 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.util.EventLogger
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.common.Player
+import android.util.Log
 
 interface ExoPlayerProvider {
     fun create(): ExoPlayer
@@ -42,8 +45,40 @@ class DefaultExoPlayerProvider(
         // Em builds debug, registra no logcat (tag "NtvPlayer") estados, underruns de áudio,
         // frames descartados e erros de carga, para diagnosticar engasgos.
         val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        if (debuggable) player.addAnalyticsListener(EventLogger("NtvPlayer"))
+        if (debuggable) {
+            player.addAnalyticsListener(EventLogger("NtvPlayer"))
+        } else {
+            player.addAnalyticsListener(StutterLogger)
+        }
 
         return player
+    }
+}
+
+/**
+ * Registra só os engasgos reais (tag NtvPlayer, nível W) na release, onde o EventLogger completo
+ * fica desligado: quadros descartados, áudio sem dados e buffering no meio da reprodução. Permite
+ * correlacionar um engasgo com outros eventos do log (ex.: liberação de disco NtvDiskWindow).
+ */
+private object StutterLogger : AnalyticsListener {
+    private const val TAG = "NtvPlayer"
+
+    override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+        Log.w(TAG, "quadros descartados: $droppedFrames em ${elapsedMs}ms (pos ${eventTime.currentPlaybackPositionMs}ms)")
+    }
+
+    override fun onAudioUnderrun(
+        eventTime: AnalyticsListener.EventTime,
+        bufferSize: Int,
+        bufferSizeMs: Long,
+        elapsedSinceLastFeedMs: Long
+    ) {
+        Log.w(TAG, "áudio sem dados: ${elapsedSinceLastFeedMs}ms sem alimentar (pos ${eventTime.currentPlaybackPositionMs}ms)")
+    }
+
+    override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
+        if (state == Player.STATE_BUFFERING && eventTime.currentPlaybackPositionMs > 0L) {
+            Log.w(TAG, "carregando no meio da reprodução (pos ${eventTime.currentPlaybackPositionMs}ms)")
+        }
     }
 }

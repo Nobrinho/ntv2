@@ -26,12 +26,11 @@ class GrowingFileDataSourceFactory(
     /** Chamado quando o download adiante é suspenso por falta de espaço (dispara limpeza de caches). */
     private val onLowStorage: () -> Unit = {},
     /** Janela deslizante no disco; null desativa (o arquivo cresce até o tamanho do vídeo). */
-    private val diskWindow: DiskWindowPolicy? = null,
-    private val holePuncher: HolePuncher = NativeFileIo
+    private val diskWindow: DiskWindowPolicy? = null
 ) : DataSource.Factory {
     override fun createDataSource(): DataSource {
         return GrowingFileDataSource(
-            partialFileAccessor, stallTimeoutMs, readAheadBytes, onLowStorage, diskWindow, holePuncher
+            partialFileAccessor, stallTimeoutMs, readAheadBytes, onLowStorage, diskWindow
         )
     }
 }
@@ -48,8 +47,7 @@ private class GrowingFileDataSource(
     private val stallTimeoutMs: Long,
     private val readAheadBytes: Long,
     private val onLowStorage: () -> Unit,
-    private val diskWindow: DiskWindowPolicy?,
-    private val holePuncher: HolePuncher
+    private val diskWindow: DiskWindowPolicy?
 ) : BaseDataSource(false) {
 
     private var dataSpec: DataSpec? = null
@@ -303,12 +301,9 @@ private class GrowingFileDataSource(
         val size = partialFileAccessor.expectedBytes(fileId)?.takeIf { it > 0L } ?: return
         val evictedEnd = partialFileAccessor.evictedEnd(fileId)
         val range = policy.evictionRange(evictedEnd, readPosition, downloadBaseOffset, size) ?: return
-        val path = partialFileAccessor.resolvePath(fileId)?.takeIf { it.isNotEmpty() } ?: return
-        val length = range.last + 1 - range.first
-        if (holePuncher.punch(path, range.first, length)) {
-            partialFileAccessor.markEvicted(fileId, range.last + 1)
-            Log.i(TAG, "liberado fileId=$fileId ${range.first / MB}-${(range.last + 1) / MB}MB (leitura em ${readPosition / MB}MB)")
-        }
+        // Em segundo plano (DiskEvictor): esta é a thread que carrega o vídeo e não pode esperar
+        // o sistema de arquivos liberar os blocos.
+        partialFileAccessor.scheduleEviction(fileId, range.first, range.last + 1)
     }
 
     /**

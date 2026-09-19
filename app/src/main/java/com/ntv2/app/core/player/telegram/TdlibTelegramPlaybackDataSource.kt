@@ -1,5 +1,8 @@
 ﻿package com.ntv2.app.core.player.telegram
 
+import com.ntv2.app.core.player.io.DiskEvictor
+import com.ntv2.app.core.player.io.HolePuncher
+import com.ntv2.app.core.player.io.NativeFileIo
 import com.ntv2.app.core.telegram.media.TdlibPlaybackFileState
 import com.ntv2.app.core.telegram.media.TdlibPlaybackGateway
 import kotlinx.coroutines.CoroutineScope
@@ -15,8 +18,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class TdlibTelegramPlaybackDataSource(
-    private val playbackGateway: TdlibPlaybackGateway
+    private val playbackGateway: TdlibPlaybackGateway,
+    holePuncher: HolePuncher = NativeFileIo
 ) : TelegramPlaybackDataSource {
+
+    private val evictor = DiskEvictor(holePuncher)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val states = java.util.concurrent.ConcurrentHashMap<Int, MutableStateFlow<TdlibPlaybackFileState>>()
@@ -78,6 +84,7 @@ class TdlibTelegramPlaybackDataSource(
     }
 
     override suspend fun deleteFile(fileId: Int) {
+        evictor.cancel(fileId)
         observeJobs.remove(fileId)?.cancel()
         playbackGateway.deleteFile(fileId)
         states.remove(fileId)
@@ -86,11 +93,15 @@ class TdlibTelegramPlaybackDataSource(
 
     override fun evictedEnd(fileId: Int): Long = evictedEnds[fileId] ?: 0L
 
-    override fun markEvicted(fileId: Int, end: Long) {
+    override fun scheduleEviction(fileId: Int, start: Long, end: Long) {
+        val path = resolvePath(fileId)?.takeIf { it.isNotEmpty() } ?: return
         evictedEnds.merge(fileId, end) { old, new -> maxOf(old, new) }
+        evictor.submit(fileId, path, start, end)
     }
 
     override suspend fun resetLocalCopy(fileId: Int) {
+        // Antes de apagar: nenhuma liberação antiga pode atingir a cópia nova (mesmo caminho).
+        evictor.cancel(fileId)
         observeJobs.remove(fileId)?.cancel()
         playbackGateway.deleteFile(fileId)
         evictedEnds.remove(fileId)

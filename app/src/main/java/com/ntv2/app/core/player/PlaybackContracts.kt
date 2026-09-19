@@ -21,7 +21,9 @@ sealed interface PlaybackState {
     data object Ended : PlaybackState
     data class Error(
         val message: String,
-        val recoverable: Boolean
+        val recoverable: Boolean,
+        /** Parou por falta de espaço no aparelho (a tela explica e sugere liberar espaço). */
+        val lowStorage: Boolean = false
     ) : PlaybackState
 }
 

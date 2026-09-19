@@ -283,6 +283,11 @@ class PlayerScreenViewModel(
                         delay(1_000L)
                     }
 
+                    is PlaybackPrepareResult.InsufficientStorage -> {
+                        fail(lowStorageError(result.freeBytes, result.requiredBytes))
+                        return@launch
+                    }
+
                     is PlaybackPrepareResult.Failed -> {
                         _uiState.update {
                             it.copy(
@@ -329,6 +334,10 @@ class PlayerScreenViewModel(
                 val snap = playbackController.snapshot.value
                 val t = now()
                 val state = snap.state
+                if (state is PlaybackState.Error && state.lowStorage) {
+                    fail(lowStorageError(freeBytes = null, requiredBytes = null))
+                    return@launch
+                }
                 if (state is PlaybackState.Error) {
                     fail(
                         PlayerLoadError(
@@ -386,6 +395,18 @@ class PlayerScreenViewModel(
                 }
             }
         }
+    }
+
+    private fun lowStorageError(freeBytes: Long?, requiredBytes: Long?): PlayerLoadError {
+        val detail = if (freeBytes != null && requiredBytes != null) {
+            "Livre: ${formatBytes(freeBytes)} · necessário: ${formatBytes(requiredBytes)}"
+        } else null
+        return PlayerLoadError(
+            title = "Pouco espaço no aparelho",
+            message = "O app já limpou o próprio cache, mas o armazenamento continua quase cheio. " +
+                "Libere espaço em Configurações › Aplicativos e tente novamente.",
+            detail = detail
+        )
     }
 
     private fun fail(error: PlayerLoadError) {

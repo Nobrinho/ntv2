@@ -24,12 +24,15 @@ class Ntv2Application : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         appContainer = DefaultAppContainer(this)
+        // Limpeza automática do armazenamento (órfãos de sessões anteriores + tetos de cache).
+        appContainer.storageJanitor.start()
     }
 
     // ImageLoader global do Coil, otimizado para TV (Fire TV tem RAM/CPU limitados):
     // - RGB_565 nas capas: metade da memória por bitmap.
     // - Sem crossfade: evita frames extras de fade ao rolar a grade.
-    // - Cache de memória (25% da RAM) + disco (200 MB): menos re-decode.
+    // - Cache de memória (25% da RAM) + disco (1% do volume, 16–80 MB): menos re-decode sem
+    //   disputar espaço com os vídeos (a Fire TV tem ~5 GB livres; eram 200 MB fixos).
     // - OkHttp com TrustManager que confia nas CAs do sistema + raízes Amazon/Starfield
     //   (o image.tmdb.org usa CloudFront/Amazon; alguns aparelhos não têm essas raízes).
     override fun newImageLoader(): ImageLoader =
@@ -46,7 +49,9 @@ class Ntv2Application : Application(), ImageLoaderFactory {
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(200L * 1024 * 1024)
+                    .maxSizePercent(0.01)
+                    .minimumMaxSizeBytes(16L * 1024 * 1024)
+                    .maximumMaxSizeBytes(80L * 1024 * 1024)
                     .build()
             }
             .build()

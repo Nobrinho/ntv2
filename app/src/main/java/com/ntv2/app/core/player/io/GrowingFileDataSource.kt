@@ -8,6 +8,8 @@ import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import com.ntv2.app.core.player.telegram.PartialFileAccessor
+import com.ntv2.app.core.storage.LowStorageException
+import com.ntv2.app.core.storage.StorageBudget
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -17,21 +19,22 @@ import java.io.RandomAccessFile
 class GrowingFileDataSourceFactory(
     private val partialFileAccessor: PartialFileAccessor,
     private val stallTimeoutMs: Long,
-    private val readAheadBytes: Long
+    private val readAheadBytes: Long,
+    /** Chamado quando o download adiante é suspenso por falta de espaço (dispara limpeza de caches). */
+    private val onLowStorage: () -> Unit = {}
 ) : DataSource.Factory {
     override fun createDataSource(): DataSource {
-        return GrowingFileDataSource(partialFileAccessor, stallTimeoutMs, readAheadBytes)
+        return GrowingFileDataSource(partialFileAccessor, stallTimeoutMs, readAheadBytes, onLowStorage)
     }
 }
 
 private const val NUDGE_INTERVAL_MS = 2_000L
-// Folga mínima de disco para continuar baixando adiante (evita ENOSPC → abort do TDLib).
-private const val MIN_FREE_SPACE_BYTES = 300L * 1024L * 1024L
 
 private class GrowingFileDataSource(
     private val partialFileAccessor: PartialFileAccessor,
     private val stallTimeoutMs: Long,
-    private val readAheadBytes: Long
+    private val readAheadBytes: Long,
+    private val onLowStorage: () -> Unit
 ) : BaseDataSource(false) {
 
     private var dataSpec: DataSpec? = null
@@ -133,6 +136,11 @@ private class GrowingFileDataSource(
                     maybeRequestAhead()
                     val covered = runBlocking { awaitCoverageOrStall(readPosition) }
                     if (!covered) {
+                        // Parou porque o guarda de disco suspendeu o download: erro específico, para a
+                        // tela explicar o motivo em vez de um "Timeout" genérico.
+                        if (!hasEnoughFreeSpace()) {
+                            throw LowStorageException("Pouco espaço livre no aparelho para continuar o vídeo")
+                        }
                         throw IOException("Timeout aguardando bytes do arquivo parcial")
                     }
                 }
@@ -217,10 +225,19 @@ private class GrowingFileDataSource(
         }
     }
 
-    /** Espaço livre suficiente na partição do arquivo para continuar baixando com folga. */
+    /**
+     * Espaço livre suficiente para continuar baixando. O piso fica ACIMA do limiar em que o sistema
+     * avisa "armazenamento baixo" (ver [StorageBudget]); antes eram 300 MB fixos, abaixo do limiar,
+     * e o Fire OS acabava mostrando o aviso no meio do filme.
+     */
     private fun hasEnoughFreeSpace(): Boolean {
         val parent = partialFileAccessor.resolvePath(fileId)?.let { File(it).parentFile } ?: return true
-        return runCatching { StatFs(parent.path).availableBytes >= MIN_FREE_SPACE_BYTES }.getOrDefault(true)
+        val enough = runCatching {
+            val stat = StatFs(parent.path)
+            StorageBudget.canDownload(stat.availableBytes, stat.totalBytes)
+        }.getOrDefault(true)
+        if (!enough) onLowStorage()
+        return enough
     }
 
     override fun getUri(): Uri? = dataSpec?.uri

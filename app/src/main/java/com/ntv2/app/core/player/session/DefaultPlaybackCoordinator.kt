@@ -22,6 +22,7 @@ import com.ntv2.app.core.player.download.ProgressiveDownloadPlanner
 import com.ntv2.app.core.player.io.GrowingFileDataSourceFactory
 import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
+import com.ntv2.app.core.storage.LowStorageException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -116,11 +117,14 @@ class DefaultPlaybackCoordinator(
                 }
                 return
             }
+            val lowStorage = generateSequence<Throwable>(error) { it.cause }
+                .firstOrNull { it is LowStorageException }
             snapshotState.update {
                 it.copy(
                     state = PlaybackState.Error(
-                        message = error.localizedMessage ?: "Falha de reprodução",
-                        recoverable = true
+                        message = lowStorage?.message ?: error.localizedMessage ?: "Falha de reprodução",
+                        recoverable = true,
+                        lowStorage = lowStorage != null
                     ),
                     isPlaying = false
                 )

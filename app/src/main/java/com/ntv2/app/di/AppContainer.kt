@@ -48,6 +48,14 @@ import com.ntv2.app.feature.media.domain.MediaRepository
 import com.ntv2.app.feature.media.domain.MediaDetailsCache
 import com.ntv2.app.feature.settings.domain.FakeSettingsRepository
 import com.ntv2.app.feature.settings.domain.SettingsRepository
+import com.ntv2.app.core.storage.PendingFileDeletions
+import com.ntv2.app.core.storage.SharedPrefsPendingFileDeletions
+import com.ntv2.app.core.storage.StatFsDeviceStorage
+import com.ntv2.app.core.storage.StorageJanitor
+import com.ntv2.app.core.storage.TrackingPlaybackGateway
+import com.ntv2.app.core.telegram.media.FakeTdlibStorageGateway
+import android.content.pm.ApplicationInfo
+import coil.imageLoader
 import java.io.File
 
 interface AppContainer {
@@ -66,6 +74,7 @@ interface AppContainer {
     val playbackController: PlaybackController
     val playbackProgressStore: PlaybackProgressStore
     val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher
+    val storageJanitor: StorageJanitor
 
     val userPreferencesDataStore: UserPreferencesDataStore
     val authSessionStore: AuthSessionStore
@@ -114,8 +123,27 @@ class DefaultAppContainer(
         realTdlibGateway ?: FakeTdlibMediaGateway()
     }
 
+    private val pendingFileDeletions: PendingFileDeletions by lazy {
+        SharedPrefsPendingFileDeletions(appContext)
+    }
+
+    // Todo vídeo que ganha bytes no disco fica registrado até ser apagado (limpeza de órfãos).
     override val tdlibPlaybackGateway: TdlibPlaybackGateway by lazy {
-        realTdlibGateway ?: FakeTdlibPlaybackGateway(appContext)
+        TrackingPlaybackGateway(
+            delegate = realTdlibGateway ?: FakeTdlibPlaybackGateway(appContext),
+            pending = pendingFileDeletions
+        )
+    }
+
+    override val storageJanitor: StorageJanitor by lazy {
+        StorageJanitor(
+            storageGateway = realTdlibGateway ?: FakeTdlibStorageGateway(),
+            pending = pendingFileDeletions,
+            deviceStorage = StatFsDeviceStorage(appContext.filesDir),
+            clearImageDiskCache = { appContext.imageLoader.diskCache?.clear() },
+            tdlibFilesDir = File(appContext.filesDir, "tdlib/files"),
+            verboseLogging = appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        )
     }
 
     override val telegramAuthDataSource: TelegramAuthDataSource by lazy {
@@ -162,7 +190,8 @@ class DefaultAppContainer(
         GrowingFileDataSourceFactory(
             partialFileAccessor = telegramPlaybackDataSource,
             stallTimeoutMs = playbackTuning.ioStallTimeoutMs,
-            readAheadBytes = playbackTuning.aheadWindowBytes
+            readAheadBytes = playbackTuning.aheadWindowBytes,
+            onLowStorage = { storageJanitor.onLowStorageDuringPlayback() }
         )
     }
 
@@ -193,7 +222,8 @@ class DefaultAppContainer(
         DefaultPlaybackController(
             coordinator = playbackCoordinator,
             sourceResolver = playbackSourceResolver,
-            progressStore = playbackProgressStore
+            progressStore = playbackProgressStore,
+            storageGuard = storageJanitor
         )
     }
 

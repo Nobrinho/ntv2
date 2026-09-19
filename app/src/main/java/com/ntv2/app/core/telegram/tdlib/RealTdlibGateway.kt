@@ -15,6 +15,8 @@ import com.ntv2.app.core.telegram.media.TelegramVideoPage
 import com.ntv2.app.core.telegram.media.TdlibMediaGateway
 import com.ntv2.app.core.telegram.media.TdlibPlaybackFileState
 import com.ntv2.app.core.telegram.media.TdlibPlaybackGateway
+import com.ntv2.app.core.telegram.media.StorageFileKind
+import com.ntv2.app.core.telegram.media.TdlibStorageGateway
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,7 +50,7 @@ data class TdlibRuntimeConfig(
 class RealTdlibGateway(
     context: Context,
     private val config: TdlibRuntimeConfig
-) : TdlibAuthGateway, TdlibChannelsGateway, TdlibMediaGateway, TdlibPlaybackGateway {
+) : TdlibAuthGateway, TdlibChannelsGateway, TdlibMediaGateway, TdlibPlaybackGateway, TdlibStorageGateway {
     companion object {
         private const val TAG = "RealTdlibGateway"
 
@@ -707,6 +709,55 @@ class RealTdlibGateway(
         runCatching { send(TdApi.DeleteFile(fileId)) }
         fileStates.remove(fileId)
     }
+
+    override suspend fun awaitStorageReady() {
+        if (!config.enabled) return
+        auth.first { it is TdAuthorizationState.Ready }
+    }
+
+    override suspend fun optimizeStorage(
+        kinds: Set<StorageFileKind>,
+        maxTotalBytes: Long,
+        immunitySeconds: Int
+    ): Long? {
+        if (!config.enabled || client == null || kinds.isEmpty()) return null
+        val types = kinds.flatMap { kind ->
+            when (kind) {
+                StorageFileKind.VIDEO -> listOf(
+                    TdApi.FileTypeVideo(),
+                    TdApi.FileTypeDocument(),
+                    TdApi.FileTypeVideoNote(),
+                    TdApi.FileTypeAnimation()
+                )
+                StorageFileKind.IMAGE -> listOf(
+                    TdApi.FileTypePhoto(),
+                    TdApi.FileTypeThumbnail(),
+                    TdApi.FileTypeProfilePhoto()
+                )
+            }
+        }.toTypedArray()
+        val result = send(
+            TdApi.OptimizeStorage(
+                maxTotalBytes.coerceAtLeast(0L),
+                // ttl/count: sem limite por idade ou quantidade — só o teto de tamanho decide.
+                Int.MAX_VALUE,
+                Int.MAX_VALUE,
+                immunitySeconds.coerceAtLeast(0),
+                types,
+                LongArray(0),
+                LongArray(0),
+                true,
+                0
+            )
+        )
+        if (result is TdApi.Error) {
+            Log.e(TAG, "OptimizeStorage falhou: ${result.code} ${result.message}")
+            return null
+        }
+        return (result as? TdApi.StorageStatistics)?.size
+    }
+
+    override suspend fun deleteStoredFile(fileId: Int) = deleteFile(fileId)
 
     private suspend fun ensureClient() {
         if (client != null) return

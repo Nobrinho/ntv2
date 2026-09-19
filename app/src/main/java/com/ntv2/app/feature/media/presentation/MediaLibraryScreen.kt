@@ -25,6 +25,8 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import com.ntv2.app.core.ui.LocalFocusRestoreSignal
@@ -386,10 +388,16 @@ fun MediaLibraryScreen(
                                 focusInRail[0] = false
                                 // Paginação pelo foco (como na busca): perto do fim já pede a próxima página.
                                 val items = state.items
+                                val focusedIndex = items.indexOfFirst { it.mediaId == id }
                                 if (state.hasMore && !loadMoreRequested &&
-                                    items.indexOfFirst { it.mediaId == id } >= items.size - AUTO_LOAD_THRESHOLD
+                                    focusedIndex >= items.size - AUTO_LOAD_THRESHOLD
                                 ) {
                                     viewModel.onAction(MediaLibraryAction.LoadMore)
+                                }
+                                // Subindo perto do início com o topo descartado (teto de cards): busca a
+                                // página de cima. A grade mantém a posição pelo key do card focado.
+                                if (state.hasPrevious && focusedIndex in 0 until AUTO_LOAD_THRESHOLD) {
+                                    viewModel.onAction(MediaLibraryAction.LoadPrevious)
                                 }
                             },
                             onCardClick = { media ->

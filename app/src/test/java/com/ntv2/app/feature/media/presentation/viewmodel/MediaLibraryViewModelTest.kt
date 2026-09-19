@@ -29,6 +29,7 @@ class MediaLibraryViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val channelsFlow = MutableStateFlow<List<ChannelSummary>>(emptyList())
     private val minDurationFlow = MutableStateFlow(0)
+    private val activeChannelFlow = MutableStateFlow(0L)
 
     @Before
     fun setUp() {
@@ -51,12 +52,10 @@ class MediaLibraryViewModelTest {
     }
 
     private class FakeSettingsRepo(
-        override val minDurationMinutes: Flow<Int>
+        override val minDurationMinutes: Flow<Int>,
+        override val activeChannelId: Flow<Long> = MutableStateFlow(0L)
     ) : SettingsRepository {
         override suspend fun updateMinDurationMinutes(value: Int) = Unit
-        override val maxCards: Flow<Int> = MutableStateFlow(150)
-        override suspend fun updateMaxCards(value: Int) = Unit
-        override val activeChannelId: Flow<Long> = MutableStateFlow(0L)
         override suspend fun updateActiveChannelId(value: Long) = Unit
         override val showCovers: Flow<Boolean> = MutableStateFlow(true)
         override suspend fun updateShowCovers(value: Boolean) = Unit
@@ -67,7 +66,7 @@ class MediaLibraryViewModelTest {
     }
 
     private class FakeMediaRepo : MediaRepository {
-        var listPages: (channelId: Long, cursor: Long) -> MediaPage = { _, _ -> MediaPage(emptyList(), 0L) }
+        var listPages: suspend (channelId: Long, cursor: Long) -> MediaPage = { _, _ -> MediaPage(emptyList(), 0L) }
         var searchPages: (channelId: Long, query: String, cursor: Long) -> MediaPage = { _, _, _ -> MediaPage(emptyList(), 0L) }
 
         override suspend fun fetchChannelVideos(channelId: Long, channelTitle: String, fromMessageId: Long, limit: Int): MediaPage =
@@ -75,6 +74,15 @@ class MediaLibraryViewModelTest {
 
         override suspend fun searchChannelVideos(channelId: Long, channelTitle: String, query: String, fromMessageId: Long, limit: Int): MediaPage =
             searchPages(channelId, query, fromMessageId)
+
+        var newerPages: (channelId: Long, anchor: Long, limit: Int) -> MediaPage = { _, _, _ -> MediaPage(emptyList(), 0L) }
+
+        override suspend fun fetchNewerChannelVideos(
+            channelId: Long,
+            channelTitle: String,
+            newerThanMessageId: Long,
+            limit: Int
+        ): MediaPage = newerPages(channelId, newerThanMessageId, limit)
 
         override suspend fun getVideoByMessage(channelId: Long, channelTitle: String, messageId: Long): MediaItemSummary? = null
     }
@@ -101,15 +109,79 @@ class MediaLibraryViewModelTest {
 
     private fun buildViewModel(
         media: MediaRepository,
-        progressStore: PlaybackProgressStore = FakeProgressStore()
+        progressStore: PlaybackProgressStore = FakeProgressStore(),
+        maxRetainedItems: Int = 2_000
     ) = MediaLibraryViewModel(
         mediaRepository = media,
         channelRepository = FakeChannelRepo(channelsFlow),
-        settingsRepository = FakeSettingsRepo(minDurationFlow),
+        settingsRepository = FakeSettingsRepo(minDurationFlow, activeChannelFlow),
         progressStore = progressStore,
         mediaDetailsCache = com.ntv2.app.feature.media.domain.MediaDetailsCache(),
-        ioDispatcher = dispatcher
+        ioDispatcher = dispatcher,
+        maxRetainedItems = maxRetainedItems
     )
+
+    /** Canal com mensagens 1000 (mais nova) .. 1 (mais antiga), paginado como o TDLib. */
+    private fun channelOf(channelId: Long, newest: Long = 1000L) = FakeMediaRepo().apply {
+        listPages = { id, cursor ->
+            val start = if (cursor == 0L) newest else cursor - 1
+            val ids = (start downTo 1L).take(24)
+            MediaPage(ids.map { item("${id}_$it", id, 600, it.toInt()) }, nextCursor = if (ids.last() > 1L) ids.last() else 0L)
+        }
+        newerPages = { id, anchor, limit ->
+            val ids = ((anchor + 1)..newest).take(limit).reversed()
+            MediaPage(ids.map { item("${id}_$it", id, 600, it.toInt()) }, nextCursor = 0L)
+        }
+    }
+
+    @Test
+    fun `passar do teto descarta o topo e subir busca a pagina de cima de volta`() = runTest(dispatcher) {
+        val vm = buildViewModel(channelOf(1L), maxRetainedItems = 48)
+        channelsFlow.value = listOf(ChannelSummary(1, "C1", null))
+        advanceUntilIdle()
+        vm.onAction(MediaLibraryAction.LoadMore)
+        advanceUntilIdle()
+        vm.onAction(MediaLibraryAction.LoadMore)
+        advanceUntilIdle()
+
+        // 72 carregados, teto 48: o topo (1000..977) foi descartado.
+        var state = vm.uiState.value
+        assertEquals(48, state.items.size)
+        assertEquals("1_976", state.items.first().mediaId)
+        assertTrue(state.hasPrevious)
+
+        vm.onAction(MediaLibraryAction.LoadPrevious)
+        advanceUntilIdle()
+        state = vm.uiState.value
+        assertEquals("1_1000", state.items.first().mediaId)
+        assertEquals(48, state.items.size)
+        // Descartou o fim: "carregar mais" continua do último card mantido.
+        assertEquals("1_953", state.items.last().mediaId)
+
+        // Já no início real do canal: nada mais novo, para de pedir a página de cima.
+        vm.onAction(MediaLibraryAction.LoadPrevious)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.hasPrevious)
+
+        vm.onAction(MediaLibraryAction.LoadMore)
+        advanceUntilIdle()
+        assertEquals("1_976", vm.uiState.value.items.first().mediaId)
+    }
+
+    @Test
+    fun `abaixo do teto nada e descartado nem ha pagina de cima`() = runTest(dispatcher) {
+        val vm = buildViewModel(channelOf(1L))
+        channelsFlow.value = listOf(ChannelSummary(1, "C1", null))
+        advanceUntilIdle()
+        repeat(3) {
+            vm.onAction(MediaLibraryAction.LoadMore)
+            advanceUntilIdle()
+        }
+        val state = vm.uiState.value
+        assertEquals(96, state.items.size)
+        assertEquals("1_1000", state.items.first().mediaId)
+        assertFalse(state.hasPrevious)
+    }
 
     @Test
     fun `carrega primeira pagina e monta secoes`() = runTest(dispatcher) {

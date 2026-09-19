@@ -7,8 +7,6 @@ interface SettingsRepository {
     val minDurationMinutes: Flow<Int>
     suspend fun updateMinDurationMinutes(value: Int)
 
-    val maxCards: Flow<Int>
-    suspend fun updateMaxCards(value: Int)
 
     /** Canal ativo exibido na biblioteca (0 = escolher o primeiro habilitado). */
     val activeChannelId: Flow<Long>
@@ -38,11 +36,6 @@ class DataStoreSettingsRepository(
         dataStore.setMinDurationMinutes(value)
     }
 
-    override val maxCards: Flow<Int> = dataStore.maxCards
-
-    override suspend fun updateMaxCards(value: Int) {
-        dataStore.setMaxCards(value)
-    }
 
     override val activeChannelId: Flow<Long> = dataStore.activeChannelId
 

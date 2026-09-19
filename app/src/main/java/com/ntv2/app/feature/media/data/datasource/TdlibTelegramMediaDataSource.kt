@@ -24,6 +24,16 @@ class TdlibTelegramMediaDataSource(
         )
     }
 
+    override suspend fun listNewerChannelVideos(
+        channelId: Long,
+        channelTitle: String,
+        newerThanMessageId: Long,
+        limit: Int
+    ): MediaPage {
+        val page = tdlibMediaGateway.listNewerVideoMessages(channelId, newerThanMessageId, limit)
+        return MediaPage(items = page.videos.map { video -> video.toSummary(channelId, channelTitle) }, nextCursor = 0L)
+    }
+
     override suspend fun getVideoByMessage(channelId: Long, channelTitle: String, messageId: Long): MediaItemSummary? =
         tdlibMediaGateway.getVideoByMessage(chatId = channelId, messageId = messageId)?.toSummary(channelId, channelTitle)
 

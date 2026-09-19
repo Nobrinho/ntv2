@@ -24,7 +24,9 @@ data class ChannelMediaSectionUi(
     val channelId: Long,
     val channelName: String,
     val items: List<MediaCardUi>,
-    val hasMore: Boolean = false
+    val hasMore: Boolean = false,
+    /** O topo foi descartado (teto de itens): há páginas mais novas a buscar ao subir. */
+    val hasPrevious: Boolean = false
 )
 
 sealed interface MediaLibraryEmptyState {
@@ -59,6 +61,7 @@ data class MediaLibraryUiState(
     /** Resultados próprios da busca; não substituem a grade principal. */
     val searchResults: List<MediaCardUi> = emptyList(),
     val hasMore: Boolean = false,
+    val hasPrevious: Boolean = false,
     /** Incrementa a cada conclusão de "carregar mais" (sucesso ou falha) — sinal p/ a UI reagir
      *  mesmo quando o tamanho da lista não muda (teto de itens atingido). */
     val loadMoreNonce: Int = 0,

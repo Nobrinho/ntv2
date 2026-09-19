@@ -466,6 +466,9 @@ class RealTdlibGateway(
     override suspend fun searchVideoMessages(chatId: Long, query: String, fromMessageId: Long, limit: Int): TelegramVideoPage =
         searchVideos(chatId, query = query, fromMessageId = fromMessageId, limit = limit)
 
+    override suspend fun listNewerVideoMessages(chatId: Long, newerThanMessageId: Long, limit: Int): TelegramVideoPage =
+        searchVideos(chatId, query = "", fromMessageId = newerThanMessageId, limit = limit, newerOnly = true)
+
     /** Resolve o vídeo de uma mensagem (busca via índice): só o necessário para reproduzir — o card
      *  rico já vem do índice, então aqui basta fileId/duração/nome. Se o id apontado não for um
      *  vídeo (ex.: caiu na mensagem de texto do post), procura o vídeo do MESMO post. */
@@ -497,7 +500,14 @@ class RealTdlibGateway(
         )
     }
 
-    private suspend fun searchVideos(chatId: Long, query: String, fromMessageId: Long, limit: Int): TelegramVideoPage {
+    private suspend fun searchVideos(
+        chatId: Long,
+        query: String,
+        fromMessageId: Long,
+        limit: Int,
+        // Página "para cima": mensagens mais novas que fromMessageId (offset negativo do TDLib).
+        newerOnly: Boolean = false
+    ): TelegramVideoPage {
         ensureConfigured()
         // Garante que o TDLib conheça o chat (logo após o login a lista de diálogos pode não ter
         // carregado e SearchChatMessages volta vazio). GetChat força o carregamento do chat.
@@ -507,14 +517,19 @@ class RealTdlibGateway(
         // isso, buscar "ogiva" não achava o filme (só casava a palavra na SINOPSE de outro).
         val filter = if (query.isBlank()) TdApi.SearchMessagesFilterVideo() else null
         val result = send(
-            TdApi.SearchChatMessages(chatId, null, query, null, fromMessageId, 0, limit, filter)
+            if (newerOnly) {
+                // offset=-limit traz a mensagem âncora + até `limit` mais novas (limit > -offset).
+                TdApi.SearchChatMessages(chatId, null, query, null, fromMessageId, -limit, limit + 1, filter)
+            } else {
+                TdApi.SearchChatMessages(chatId, null, query, null, fromMessageId, 0, limit, filter)
+            }
         )
         if (result !is TdApi.FoundChatMessages) return TelegramVideoPage(emptyList(), 0L)
 
         // Mensagens de vídeo a montar: na listagem são os próprios resultados; na busca por texto,
         // os vídeos diretos + o vídeo adjacente de cada pôster/texto que casou.
         val videoMessages: List<TdApi.Message> = if (query.isBlank()) {
-            result.messages.orEmpty().filterNotNull()
+            result.messages.orEmpty().filterNotNull().filter { !newerOnly || it.id > fromMessageId }
         } else {
             coroutineScope {
                 result.messages.orEmpty().filterNotNull().map { msg ->

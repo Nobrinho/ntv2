@@ -59,6 +59,14 @@ interface MediaRepository {
         limit: Int
     ): MediaPage
 
+    /** Página "para cima": vídeos mais novos que [newerThanMessageId] (do mais novo ao mais antigo). */
+    suspend fun fetchNewerChannelVideos(
+        channelId: Long,
+        channelTitle: String,
+        newerThanMessageId: Long,
+        limit: Int
+    ): MediaPage = MediaPage(emptyList(), 0L)
+
     /** Resolve uma mídia pelo id da mensagem (usado pela busca via índice para obter o fileId). */
     suspend fun getVideoByMessage(
         channelId: Long,

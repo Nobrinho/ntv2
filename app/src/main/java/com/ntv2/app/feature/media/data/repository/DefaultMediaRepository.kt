@@ -37,6 +37,13 @@ class DefaultMediaRepository(
         )
     }
 
+    override suspend fun fetchNewerChannelVideos(
+        channelId: Long,
+        channelTitle: String,
+        newerThanMessageId: Long,
+        limit: Int
+    ): MediaPage = mediaDataSource.listNewerChannelVideos(channelId, channelTitle, newerThanMessageId, limit)
+
     override suspend fun getVideoByMessage(
         channelId: Long,
         channelTitle: String,

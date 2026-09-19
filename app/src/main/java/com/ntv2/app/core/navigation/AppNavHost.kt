@@ -72,9 +72,16 @@ fun AppNavHost(
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val lowRamMaxCards = remember(context) {
-        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-        if (activityManager?.isLowRamDevice == true) 60 else null
+    val activityManager = remember(context) {
+        context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+    }
+    val lowRamDevice = remember(activityManager) { activityManager?.isLowRamDevice == true }
+    // Teto de cards mantidos na grade, automático por aparelho: o que passa disso volta pela
+    // página "para cima" ao subir. Aparelhos fracos mantêm menos (a cada página a lista inteira é
+    // refiltrada/projetada — custo de CPU proporcional ao tamanho).
+    val maxRetainedCards = remember(activityManager, lowRamDevice) {
+        val memoryClassMb = activityManager?.memoryClass ?: 256
+        if (lowRamDevice || memoryClassMb <= 128) 300 else 1_000
     }
     var showExitDialog by remember { mutableStateOf(false) }
     // Sinal para a tela de baixo restaurar o foco quando o "Fechar o aplicativo?" é cancelado.
@@ -221,7 +228,7 @@ fun AppNavHost(
                     settingsRepository = appContainer.settingsRepository,
                     progressStore = appContainer.playbackProgressStore,
                     mediaDetailsCache = appContainer.mediaDetailsCache,
-                    maxCardsLimit = lowRamMaxCards,
+                    maxRetainedItems = maxRetainedCards,
                     gridStep = mediaGridStep,
                     searchIndexRepository = appContainer.searchIndexRepository,
                     videoPrefetcher = appContainer.videoPrefetcher
@@ -235,7 +242,7 @@ fun AppNavHost(
                 onSearchRequestConsumed = { openSearchRequest = 0 },
                 refreshRequest = refreshLibraryRequest,
                 onRefreshRequestConsumed = { refreshLibraryRequest = 0 },
-                lowRamPlaybackWarnings = lowRamMaxCards != null,
+                lowRamPlaybackWarnings = lowRamDevice,
                 onOpenSettings = { navController.navigate(RoutePath.SETTINGS) { launchSingleTop = true } },
                 onOpenPlaybackPlaceholder = { mediaId, fileId, title, channelName, durationSeconds, fileName, thumbnailPath ->
                     navController.navigate(
@@ -259,28 +266,19 @@ fun AppNavHost(
             val showCovers by settings.showCovers.collectAsState(initial = true)
             val animationsEnabled by settings.animationsEnabled.collectAsState(initial = true)
             val minDuration by settings.minDurationMinutes.collectAsState(initial = 15)
-            val savedMaxCards by settings.maxCards.collectAsState(initial = 150)
-            val effectiveMaxCards = lowRamMaxCards?.let { savedMaxCards.coerceAtMost(it) } ?: savedMaxCards
             val castPhotos by settings.castPhotos.collectAsState(initial = true)
             val nativeBlurGlow by settings.nativeBlurGlow.collectAsState(initial = true)
-            val settingsGridStep = if (rememberAdaptiveLayoutInfo().isTv) 5 else 2
             SettingsScreen(
                 showCovers = showCovers,
                 animationsEnabled = animationsEnabled,
                 castPhotos = castPhotos,
                 nativeBlurGlow = nativeBlurGlow,
                 minDurationMinutes = minDuration,
-                maxCards = effectiveMaxCards,
-                maxCardsLimit = lowRamMaxCards,
-                gridStep = settingsGridStep,
                 onToggleCovers = { scope.launch { settings.updateShowCovers(it) } },
                 onToggleAnimations = { scope.launch { settings.updateAnimationsEnabled(it) } },
                 onToggleCastPhotos = { scope.launch { settings.updateCastPhotos(it) } },
                 onToggleNativeBlurGlow = { scope.launch { settings.updateNativeBlurGlow(it) } },
                 onChangeMinDuration = { scope.launch { settings.updateMinDurationMinutes(it) } },
-                onChangeMaxCards = { value ->
-                    scope.launch { settings.updateMaxCards(lowRamMaxCards?.let { value.coerceAtMost(it) } ?: value) }
-                },
                 onManageChannels = {
                     navController.navigate(RoutePath.CHANNEL_SELECTION) { launchSingleTop = true }
                 },

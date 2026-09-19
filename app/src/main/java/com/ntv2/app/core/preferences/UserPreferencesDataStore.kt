@@ -21,7 +21,6 @@ class UserPreferencesDataStore(
     private val animationsKey = booleanPreferencesKey("animations_enabled")
     private val castPhotosKey = booleanPreferencesKey("cast_photos")
     private val nativeBlurGlowKey = booleanPreferencesKey("ambient_native_blur")
-    private val maxCardsKey = intPreferencesKey("max_cards")
 
     val minDurationMinutes: Flow<Int> = context.dataStore.data.map { prefs: Preferences ->
         prefs[minDurationKey] ?: 15
@@ -30,17 +29,6 @@ class UserPreferencesDataStore(
     suspend fun setMinDurationMinutes(value: Int) {
         context.dataStore.edit { prefs ->
             prefs[minDurationKey] = value
-        }
-    }
-
-    /** Máximo de cards mantidos na grade (teto de memória, grade não-lazy). */
-    val maxCards: Flow<Int> = context.dataStore.data.map { prefs: Preferences ->
-        prefs[maxCardsKey] ?: 150
-    }
-
-    suspend fun setMaxCards(value: Int) {
-        context.dataStore.edit { prefs ->
-            prefs[maxCardsKey] = value
         }
     }
 

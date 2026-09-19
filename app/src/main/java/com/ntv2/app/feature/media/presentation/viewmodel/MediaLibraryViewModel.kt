@@ -42,6 +42,8 @@ sealed interface MediaLibraryAction {
     data class RestartVideo(val media: MediaCardUi) : MediaLibraryAction
     data class LoadMoreChannel(val channelId: Long) : MediaLibraryAction
     data object LoadMore : MediaLibraryAction
+    /** Subiu perto do início com o topo descartado: busca a página de mensagens mais novas. */
+    data object LoadPrevious : MediaLibraryAction
     data class SelectActiveChannel(val channelId: Long) : MediaLibraryAction
     data object ConsumeNavigation : MediaLibraryAction
     data object ConsumeReturnToDetails : MediaLibraryAction
@@ -53,13 +55,15 @@ sealed interface MediaLibraryAction {
     data class DetailsClosed(val mediaId: String) : MediaLibraryAction
 }
 
+/** Teto padrão de cards mantidos por canal (o AppNavHost ajusta por aparelho; ver loadPrevious). */
+private const val MAX_RETAINED_ITEMS = 1_000
+
 class MediaLibraryViewModel(
     private val mediaRepository: MediaRepository,
     private val channelRepository: ChannelRepository,
     private val settingsRepository: SettingsRepository,
     private val progressStore: PlaybackProgressStore,
     private val mediaDetailsCache: MediaDetailsCache,
-    private val maxCardsLimit: Int? = null,
     // Passo da grade por dispositivo: TV = 5 colunas, celular = 2. A paginação carrega múltiplos
     // desse passo para as linhas fecharem completas (sem sobra de meia linha).
     private val gridStep: Int = 2,
@@ -67,7 +71,9 @@ class MediaLibraryViewModel(
     private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     // Pré-download do início do vídeo na tela de Detalhes (null = desligado, ex.: testes).
-    private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null
+    private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null,
+    // Teto de cards mantidos por canal (menor só nos testes, para exercitar o descarte/volta).
+    private val maxRetainedItems: Int = MAX_RETAINED_ITEMS
 ) : ViewModel() {
 
     // mediaId -> fileId com pré-download em andamento (cancelado se sair sem assistir).
@@ -98,8 +104,12 @@ class MediaLibraryViewModel(
     private val searchPageSize = if (gridStep >= 5) 10 else 8
     // Teto de páginas que a busca avança sozinha quando o filtro de título esvazia as primeiras.
     private val MAX_SEARCH_AUTO_PAGES = 5
-    // Teto de itens mantidos por canal (grade não-lazy). Configurável nas Configurações.
-    private var maxRetainedItems = 150
+    // Teto de segurança de itens mantidos por canal. A grade é lazy (só compõe os cards visíveis)
+    // e cada item são poucos KB de texto: na prática não descarta nada. Se passar disso, o topo é
+    // descartado e volta pela página "para cima" (loadPrevious) ao subir perto do início.
+    // Canais cujo topo foi descartado (há mensagens mais novas a buscar ao subir).
+    private val headTrimmed = mutableSetOf<Long>()
+    private val loadingPrevious = mutableSetOf<Long>()
 
     init {
         observeSelectionAndFilter()
@@ -153,6 +163,7 @@ class MediaLibraryViewModel(
             is MediaLibraryAction.LoadMoreChannel -> loadMore(action.channelId)
 
             MediaLibraryAction.LoadMore -> _uiState.value.activeChannelId?.let { loadMore(it) }
+            MediaLibraryAction.LoadPrevious -> _uiState.value.activeChannelId?.let { loadPrevious(it) }
 
             is MediaLibraryAction.SelectActiveChannel -> {
                 viewModelScope.launch { settingsRepository.updateActiveChannelId(action.channelId) }
@@ -268,22 +279,6 @@ class MediaLibraryViewModel(
                 _uiState.update { it.copy(castPhotos = on) }
             }
         }
-        viewModelScope.launch {
-            settingsRepository.maxCards.collect { max ->
-                val effectiveMax = maxCardsLimit?.let { max.coerceAtMost(it) } ?: max
-                maxRetainedItems = effectiveMax
-                // Aplica o novo teto imediatamente ao canal ativo (apara o excedente do topo).
-                var changed = false
-                channelItems.keys.toList().forEach { id ->
-                    val items = channelItems[id] ?: return@forEach
-                    if (items.size > effectiveMax) {
-                        channelItems[id] = items.takeLast(effectiveMax)
-                        changed = true
-                    }
-                }
-                if (changed) projectSections()
-            }
-        }
     }
 
     /** Carrega a 1ª página do canal ativo (grade plana). */
@@ -333,6 +328,7 @@ class MediaLibraryViewModel(
             }
             channelItems[channel.id] = dedupByTmdb(page?.items.orEmpty())
             channelCursors[channel.id] = page?.nextCursor ?: 0L
+            headTrimmed -= channel.id
             // Transição atômica: desliga o skeleton JUNTO com os itens/emptyState já calculados,
             // evitando um frame intermediário com "nenhum vídeo" antes das mídias aparecerem.
             val sections = computeSections()
@@ -344,6 +340,7 @@ class MediaLibraryViewModel(
                     sections = sections,
                     items = sections.flatMap { s -> s.items },
                     hasMore = sections.firstOrNull()?.hasMore ?: false,
+                    hasPrevious = sections.firstOrNull()?.hasPrevious ?: false,
                     emptyState = emptyStateFor(sections)
                 )
             }
@@ -592,8 +589,12 @@ class MediaLibraryViewModel(
                 val merged = dedupByTmdb(existing + page.items.filter { seen.add(it.mediaId) })
                 // Teto de memória: grade é não-lazy, então limitamos os itens mantidos, descartando
                 // os mais antigos (do topo) e preservando os recém-carregados (do fim).
-                channelItems[channelId] =
-                    if (merged.size > maxRetainedItems) merged.takeLast(maxRetainedItems) else merged
+                if (merged.size > maxRetainedItems) {
+                    channelItems[channelId] = merged.takeLast(maxRetainedItems)
+                    headTrimmed += channelId
+                } else {
+                    channelItems[channelId] = merged
+                }
                 channelCursors[channelId] = page.nextCursor
                 // Atualização atômica com o nonce: a UI reage mesmo se o tamanho não mudar (teto).
                 val sections = computeSections()
@@ -602,6 +603,7 @@ class MediaLibraryViewModel(
                         sections = sections,
                         items = sections.flatMap { s -> s.items },
                         hasMore = sections.firstOrNull()?.hasMore ?: false,
+                        hasPrevious = sections.firstOrNull()?.hasPrevious ?: false,
                         emptyState = emptyStateFor(sections),
                         loadMoreNonce = it.loadMoreNonce + 1
                     )
@@ -617,6 +619,44 @@ class MediaLibraryViewModel(
             loadingMore -= channelId
         }
     }
+
+    /**
+     * Página "para cima": quando o topo foi descartado pelo teto, busca os vídeos mais novos que o
+     * primeiro card mantido e os coloca de volta no início. Se passar do teto, descarta o FIM e o
+     * cursor de "carregar mais" passa a apontar para o último card mantido.
+     */
+    private fun loadPrevious(channelId: Long) {
+        if (channelId !in headTrimmed || channelId in loadingPrevious) return
+        val title = channelTitles[channelId] ?: return
+        val anchor = channelItems[channelId]?.firstOrNull()?.messageIdOrNull() ?: return
+        loadingPrevious += channelId
+        viewModelScope.launch {
+            runCatching {
+                withContext(ioDispatcher) {
+                    mediaRepository.fetchNewerChannelVideos(channelId, title, anchor, pageSize)
+                }
+            }.onSuccess { page ->
+                val existing = channelItems[channelId].orEmpty()
+                val seen = existing.mapTo(HashSet()) { it.mediaId }
+                val newer = page.items.filter { seen.add(it.mediaId) }
+                // Nada mais novo: chegou ao início real do canal.
+                if (newer.isEmpty()) headTrimmed -= channelId
+                val merged = dedupByTmdb(newer + existing)
+                if (merged.size > maxRetainedItems) {
+                    val kept = merged.take(maxRetainedItems)
+                    channelItems[channelId] = kept
+                    kept.lastOrNull()?.messageIdOrNull()?.let { channelCursors[channelId] = it }
+                } else {
+                    channelItems[channelId] = merged
+                }
+                projectSections()
+            }
+            loadingPrevious -= channelId
+        }
+    }
+
+    /** mediaId é "chatId_messageId". */
+    private fun MediaItemSummary.messageIdOrNull(): Long? = mediaId.substringAfterLast('_').toLongOrNull()
 
     private suspend fun fetchPage(
         channelId: Long,
@@ -639,6 +679,7 @@ class MediaLibraryViewModel(
                     sections = sections,
                     items = sections.flatMap { s -> s.items },
                     hasMore = sections.firstOrNull()?.hasMore ?: false,
+                    hasPrevious = sections.firstOrNull()?.hasPrevious ?: false,
                     emptyState = emptyStateFor(sections)
                 )
             }
@@ -659,7 +700,8 @@ class MediaLibraryViewModel(
                     channelId = id,
                     channelName = channelTitles[id] ?: "",
                     items = filtered.map { it.toCard(savedPositions[it.mediaId] ?: 0L) },
-                    hasMore = (channelCursors[id] ?: 0L) != 0L
+                    hasMore = (channelCursors[id] ?: 0L) != 0L,
+                    hasPrevious = id in headTrimmed
                 )
             }
         }
@@ -687,6 +729,8 @@ class MediaLibraryViewModel(
         channelItems.clear()
         channelCursors.clear()
         loadingMore.clear()
+        headTrimmed.clear()
+        loadingPrevious.clear()
     }
 
     private fun MediaItemSummary.toCard(savedPositionMs: Long): MediaCardUi {
@@ -745,10 +789,10 @@ class MediaLibraryViewModelFactory(
     private val settingsRepository: SettingsRepository,
     private val progressStore: PlaybackProgressStore,
     private val mediaDetailsCache: MediaDetailsCache,
-    private val maxCardsLimit: Int? = null,
     private val gridStep: Int = 2,
     private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
-    private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null
+    private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null,
+    private val maxRetainedItems: Int = MAX_RETAINED_ITEMS
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -759,10 +803,10 @@ class MediaLibraryViewModelFactory(
                 settingsRepository = settingsRepository,
                 progressStore = progressStore,
                 mediaDetailsCache = mediaDetailsCache,
-                maxCardsLimit = maxCardsLimit,
                 gridStep = gridStep,
                 searchIndexRepository = searchIndexRepository,
-                videoPrefetcher = videoPrefetcher
+                videoPrefetcher = videoPrefetcher,
+                maxRetainedItems = maxRetainedItems
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

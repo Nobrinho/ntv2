@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -84,15 +83,11 @@ fun SettingsScreen(
     castPhotos: Boolean,
     nativeBlurGlow: Boolean = true,
     minDurationMinutes: Int,
-    maxCards: Int,
-    maxCardsLimit: Int? = null,
-    gridStep: Int = 2,
     onToggleCovers: (Boolean) -> Unit,
     onToggleAnimations: (Boolean) -> Unit,
     onToggleCastPhotos: (Boolean) -> Unit,
     onToggleNativeBlurGlow: (Boolean) -> Unit = {},
     onChangeMinDuration: (Int) -> Unit,
-    onChangeMaxCards: (Int) -> Unit,
     onManageChannels: () -> Unit,
     onOpenListedChannels: () -> Unit,
     onLogout: () -> Unit,
@@ -189,13 +184,6 @@ fun SettingsScreen(
                         modifier = itemMod(3),
                         value = minDurationMinutes,
                         onChange = onChangeMinDuration
-                    )
-                    MaxCardsCard(
-                        modifier = itemMod(4),
-                        value = maxCards,
-                        limit = maxCardsLimit,
-                        gridStep = gridStep,
-                        onChange = onChangeMaxCards
                     )
                     NavCard(
                         icon = Icons.Filled.Tv,
@@ -303,43 +291,6 @@ private fun DurationCard(
         canIncrease = idx < DURATION_STEPS.lastIndex,
         onDecrease = { if (idx > 0) onChange(DURATION_STEPS[idx - 1]) },
         onIncrease = { if (idx < DURATION_STEPS.lastIndex) onChange(DURATION_STEPS[idx + 1]) }
-    )
-}
-
-private val MAX_CARDS_STEPS = listOf(60, 90, 120, 150, 200, 250, 300)
-
-@Composable
-private fun MaxCardsCard(
-    modifier: Modifier = Modifier,
-    value: Int,
-    limit: Int?,
-    gridStep: Int,
-    onChange: (Int) -> Unit
-) {
-    // Cada valor é arredondado para múltiplo do passo da grade (TV=5 / celular=2), para as linhas
-    // fecharem completas. Os valores base já são múltiplos de 10; o arredondamento garante isso.
-    val steps = remember(limit, gridStep) {
-        val stepUnit = gridStep.coerceAtLeast(1)
-        val base = MAX_CARDS_STEPS.map { it - (it % stepUnit) }.filter { it > 0 }.distinct()
-        limit?.let { max -> base.filter { it <= max }.ifEmpty { listOf(max - (max % stepUnit)) } } ?: base
-    }
-    val effectiveValue = limit?.let { value.coerceAtMost(it) } ?: value
-    val idx = steps.indexOfFirst { it >= effectiveValue }.let { if (it < 0) steps.lastIndex else it }
-    val subtitle = if (limit != null) {
-        "Limitado automaticamente neste aparelho para evitar travamentos."
-    } else {
-        "Limita quantos itens ficam carregados na biblioteca."
-    }
-    StepperSettingCard(
-        modifier = modifier,
-        icon = Icons.Filled.ViewModule,
-        title = "Cards na grade",
-        subtitle = subtitle,
-        valueText = "$effectiveValue",
-        canDecrease = idx > 0,
-        canIncrease = idx < steps.lastIndex,
-        onDecrease = { if (idx > 0) onChange(steps[idx - 1]) },
-        onIncrease = { if (idx < steps.lastIndex) onChange(steps[idx + 1]) }
     )
 }
 

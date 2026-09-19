@@ -801,8 +801,10 @@ class RealTdlibGateway(
         when (update) {
             is TdApi.UpdateAuthorizationState -> mapAuthorizationState(update.authorizationState)
             is TdApi.UpdateFile -> {
-                val mapped = mapFileState(update.file)
-                fileStates.computeIfAbsent(mapped.fileId) { MutableStateFlow(mapped) }.value = mapped
+                // Só atualiza arquivos acompanhados (abertos/observados pelo player). Antes criava um
+                // estado para TODO arquivo que o TDLib tocava (miniaturas, avatares, pôsteres) e o
+                // mapa só crescia durante a sessão.
+                fileStates[update.file.id]?.let { it.value = mapFileState(update.file) }
             }
         }
     }

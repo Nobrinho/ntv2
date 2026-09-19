@@ -9,5 +9,10 @@ data class PlaybackTuning(
     val ioStallTimeoutMs: Long = 12_000L,
     val cacheMaxBytes: Long = 512L * 1024L * 1024L,
     val cacheTrimTargetBytes: Long = 420L * 1024L * 1024L,
-    val maxCachedFiles: Int = 6
+    val maxCachedFiles: Int = 6,
+    // Janela deslizante no disco: o que fica guardado de um vídeo durante a reprodução.
+    val diskHeadPinBytes: Long = 16L * 1024L * 1024L,
+    val diskTailPinBytes: Long = 32L * 1024L * 1024L,
+    val diskKeepBehindBytes: Long = 160L * 1024L * 1024L,
+    val diskMinEvictBytes: Long = 32L * 1024L * 1024L
 )

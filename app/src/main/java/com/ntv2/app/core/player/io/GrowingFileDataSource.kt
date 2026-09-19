@@ -3,6 +3,7 @@
 import android.net.Uri
 import android.os.SystemClock
 import android.os.StatFs
+import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
@@ -21,20 +22,31 @@ class GrowingFileDataSourceFactory(
     private val stallTimeoutMs: Long,
     private val readAheadBytes: Long,
     /** Chamado quando o download adiante é suspenso por falta de espaço (dispara limpeza de caches). */
-    private val onLowStorage: () -> Unit = {}
+    private val onLowStorage: () -> Unit = {},
+    /** Janela deslizante no disco; null desativa (o arquivo cresce até o tamanho do vídeo). */
+    private val diskWindow: DiskWindowPolicy? = null,
+    private val holePuncher: HolePuncher = NativeFileIo
 ) : DataSource.Factory {
     override fun createDataSource(): DataSource {
-        return GrowingFileDataSource(partialFileAccessor, stallTimeoutMs, readAheadBytes, onLowStorage)
+        return GrowingFileDataSource(
+            partialFileAccessor, stallTimeoutMs, readAheadBytes, onLowStorage, diskWindow, holePuncher
+        )
     }
 }
 
 private const val NUDGE_INTERVAL_MS = 2_000L
+// De quantos em quantos bytes lidos reavaliamos o que liberar do disco.
+private const val EVICT_CHECK_STEP_BYTES = 8L * 1024L * 1024L
+private const val TAG = "NtvDiskWindow"
+private const val MB = 1024L * 1024L
 
 private class GrowingFileDataSource(
     private val partialFileAccessor: PartialFileAccessor,
     private val stallTimeoutMs: Long,
     private val readAheadBytes: Long,
-    private val onLowStorage: () -> Unit
+    private val onLowStorage: () -> Unit,
+    private val diskWindow: DiskWindowPolicy?,
+    private val holePuncher: HolePuncher
 ) : BaseDataSource(false) {
 
     private var dataSpec: DataSpec? = null
@@ -52,6 +64,8 @@ private class GrowingFileDataSource(
     // Cache do prefixo baixado consultado ao TDLib (evita consultar a cada leitura).
     private var cacheBase: Long = -1L
     private var cachePrefix: Long = 0L
+    // Posição da última avaliação da janela deslizante.
+    private var lastEvictCheck: Long = 0L
 
     override fun open(dataSpec: DataSpec): Long {
         this.dataSpec = dataSpec
@@ -69,6 +83,9 @@ private class GrowingFileDataSource(
             dataSpec.length
         }
 
+        // Seek para trás, num trecho já liberado do disco: baixa de novo a partir daqui.
+        if (isEvicted(readPosition)) resetLocalCopyAt(readPosition)
+
         val filePath = partialFileAccessor.resolvePath(fileId)
             ?: throw IOException("Arquivo local ainda não disponível para fileId=$fileId")
         val file = File(filePath)
@@ -83,6 +100,7 @@ private class GrowingFileDataSource(
         // mas LIMITADA a uma janela — não o arquivo inteiro (evita encher o disco). Leituras de
         // tamanho fixo (ex.: índice do MKV) pedem exatamente o solicitado.
         downloadBaseOffset = readPosition
+        lastEvictCheck = readPosition
         cacheBase = -1L
         cachePrefix = 0L
         val requestLen = if (bytesRemaining == C.LENGTH_UNSET.toLong()) readAheadBytes else bytesRemaining
@@ -97,16 +115,24 @@ private class GrowingFileDataSource(
             return 0
         }
 
-        val raf = randomAccessFile ?: return C.RESULT_END_OF_INPUT
+        if (randomAccessFile == null) return C.RESULT_END_OF_INPUT
         if (bytesRemaining == 0L) {
             return C.RESULT_END_OF_INPUT
         }
 
         while (true) {
+            // Leitura avançou (a partir do início fixado) para dentro do trecho liberado: reabre
+            // sobre uma cópia nova, baixada a partir da posição atual.
+            if (isEvicted(readPosition)) reopenAfterReset(readPosition)
+            val raf = randomAccessFile ?: return C.RESULT_END_OF_INPUT
             // Legibilidade por POSIÇÃO: pergunta ao TDLib quantos bytes contíguos há a partir de
             // readPosition (reconhece frente E fim já no disco). Antes usávamos o prefixo relativo
             // ao offset único, que "esquecia" a frente após buscar o índice no fim (MKV) → travava.
-            val prefix = readablePrefixFrom(readPosition)
+            val prefix = diskWindow?.clampReadable(
+                readPosition,
+                readablePrefixFrom(readPosition),
+                partialFileAccessor.evictedEnd(fileId)
+            ) ?: readablePrefixFrom(readPosition)
             when (
                 val plan = PartialReadPlanner.plan(
                     contiguousReadableStart = readPosition,
@@ -127,6 +153,7 @@ private class GrowingFileDataSource(
                         bytesRemaining -= read
                     }
                     bytesTransferred(read)
+                    maybeEvictBehind()
                     return read
                 }
 
@@ -238,6 +265,65 @@ private class GrowingFileDataSource(
         }.getOrDefault(true)
         if (!enough) onLowStorage()
         return enough
+    }
+
+    private fun isEvicted(position: Long): Boolean {
+        val policy = diskWindow ?: return false
+        return policy.isEvicted(position, partialFileAccessor.evictedEnd(fileId))
+    }
+
+    /**
+     * Libera do disco o trecho já lido que ficou para trás (ver [DiskWindowPolicy]). Só na leitura
+     * aberta da reprodução — leituras de tamanho fixo (índice) não contam.
+     */
+    private fun maybeEvictBehind() {
+        val policy = diskWindow ?: return
+        if (bytesRemaining != C.LENGTH_UNSET.toLong()) return
+        if (readPosition - lastEvictCheck < EVICT_CHECK_STEP_BYTES) return
+        lastEvictCheck = readPosition
+        val size = partialFileAccessor.expectedBytes(fileId)?.takeIf { it > 0L } ?: return
+        val evictedEnd = partialFileAccessor.evictedEnd(fileId)
+        val range = policy.evictionRange(evictedEnd, readPosition, downloadBaseOffset, size) ?: return
+        val path = partialFileAccessor.resolvePath(fileId)?.takeIf { it.isNotEmpty() } ?: return
+        val length = range.last + 1 - range.first
+        if (holePuncher.punch(path, range.first, length)) {
+            partialFileAccessor.markEvicted(fileId, range.last + 1)
+            Log.i(TAG, "liberado fileId=$fileId ${range.first / MB}-${(range.last + 1) / MB}MB (leitura em ${readPosition / MB}MB)")
+        }
+    }
+
+    /**
+     * Apaga a cópia local e pede ao TDLib o trecho a partir de [position]; aguarda o arquivo novo
+     * existir. Necessário porque o TDLib considera baixado o trecho que liberamos do disco.
+     */
+    private fun resetLocalCopyAt(position: Long) {
+        Log.i(TAG, "rebaixando fileId=$fileId a partir de ${position / MB}MB (trecho liberado)")
+        runBlocking {
+            partialFileAccessor.resetLocalCopy(fileId)
+            partialFileAccessor.requestRange(fileId, position, readAheadBytes, priority = 32)
+            val deadline = SystemClock.elapsedRealtime() + stallTimeoutMs
+            while (true) {
+                val path = partialFileAccessor.resolvePath(fileId)
+                if (!path.isNullOrEmpty() && File(path).exists()) break
+                if (SystemClock.elapsedRealtime() > deadline) {
+                    throw IOException("Timeout recriando o arquivo local de fileId=$fileId")
+                }
+                delay(100L)
+            }
+        }
+    }
+
+    private fun reopenAfterReset(position: Long) {
+        resetLocalCopyAt(position)
+        val path = partialFileAccessor.resolvePath(fileId)
+            ?: throw IOException("Arquivo local indisponível após rebaixar fileId=$fileId")
+        runCatching { randomAccessFile?.close() }
+        randomAccessFile = RandomAccessFile(File(path), "r").also { it.seek(position) }
+        downloadBaseOffset = position
+        lastRequestedEnd = position + readAheadBytes
+        lastEvictCheck = position
+        cacheBase = -1L
+        cachePrefix = 0L
     }
 
     override fun getUri(): Uri? = dataSpec?.uri

@@ -133,6 +133,16 @@ android {
     sourceSets {
         getByName("main").jniLibs.srcDirs("src/main/jniLibs")
     }
+
+    ndkVersion = "26.1.10909125"
+
+    // libntv2io: punch hole (fallocate) para liberar no disco o trecho já assistido do vídeo.
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 }
 
 dependencies {

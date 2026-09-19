@@ -23,6 +23,7 @@ class TdlibTelegramPlaybackDataSource(
     private val observeJobs = java.util.concurrent.ConcurrentHashMap<Int, Job>()
 
     private val openErrors = java.util.concurrent.ConcurrentHashMap<Int, String>()
+    private val evictedEnds = java.util.concurrent.ConcurrentHashMap<Int, Long>()
 
     override suspend fun inspectFile(fileId: Int): PlaybackFileHandle? {
         return runCatching { playbackGateway.openFile(fileId) }
@@ -39,13 +40,17 @@ class TdlibTelegramPlaybackDataSource(
         val stateFlow = states.computeIfAbsent(fileId) { MutableStateFlow(opened) }
         stateFlow.value = opened
 
+        startObserving(fileId)
+
+        return opened.toHandle()
+    }
+
+    private fun startObserving(fileId: Int) {
         observeJobs.put(fileId, scope.launch {
             playbackGateway.observeFile(fileId).collect { remote ->
                 states[fileId]?.update { remote }
             }
         })?.cancel()
-
-        return opened.toHandle()
     }
 
     override fun observe(fileId: Int): Flow<TdlibPlaybackFileState> {
@@ -76,6 +81,31 @@ class TdlibTelegramPlaybackDataSource(
         observeJobs.remove(fileId)?.cancel()
         playbackGateway.deleteFile(fileId)
         states.remove(fileId)
+        evictedEnds.remove(fileId)
+    }
+
+    override fun evictedEnd(fileId: Int): Long = evictedEnds[fileId] ?: 0L
+
+    override fun markEvicted(fileId: Int, end: Long) {
+        evictedEnds.merge(fileId, end) { old, new -> maxOf(old, new) }
+    }
+
+    override suspend fun resetLocalCopy(fileId: Int) {
+        observeJobs.remove(fileId)?.cancel()
+        playbackGateway.deleteFile(fileId)
+        evictedEnds.remove(fileId)
+        // Mantém o MESMO StateFlow (o coordinator observa ele), zerado até o TDLib recriar o arquivo.
+        states[fileId]?.update {
+            it.copy(
+                localPath = "",
+                downloadedBytes = 0L,
+                isDownloadComplete = false,
+                downloadOffset = 0L,
+                downloadedPrefixBytes = 0L
+            )
+        }
+        // O gateway descarta o fluxo do arquivo apagado: reassina para receber o novo caminho.
+        startObserving(fileId)
     }
 
     override fun resolvePath(fileId: Int): String? = states[fileId]?.value?.localPath

@@ -39,6 +39,21 @@ interface PartialFileAccessor {
      * relativo ao offset único de download.
      */
     suspend fun downloadedPrefixFrom(fileId: Int, offset: Long): Long
+
+    /**
+     * Janela deslizante: fim do trecho [início fixado, evictedEnd) cujos blocos já foram liberados
+     * do disco (punch hole). 0 = nada liberado. O TDLib ainda considera esses bytes baixados.
+     */
+    fun evictedEnd(fileId: Int): Long = 0L
+
+    /** Registra que o trecho até [end] foi liberado do disco. */
+    fun markEvicted(fileId: Int, end: Long) = Unit
+
+    /**
+     * Apaga a cópia local (inclusive os trechos liberados) para o TDLib baixar de novo a partir
+     * de onde o player precisar — usado ao voltar para um trecho já liberado.
+     */
+    suspend fun resetLocalCopy(fileId: Int) = Unit
 }
 
 data class PlaybackFileHandle(

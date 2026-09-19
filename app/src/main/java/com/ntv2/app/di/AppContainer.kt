@@ -11,6 +11,7 @@ import com.ntv2.app.core.player.config.PlaybackTuning
 import com.ntv2.app.core.player.download.ProgressiveDownloadPlanner
 import com.ntv2.app.core.player.exoplayer.DefaultExoPlayerProvider
 import com.ntv2.app.core.player.exoplayer.ExoPlayerProvider
+import com.ntv2.app.core.player.io.DiskWindowPolicy
 import com.ntv2.app.core.player.io.GrowingFileDataSourceFactory
 import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.progress.RoomPlaybackProgressStore
@@ -191,7 +192,14 @@ class DefaultAppContainer(
             partialFileAccessor = telegramPlaybackDataSource,
             stallTimeoutMs = playbackTuning.ioStallTimeoutMs,
             readAheadBytes = playbackTuning.aheadWindowBytes,
-            onLowStorage = { storageJanitor.onLowStorageDuringPlayback() }
+            onLowStorage = { storageJanitor.onLowStorageDuringPlayback() },
+            // Libera do disco o trecho já assistido: um filme ocupa ~250 MB em vez do tamanho todo.
+            diskWindow = DiskWindowPolicy(
+                headPinBytes = playbackTuning.diskHeadPinBytes,
+                tailPinBytes = playbackTuning.diskTailPinBytes,
+                keepBehindBytes = playbackTuning.diskKeepBehindBytes,
+                minEvictBytes = playbackTuning.diskMinEvictBytes
+            )
         )
     }
 

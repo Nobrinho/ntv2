@@ -169,6 +169,42 @@ class MediaLibraryViewModelTest {
     }
 
     @Test
+    fun `trocar de canal comeca da primeira pagina e descarta o carregar mais atrasado do anterior`() = runTest(dispatcher) {
+        val slowPage = kotlinx.coroutines.CompletableDeferred<MediaPage>()
+        val media = FakeMediaRepo().apply {
+            listPages = { channelId, cursor ->
+                when {
+                    cursor == 0L -> MediaPage((1..24).map { item("${channelId}_$it", channelId, 600, it) }, nextCursor = 1L)
+                    channelId == 1L -> slowPage.await() // "carregar mais" do canal 1 fica pendurado
+                    else -> MediaPage(emptyList(), 0L)
+                }
+            }
+        }
+        val vm = buildViewModel(media)
+        channelsFlow.value = listOf(ChannelSummary(1, "C1", null), ChannelSummary(2, "C2", null))
+        activeChannelFlow.value = 1L
+        advanceUntilIdle()
+        vm.onAction(MediaLibraryAction.LoadMore)
+        advanceUntilIdle()
+
+        activeChannelFlow.value = 2L
+        advanceUntilIdle()
+        val nonceAfterSwitch = vm.uiState.value.loadMoreNonce
+        // A página atrasada do canal 1 chega depois da troca: não pode aparecer nem virar erro.
+        slowPage.complete(MediaPage(listOf(item("1_999", 1L, 600, 999)), nextCursor = 0L))
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(2L, state.activeChannelId)
+        assertEquals(24, state.items.size)
+        assertTrue(state.items.all { it.mediaId.startsWith("2_") })
+        assertEquals("2_1", state.items.first().mediaId)
+        assertEquals(null, state.errorMessage)
+        // O "terminou de carregar" do canal antigo não chega à tela (ele movia o foco).
+        assertEquals(nonceAfterSwitch, state.loadMoreNonce)
+    }
+
+    @Test
     fun `abaixo do teto nada e descartado nem ha pagina de cima`() = runTest(dispatcher) {
         val vm = buildViewModel(channelOf(1L))
         channelsFlow.value = listOf(ChannelSummary(1, "C1", null))

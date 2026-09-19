@@ -107,6 +107,10 @@ fun MediaLibraryScreen(
     // identidade (robusto ao corte do topo pelo teto de itens).
     var lastIdBeforeLoad by remember { mutableStateOf<String?>(null) }
     val gridState = rememberLazyStaggeredGridState()
+    // Canal cuja 1ª página já foi posicionada no topo. A grade guarda a rolagem entre canais; sem
+    // isso, trocar de canal abria o novo na altura em que o anterior estava (e já disparava o
+    // "carregar mais" do novo canal, parecendo continuar a página anterior).
+    var topAlignedChannel by remember { mutableStateOf<Long?>(null) }
     val adaptive = rememberAdaptiveLayoutInfo()
     val scope = rememberCoroutineScope()
     // Último card focado. NÃO é estado observável: guardar no ViewModel a cada movimento do D-pad
@@ -216,6 +220,19 @@ fun MediaLibraryScreen(
     }
     LaunchedEffect(coverUrls) {
         if (coverUrls.isNotEmpty()) com.ntv2.app.core.ui.prefetchCovers(coverContext, coverUrls)
+    }
+
+    LaunchedEffect(state.activeChannelId, state.isLoading) {
+        val channelId = state.activeChannelId ?: return@LaunchedEffect
+        if (state.isLoading || channelId == topAlignedChannel) return@LaunchedEffect
+        val switched = topAlignedChannel != null
+        topAlignedChannel = channelId
+        if (!switched) return@LaunchedEffect // 1ª carga da tela: mantém o foco inicial padrão.
+        runCatching { gridState.scrollToItem(0) }
+        withFrameNanos { }
+        state.items.firstOrNull()?.mediaId?.let { first ->
+            cardFocusRequesters[first]?.let { runCatching { it.requestFocus() } }
+        }
     }
 
     LaunchedEffect(state.pendingNavigation) {

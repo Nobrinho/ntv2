@@ -110,6 +110,9 @@ class MediaLibraryViewModel(
     // Canais cujo topo foi descartado (há mensagens mais novas a buscar ao subir).
     private val headTrimmed = mutableSetOf<Long>()
     private val loadingPrevious = mutableSetOf<Long>()
+    // "Carregar mais"/página de cima em andamento: cancelados ao trocar de canal, para um pedido
+    // atrasado do canal anterior não mexer no estado (nem no foco) do canal novo.
+    private val pagingJobs = mutableSetOf<Job>()
 
     init {
         observeSelectionAndFilter()
@@ -578,7 +581,7 @@ class MediaLibraryViewModel(
         if (cursor == 0L || channelId in loadingMore) return
         val title = channelTitles[channelId] ?: return
         loadingMore += channelId
-        viewModelScope.launch {
+        trackPaging(viewModelScope.launch {
             runCatching {
                 withContext(ioDispatcher) {
                     fetchPage(channelId, title, query = "", fromMessageId = cursor)
@@ -609,6 +612,7 @@ class MediaLibraryViewModel(
                     )
                 }
             }.onFailure { error ->
+                if (error is kotlinx.coroutines.CancellationException) throw error
                 _uiState.update {
                     it.copy(
                         errorMessage = error.message ?: "Falha ao carregar mais",
@@ -617,7 +621,7 @@ class MediaLibraryViewModel(
                 }
             }
             loadingMore -= channelId
-        }
+        })
     }
 
     /**
@@ -630,7 +634,7 @@ class MediaLibraryViewModel(
         val title = channelTitles[channelId] ?: return
         val anchor = channelItems[channelId]?.firstOrNull()?.messageIdOrNull() ?: return
         loadingPrevious += channelId
-        viewModelScope.launch {
+        trackPaging(viewModelScope.launch {
             runCatching {
                 withContext(ioDispatcher) {
                     mediaRepository.fetchNewerChannelVideos(channelId, title, anchor, pageSize)
@@ -652,7 +656,12 @@ class MediaLibraryViewModel(
                 projectSections()
             }
             loadingPrevious -= channelId
-        }
+        })
+    }
+
+    private fun trackPaging(job: Job) {
+        pagingJobs += job
+        job.invokeOnCompletion { pagingJobs -= job }
     }
 
     /** mediaId é "chatId_messageId". */
@@ -731,6 +740,8 @@ class MediaLibraryViewModel(
         loadingMore.clear()
         headTrimmed.clear()
         loadingPrevious.clear()
+        pagingJobs.toList().forEach { it.cancel() }
+        pagingJobs.clear()
     }
 
     private fun MediaItemSummary.toCard(savedPositionMs: Long): MediaCardUi {

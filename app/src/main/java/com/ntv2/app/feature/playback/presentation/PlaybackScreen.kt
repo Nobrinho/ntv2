@@ -24,6 +24,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -124,6 +125,7 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.player.MediaTrackOption
@@ -497,6 +499,7 @@ fun PlaybackScreen(
                     animationsEnabled = animationsEnabled,
                     nativeBlurGlow = nativeBlurGlow,
                     verticalAdjustmentEnabled = videoIsFullscreen && !controlsVisible,
+                    isTv = adaptive.isTv,
                     onReveal = { reveal() },
                     onSeek = { delta -> seekBy(delta); reveal() },
                     onToggle = { togglePlay(); reveal() },
@@ -626,6 +629,7 @@ private fun VideoSurface(
     animationsEnabled: Boolean,
     nativeBlurGlow: Boolean,
     verticalAdjustmentEnabled: Boolean,
+    isTv: Boolean,
     onReveal: () -> Unit,
     onSeek: (Long) -> Unit,
     onToggle: () -> Unit,
@@ -700,14 +704,7 @@ private fun VideoSurface(
             }
             // Spinner + rótulo do estado enquanto prepara/armazena em buffer.
             loadingLabel(playbackState)?.let { label ->
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    CircularProgressIndicator(color = Color.White)
-                    Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                    LoadingProgress(downloadProgress, loadingHint)
-                }
+                LoadingStatus(label, downloadProgress, loadingHint, isTv)
             }
             // Feedback central de seek: seta + segundos acumulados.
             if (seekFeedbackMs != 0L) {
@@ -725,14 +722,56 @@ private fun VideoSurface(
             if (!thumbnailPath.isNullOrBlank()) {
                 AmbientPoster(thumbnailPath, title, nativeBlurGlow, animationsEnabled)
             }
+            LoadingStatus(statusMessage, downloadProgress, loadingHint, isTv)
+        }
+    }
+}
+
+/**
+ * Spinner + estado ("Armazenando em buffer…") + progresso do download. Na TV fica compacto no
+ * canto superior direito, sem cobrir o pôster/vídeo; no celular, centralizado.
+ */
+@Composable
+private fun BoxScope.LoadingStatus(
+    label: String,
+    progress: DownloadProgress?,
+    hint: String?,
+    isTv: Boolean
+) {
+    if (isTv) {
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 32.dp, end = 40.dp)
+                // 20% menor, ancorado no canto superior direito.
+                .graphicsLayer {
+                    scaleX = 0.8f
+                    scaleY = 0.8f
+                    transformOrigin = TransformOrigin(1f, 0f)
+                }
+                .background(Color(0x99000000), RoundedCornerShape(12.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(28.dp))
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                CircularProgressIndicator(color = Color.White)
-                Text(statusMessage, color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                LoadingProgress(downloadProgress, loadingHint)
+                Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                LoadingProgress(progress, hint, TextAlign.End)
             }
+        }
+    } else {
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CircularProgressIndicator(color = Color.White)
+            Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            LoadingProgress(progress, hint)
         }
     }
 }
@@ -824,7 +863,7 @@ private fun AmbientPoster(url: String, title: String, nativeBlur: Boolean, anima
 
 /** Progresso do download durante a espera: "12,3 MB de 1,4 GB · 850 KB/s" + barra + aviso. */
 @Composable
-private fun LoadingProgress(progress: DownloadProgress?, hint: String?) {
+private fun LoadingProgress(progress: DownloadProgress?, hint: String?, hintAlign: TextAlign = TextAlign.Center) {
     if (progress != null && progress.downloadedBytes > 0L) {
         val text = buildString {
             append(formatBytes(progress.downloadedBytes))
@@ -855,7 +894,7 @@ private fun LoadingProgress(progress: DownloadProgress?, hint: String?) {
             hint,
             color = Color(0xFFFFD37A),
             style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
+            textAlign = hintAlign,
             modifier = Modifier.widthIn(max = 420.dp)
         )
     }

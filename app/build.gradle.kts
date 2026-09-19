@@ -99,7 +99,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8: remove código/recursos não usados (o dex caía de ~59 MB sem enxugar).
+            // Regras de JNI/reflexão em proguard-rules.pro (TDLib, FFmpeg, libntv2io).
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -31,6 +31,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -81,6 +82,7 @@ fun SettingsScreen(
     showCovers: Boolean,
     animationsEnabled: Boolean,
     castPhotos: Boolean,
+    nativeBlurGlow: Boolean = true,
     minDurationMinutes: Int,
     maxCards: Int,
     maxCardsLimit: Int? = null,
@@ -88,6 +90,7 @@ fun SettingsScreen(
     onToggleCovers: (Boolean) -> Unit,
     onToggleAnimations: (Boolean) -> Unit,
     onToggleCastPhotos: (Boolean) -> Unit,
+    onToggleNativeBlurGlow: (Boolean) -> Unit = {},
     onChangeMinDuration: (Int) -> Unit,
     onChangeMaxCards: (Int) -> Unit,
     onManageChannels: () -> Unit,
@@ -157,10 +160,22 @@ fun SettingsScreen(
                     ToggleCard(
                         icon = Icons.Filled.AutoAwesome,
                         title = "Animações",
-                        subtitle = "Ativar animações e transições da interface",
+                        subtitle = "Animações e transições (inclui a luz pulsante ao carregar um vídeo)",
                         value = animationsEnabled,
                         modifier = itemMod(1),
                         onToggle = { onToggleAnimations(!animationsEnabled) }
+                    )
+                    ToggleCard(
+                        icon = Icons.Filled.BlurOn,
+                        title = "Iluminação da capa: desfoque nativo",
+                        subtitle = if (android.os.Build.VERSION.SDK_INT >= 31) {
+                            "ON = desfoque do Android 12+ · OFF = versão compatível"
+                        } else {
+                            "Este aparelho (Android ${android.os.Build.VERSION.RELEASE}) usa sempre a versão compatível"
+                        },
+                        value = nativeBlurGlow,
+                        modifier = itemMod(8),
+                        onToggle = { onToggleNativeBlurGlow(!nativeBlurGlow) }
                     )
                     ToggleCard(
                         icon = Icons.Filled.Group,
@@ -267,7 +282,7 @@ private fun ToggleCard(
     }
 }
 
-private const val SETTINGS_ITEM_COUNT = 8
+private const val SETTINGS_ITEM_COUNT = 9
 
 private val DURATION_STEPS = listOf(0, 5, 10, 15, 20, 30, 45, 60, 90, 120)
 

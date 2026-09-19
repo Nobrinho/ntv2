@@ -20,6 +20,7 @@ class UserPreferencesDataStore(
     private val showCoversKey = booleanPreferencesKey("show_covers")
     private val animationsKey = booleanPreferencesKey("animations_enabled")
     private val castPhotosKey = booleanPreferencesKey("cast_photos")
+    private val nativeBlurGlowKey = booleanPreferencesKey("ambient_native_blur")
     private val maxCardsKey = intPreferencesKey("max_cards")
 
     val minDurationMinutes: Flow<Int> = context.dataStore.data.map { prefs: Preferences ->
@@ -73,5 +74,15 @@ class UserPreferencesDataStore(
 
     suspend fun setCastPhotos(value: Boolean) {
         context.dataStore.edit { prefs -> prefs[castPhotosKey] = value }
+    }
+
+    /**
+     * Iluminação da capa no carregamento do player: true = desfoque nativo (Android 12+);
+     * false = versão compatível (pôster minúsculo ampliado), que roda em qualquer aparelho.
+     */
+    val nativeBlurGlow: Flow<Boolean> = context.dataStore.data.map { it[nativeBlurGlowKey] ?: true }
+
+    suspend fun setNativeBlurGlow(value: Boolean) {
+        context.dataStore.edit { prefs -> prefs[nativeBlurGlowKey] = value }
     }
 }

@@ -261,11 +261,13 @@ fun AppNavHost(
             val savedMaxCards by settings.maxCards.collectAsState(initial = 150)
             val effectiveMaxCards = lowRamMaxCards?.let { savedMaxCards.coerceAtMost(it) } ?: savedMaxCards
             val castPhotos by settings.castPhotos.collectAsState(initial = true)
+            val nativeBlurGlow by settings.nativeBlurGlow.collectAsState(initial = true)
             val settingsGridStep = if (rememberAdaptiveLayoutInfo().isTv) 5 else 2
             SettingsScreen(
                 showCovers = showCovers,
                 animationsEnabled = animationsEnabled,
                 castPhotos = castPhotos,
+                nativeBlurGlow = nativeBlurGlow,
                 minDurationMinutes = minDuration,
                 maxCards = effectiveMaxCards,
                 maxCardsLimit = lowRamMaxCards,
@@ -273,6 +275,7 @@ fun AppNavHost(
                 onToggleCovers = { scope.launch { settings.updateShowCovers(it) } },
                 onToggleAnimations = { scope.launch { settings.updateAnimationsEnabled(it) } },
                 onToggleCastPhotos = { scope.launch { settings.updateCastPhotos(it) } },
+                onToggleNativeBlurGlow = { scope.launch { settings.updateNativeBlurGlow(it) } },
                 onChangeMinDuration = { scope.launch { settings.updateMinDurationMinutes(it) } },
                 onChangeMaxCards = { value ->
                     scope.launch { settings.updateMaxCards(lowRamMaxCards?.let { value.coerceAtMost(it) } ?: value) }
@@ -354,7 +357,11 @@ fun AppNavHost(
                     appContainer.mediaDetailsCache
                 )
             )
+            val playerAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)
+            val playerNativeBlur by appContainer.settingsRepository.nativeBlurGlow.collectAsState(initial = true)
             PlaybackScreen(
+                animationsEnabled = playerAnimations,
+                nativeBlurGlow = playerNativeBlur,
                 mediaId = Uri.decode(backStackEntry.arguments?.getString("mediaId").orEmpty()),
                 fileId = backStackEntry.arguments?.getInt("fileId") ?: 0,
                 title = Uri.decode(backStackEntry.arguments?.getString("title").orEmpty()),

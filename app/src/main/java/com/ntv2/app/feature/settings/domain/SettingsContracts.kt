@@ -22,6 +22,10 @@ interface SettingsRepository {
 
     val castPhotos: Flow<Boolean>
     suspend fun updateCastPhotos(value: Boolean)
+
+    /** Iluminação da capa no player: desfoque nativo (true) ou versão compatível (false). */
+    val nativeBlurGlow: Flow<Boolean> get() = kotlinx.coroutines.flow.flowOf(true)
+    suspend fun updateNativeBlurGlow(value: Boolean) = Unit
 }
 
 class FakeSettingsRepository(
@@ -61,5 +65,11 @@ class FakeSettingsRepository(
 
     override suspend fun updateCastPhotos(value: Boolean) {
         dataStore.setCastPhotos(value)
+    }
+
+    override val nativeBlurGlow: Flow<Boolean> = dataStore.nativeBlurGlow
+
+    override suspend fun updateNativeBlurGlow(value: Boolean) {
+        dataStore.setNativeBlurGlow(value)
     }
 }

@@ -104,6 +104,19 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import android.os.Build
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.player.MediaTrackOption
 import com.ntv2.app.core.player.MediaTracksInfo
@@ -147,7 +160,10 @@ fun PlaybackScreen(
     fileName: String?,
     thumbnailPath: String?,
     viewModel: PlayerScreenViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    // Configurações: "Animações" (luz pulsante + fade) e a variante da iluminação da capa.
+    animationsEnabled: Boolean = true,
+    nativeBlurGlow: Boolean = true
 ) {
     val state by viewModel.uiState.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -461,6 +477,8 @@ fun PlaybackScreen(
                     player = { viewModel.player },
                     // Com os controles visíveis a linha do tempo já mostra o alvo; evita sobrepor o play.
                     seekFeedbackMs = if (controlsVisible) 0L else seekFeedbackMs,
+                    animationsEnabled = animationsEnabled,
+                    nativeBlurGlow = nativeBlurGlow,
                     verticalAdjustmentEnabled = videoIsFullscreen && !controlsVisible,
                     onReveal = { reveal() },
                     onSeek = { delta -> seekBy(delta); reveal() },
@@ -578,6 +596,8 @@ private fun VideoSurface(
     statusMessage: String,
     player: () -> Player?,
     seekFeedbackMs: Long,
+    animationsEnabled: Boolean,
+    nativeBlurGlow: Boolean,
     verticalAdjustmentEnabled: Boolean,
     onReveal: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -632,6 +652,25 @@ private fun VideoSurface(
                 onRelease = { view -> view.player = null },
                 modifier = Modifier.fillMaxSize()
             )
+            // A capa iluminada da fase de download continua até o PRIMEIRO FRAME ser desenhado
+            // (preparar + buffer inicial deixariam a tela preta); aí some com fade sobre o vídeo.
+            val currentPlayer = player()
+            var firstFrameRendered by remember { mutableStateOf(false) }
+            DisposableEffect(currentPlayer) {
+                val listener = object : Player.Listener {
+                    override fun onRenderedFirstFrame() { firstFrameRendered = true }
+                }
+                currentPlayer?.addListener(listener)
+                onDispose { currentPlayer?.removeListener(listener) }
+            }
+            val showPoster = !firstFrameRendered && !thumbnailPath.isNullOrBlank()
+            if (animationsEnabled) {
+                AnimatedVisibility(visible = showPoster, enter = fadeIn(), exit = fadeOut(tween(700))) {
+                    AmbientPoster(thumbnailPath.orEmpty(), title, nativeBlurGlow, animationsEnabled)
+                }
+            } else if (showPoster) {
+                AmbientPoster(thumbnailPath.orEmpty(), title, nativeBlurGlow, animationsEnabled)
+            }
             // Spinner + rótulo do estado enquanto prepara/armazena em buffer.
             loadingLabel(playbackState)?.let { label ->
                 Column(
@@ -656,11 +695,7 @@ private fun VideoSurface(
             }
         } else {
             if (!thumbnailPath.isNullOrBlank()) {
-                AsyncImage(
-                    model = thumbnailPath,
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize()
-                )
+                AmbientPoster(thumbnailPath, title, nativeBlurGlow, animationsEnabled)
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -670,6 +705,71 @@ private fun VideoSurface(
                 Text(statusMessage, color = Color.White, style = MaterialTheme.typography.bodyMedium)
             }
         }
+    }
+}
+
+/**
+ * Capa com "iluminação dinâmica": o pôster nítido no centro e, atrás, uma luz com as cores dele
+ * preenchendo as bordas (em vez de faixas pretas).
+ * - [nativeBlur] e Android 12+: o próprio pôster ampliado com desfoque nativo (Modifier.blur).
+ * - Senão (versão compatível): o pôster decodificado minúsculo (24 px) e ampliado com filtro —
+ *   a ampliação já espalha as cores; roda em qualquer versão e é leve.
+ * [animate] liga a luz "respirando" (pulso lento), vinculada ao toggle Animações.
+ */
+@Composable
+private fun AmbientPoster(url: String, title: String, nativeBlur: Boolean, animate: Boolean) {
+    val useNativeBlur = nativeBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val glowAlpha = if (animate) {
+        val transition = rememberInfiniteTransition(label = "ambient-glow")
+        transition.animateFloat(
+            initialValue = 0.55f,
+            targetValue = 0.9f,
+            animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "ambient-glow-alpha"
+        ).value
+    } else {
+        0.75f
+    }
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        val glowModifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                alpha = glowAlpha
+                scaleX = 1.2f
+                scaleY = 1.2f
+            }
+        if (useNativeBlur) {
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = glowModifier.blur(72.dp, BlurredEdgeTreatment.Unbounded)
+            )
+        } else {
+            val context = LocalContext.current
+            val tiny = remember(url) { ImageRequest.Builder(context).data(url).size(24).build() }
+            AsyncImage(
+                model = tiny,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.High,
+                modifier = glowModifier
+            )
+        }
+        // Vinheta: escurece as bordas e dá contraste ao pôster, spinner e textos.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Brush.radialGradient(0f to Color(0x22000000), 1f to Color(0xCC000000)))
+        )
+        AsyncImage(
+            model = url,
+            contentDescription = title,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize().padding(vertical = 28.dp)
+        )
+        // Leve escurecimento geral para o spinner/rótulo por cima continuarem legíveis.
+        Box(modifier = Modifier.fillMaxSize().background(Color(0x40000000)))
     }
 }
 

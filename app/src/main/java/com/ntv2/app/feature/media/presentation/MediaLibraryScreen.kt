@@ -116,6 +116,11 @@ import com.ntv2.app.feature.media.presentation.state.MediaLibraryEmptyState
 import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryAction
 import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryViewModel
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -478,6 +483,7 @@ fun MediaLibraryScreen(
                     viewModel.onAction(MediaLibraryAction.OpenVideo(media))
                 },
                 onRestart = { viewModel.onAction(MediaLibraryAction.RestartVideo(media)) },
+                isTv = adaptive.isTv,
                 onDismiss = {
                     detailsMedia = null
                     viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
@@ -1733,7 +1739,8 @@ private fun MovieDetailsOverlay(
     onDismiss: () -> Unit,
     playLoading: Boolean = false,
     playFailed: Boolean = false,
-    onRestart: () -> Unit = {}
+    onRestart: () -> Unit = {},
+    isTv: Boolean = true
 ) {
     BackHandler(enabled = true) { onDismiss() }
     val playFocus = remember { FocusRequester() }
@@ -1766,7 +1773,9 @@ private fun MovieDetailsOverlay(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
                     playLoading = playLoading,
                     playFailed = playFailed,
-                    onRestart = onRestart
+                    onRestart = onRestart,
+                    showBackButton = isTv,
+                    fillActions = !isTv
                 )
             }
         } else {
@@ -1791,9 +1800,36 @@ private fun MovieDetailsOverlay(
                     .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp),
                 playLoading = playLoading,
                 playFailed = playFailed,
-                onRestart = onRestart
+                onRestart = onRestart,
+                showBackButton = isTv
             )
         }
+        // Celular: fechar pelo X no canto superior esquerdo (mesmo padrão do player), em vez do
+        // botão "Voltar" na linha de ações — que não cabia ao lado de Continuar e Recomeçar.
+        if (!isTv) {
+            DetailsCloseButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
+                    .padding(12.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailsCloseButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(Color(0x80000000))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Icons.Filled.Close, contentDescription = "Fechar", tint = Color.White, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -1813,7 +1849,9 @@ private fun DetailsInfo(
     modifier: Modifier = Modifier,
     playLoading: Boolean = false,
     playFailed: Boolean = false,
-    onRestart: () -> Unit = {}
+    onRestart: () -> Unit = {},
+    showBackButton: Boolean = true,
+    fillActions: Boolean = false
 ) {
     val title = details?.title ?: media.title
     val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
@@ -1846,7 +1884,11 @@ private fun DetailsInfo(
             )
         }
         if (actionsFirst) {
-            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart)
+            DetailsActionRow(
+                media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
+                showBackButton = showBackButton,
+                fillWidth = fillActions
+            )
         }
         details?.genres?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
@@ -1887,7 +1929,11 @@ private fun DetailsInfo(
         }
 
         if (!actionsFirst) {
-            DetailsActionRow(media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart)
+            DetailsActionRow(
+                media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
+                showBackButton = showBackButton,
+                fillWidth = fillActions
+            )
         }
     }
 }
@@ -1933,9 +1979,16 @@ private fun DetailsActionRow(
     onDismiss: () -> Unit,
     playLoading: Boolean = false,
     playFailed: Boolean = false,
-    onRestart: () -> Unit = {}
+    onRestart: () -> Unit = {},
+    showBackButton: Boolean = true,
+    // Celular em pé: os botões dividem a largura toda (nunca cortam na lateral).
+    fillWidth: Boolean = false
 ) {
-    Row(modifier = Modifier.focusGroup(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    Row(
+        modifier = Modifier.focusGroup().then(if (fillWidth) Modifier.fillMaxWidth() else Modifier),
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        val share = if (fillWidth) Modifier.weight(1f) else Modifier
         DetailButton(
             icon = Icons.Filled.PlayArrow,
             label = when {
@@ -1946,16 +1999,18 @@ private fun DetailsActionRow(
                 else -> "Assistir"
             },
             primary = true,
-            modifier = Modifier.focusRequester(playFocus),
+            modifier = share.focusRequester(playFocus),
             loading = playLoading,
             onClick = onPlay
         )
         // Vídeo parado no meio: "Recomeçar" zera o progresso e toca do início (útil também quando
         // o download a partir do ponto salvo não anda).
         if (media.progress > 0f && !playLoading) {
-            DetailButton(icon = Icons.Filled.Replay, label = "Recomeçar", primary = false, onClick = onRestart)
+            DetailButton(icon = Icons.Filled.Replay, label = "Recomeçar", primary = false, onClick = onRestart, modifier = share)
         }
-        DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss)
+        if (showBackButton) {
+            DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss, modifier = share)
+        }
     }
 }
 
@@ -1984,7 +2039,7 @@ private fun DetailButton(
             .background(bg)
             .then(if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
             .padding(horizontal = 24.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (loading) {

@@ -59,6 +59,8 @@ class DefaultPlaybackCoordinator(
     private var observeJob: Job? = null
     private var downloadJob: Job? = null
     private var progressJob: Job? = null
+    // Fechamento/remoção do arquivo da sessão anterior (roda em segundo plano).
+    private var cleanupJob: Job? = null
     private var wasPlayingBeforeStop: Boolean = false
     // Recuperação de troca de áudio: se a faixa escolhida não puder ser decodificada, o player dá
     // erro; voltamos ao áudio padrão e retomamos da mesma posição em vez de travar.
@@ -134,6 +136,11 @@ class DefaultPlaybackCoordinator(
 
     override suspend fun prepare(media: PlaybackMedia) {
         stopInternal(closeSession = true)
+        // Espera o fechamento da sessão anterior ANTES de reabrir: no retry o arquivo é o mesmo, e
+        // um close que terminasse depois do open apagava o estado recém-aberto (caminho vazio →
+        // "Arquivo não encontrado" → Source error). Vale também para sair e reabrir o mesmo vídeo.
+        cleanupJob?.join()
+        cleanupJob = null
         cacheManager.trimIfNeeded()
 
         snapshotState.update {
@@ -233,7 +240,9 @@ class DefaultPlaybackCoordinator(
     override fun retry() {
         val media = currentMedia ?: return
         val position = exoPlayer?.currentPosition ?: media.startPositionMs
-        scope.launch {
+        // Na Main: o prepare mexe no ExoPlayer, que só pode ser acessado na thread dele. Na scope de
+        // IO o app fechava ("Player is accessed on the wrong thread") quando o watchdog reiniciava.
+        scope.launch(Dispatchers.Main) {
             prepare(media.copy(startPositionMs = position))
         }
     }
@@ -423,7 +432,7 @@ class DefaultPlaybackCoordinator(
 
         if (closeSession && media != null) {
             val fileId = media.fileId
-            scope.launch {
+            cleanupJob = scope.launch {
                 // Ao sair da reprodução, remove o arquivo do TDLib para não acumular no
                 // armazenamento (o Fire TV tem pouco espaço). Nas demais paradas, apenas fecha.
                 if (deleteFile) {

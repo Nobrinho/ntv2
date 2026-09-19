@@ -222,6 +222,27 @@ fun MediaLibraryScreen(
         if (coverUrls.isNotEmpty()) com.ntv2.app.core.ui.prefetchCovers(coverContext, coverUrls)
     }
 
+    // Paginação por ROLAGEM (vale para dedo e controle; na TV o foco também dispara). Sem isto, no
+    // celular a próxima página só vinha pelo card "Carregar mais" e a página de cima nunca vinha.
+    LaunchedEffect(gridState, state.items.size, state.hasMore, state.hasPrevious) {
+        snapshotFlow {
+            val info = gridState.layoutInfo
+            val visible = info.visibleItemsInfo
+            (visible.firstOrNull()?.index ?: 0) to (visible.lastOrNull()?.index ?: 0)
+        }
+            .distinctUntilChanged()
+            .collect { (firstVisible, lastVisible) ->
+                val total = state.items.size
+                if (total == 0) return@collect
+                if (state.hasMore && lastVisible >= total - AUTO_LOAD_THRESHOLD) {
+                    viewModel.onAction(MediaLibraryAction.LoadMore)
+                }
+                if (state.hasPrevious && firstVisible < AUTO_LOAD_THRESHOLD) {
+                    viewModel.onAction(MediaLibraryAction.LoadPrevious)
+                }
+            }
+    }
+
     LaunchedEffect(state.activeChannelId, state.isLoading) {
         val channelId = state.activeChannelId ?: return@LaunchedEffect
         if (state.isLoading || channelId == topAlignedChannel) return@LaunchedEffect

@@ -11,6 +11,10 @@ android {
 
     defaultConfig {
         minSdk = 23
+        // Só as ABIs que o app empacota (ARM); x86/x86_64 eram compiladas e descartadas.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     ndkVersion = "26.1.10909125"

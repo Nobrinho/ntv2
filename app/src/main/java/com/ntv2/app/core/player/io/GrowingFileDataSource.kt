@@ -39,6 +39,7 @@ private const val NUDGE_INTERVAL_MS = 2_000L
 private const val EVICT_CHECK_STEP_BYTES = 8L * 1024L * 1024L
 private const val TAG = "NtvDiskWindow"
 private const val MB = 1024L * 1024L
+private const val STALL_LOG_AFTER_MS = 6_000L
 
 private class GrowingFileDataSource(
     private val partialFileAccessor: PartialFileAccessor,
@@ -200,6 +201,7 @@ private class GrowingFileDataSource(
         var lastDownloaded = partialFileAccessor.downloadedBytes(fileId)
         var lastProgressAt = SystemClock.elapsedRealtime()
         var lastNudgeAt = 0L
+        var stallLogged = false
         while (true) {
             if (partialFileAccessor.isComplete(fileId)) return true
             if (partialFileAccessor.downloadedPrefixFrom(fileId, position) > 0L) return true
@@ -221,6 +223,21 @@ private class GrowingFileDataSource(
             if (downloaded > lastDownloaded) {
                 lastDownloaded = downloaded
                 lastProgressAt = SystemClock.elapsedRealtime()
+                stallLogged = false
+            }
+            // Diagnóstico: download parado há um tempo — registra o que o TDLib reporta (o TDLib
+            // não loga nada), para descobrir por que o trecho pedido não chega.
+            if (!stallLogged && SystemClock.elapsedRealtime() - lastProgressAt > STALL_LOG_AFTER_MS) {
+                stallLogged = true
+                Log.i(
+                    "NtvDownload",
+                    "parado fileId=$fileId pos=${position / MB}MB base=${downloadBaseOffset / MB}MB " +
+                        "baixado=${downloaded / MB}MB offsetTdlib=${partialFileAccessor.contiguousReadableStart(fileId) / MB}MB " +
+                        "fimContiguo=${partialFileAccessor.contiguousReadableEnd(fileId) / MB}MB " +
+                        "total=${(partialFileAccessor.expectedBytes(fileId) ?: 0L) / MB}MB " +
+                        "completo=${partialFileAccessor.isComplete(fileId)} espacoOk=${hasEnoughFreeSpace()} " +
+                        "liberadoAte=${partialFileAccessor.evictedEnd(fileId) / MB}MB"
+                )
             }
             if (SystemClock.elapsedRealtime() - lastProgressAt > stallTimeoutMs) return false
         }

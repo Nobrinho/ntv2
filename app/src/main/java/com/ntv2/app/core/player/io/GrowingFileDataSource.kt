@@ -1,4 +1,6 @@
-﻿package com.ntv2.app.core.player.io
+﻿@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
+package com.ntv2.app.core.player.io
 
 import android.net.Uri
 import android.os.SystemClock

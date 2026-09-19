@@ -1,4 +1,6 @@
-﻿package com.ntv2.app.core.player.session
+﻿@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
+package com.ntv2.app.core.player.session
 
 import android.net.Uri
 import androidx.media3.common.C

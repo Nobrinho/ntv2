@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.ntv2.app.feature.playback.presentation
 
 import android.app.Activity

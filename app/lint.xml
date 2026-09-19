@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- TdApi.java é gerado pelo TDLib (~4,7 MB) e excede o limite de análise do lint. -->
+    <issue id="LintError">
+        <ignore path="src/main/java/org/drinkless/tdlib/TdApi.java" />
+    </issue>
+</lint>

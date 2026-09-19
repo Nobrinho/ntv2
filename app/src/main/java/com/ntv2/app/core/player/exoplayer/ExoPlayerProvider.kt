@@ -1,8 +1,9 @@
-﻿package com.ntv2.app.core.player.exoplayer
+﻿@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
+package com.ntv2.app.core.player.exoplayer
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -16,7 +17,6 @@ class DefaultExoPlayerProvider(
     private val context: Context
 ) : ExoPlayerProvider {
 
-    @OptIn(UnstableApi::class)
     override fun create(): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(

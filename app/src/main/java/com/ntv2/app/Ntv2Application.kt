@@ -91,6 +91,8 @@ class Ntv2Application : Application(), ImageLoaderFactory {
     }
 
     /** Aceita o certificado se QUALQUER trust manager (sistema ou raízes embutidas) confiar nele. */
+    // Não relaxa a validação: só delega aos validadores padrão (sistema + raízes Amazon/Starfield).
+    @android.annotation.SuppressLint("CustomX509TrustManager")
     private class CompositeX509TrustManager(
         private val managers: List<X509TrustManager>
     ) : X509TrustManager {

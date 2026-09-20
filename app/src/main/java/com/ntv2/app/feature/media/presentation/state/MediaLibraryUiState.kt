@@ -70,6 +70,10 @@ data class MediaLibraryUiState(
     val enabledChannels: List<ChannelChipUi> = emptyList(),
     /** Exibir capas (pôsteres/thumbs) — toggle das Configurações. */
     val showCovers: Boolean = true,
+    /** Animação do card enquanto a capa carrega (escolhida nas Configurações). */
+    val cardLoadingStyle: com.ntv2.app.core.ui.CardLoadingStyle = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT,
+    /** Animações ligadas nas Configurações (também vale para a animação do card). */
+    val animationsEnabled: Boolean = true,
     /** Exibir fotos do elenco na tela de detalhes — toggle das Configurações. */
     val castPhotos: Boolean = true,
     val isLoading: Boolean = false,

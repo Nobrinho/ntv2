@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.ntv2.app.core.ui.CardLoadingStyle
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -21,6 +23,7 @@ class UserPreferencesDataStore(
     private val animationsKey = booleanPreferencesKey("animations_enabled")
     private val castPhotosKey = booleanPreferencesKey("cast_photos")
     private val nativeBlurGlowKey = booleanPreferencesKey("ambient_native_blur")
+    private val cardLoadingStyleKey = stringPreferencesKey("card_loading_style")
 
     val minDurationMinutes: Flow<Int> = context.dataStore.data.map { prefs: Preferences ->
         prefs[minDurationKey] ?: 15
@@ -68,6 +71,15 @@ class UserPreferencesDataStore(
      * Iluminação da capa no carregamento do player: true = desfoque nativo (Android 12+);
      * false = versão compatível (pôster minúsculo ampliado), que roda em qualquer aparelho.
      */
+    /** Animação do card enquanto a capa carrega (nome do CardLoadingStyle). */
+    val cardLoadingStyle: Flow<String> = context.dataStore.data.map {
+        it[cardLoadingStyleKey] ?: CardLoadingStyle.DEFAULT.name
+    }
+
+    suspend fun setCardLoadingStyle(value: String) {
+        context.dataStore.edit { prefs -> prefs[cardLoadingStyleKey] = value }
+    }
+
     val nativeBlurGlow: Flow<Boolean> = context.dataStore.data.map { it[nativeBlurGlowKey] ?: true }
 
     suspend fun setNativeBlurGlow(value: Boolean) {

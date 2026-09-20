@@ -268,17 +268,21 @@ fun AppNavHost(
             val minDuration by settings.minDurationMinutes.collectAsState(initial = 15)
             val castPhotos by settings.castPhotos.collectAsState(initial = true)
             val nativeBlurGlow by settings.nativeBlurGlow.collectAsState(initial = true)
+            val cardLoadingStyleName by settings.cardLoadingStyle
+                .collectAsState(initial = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT.name)
             SettingsScreen(
                 showCovers = showCovers,
                 animationsEnabled = animationsEnabled,
                 castPhotos = castPhotos,
                 nativeBlurGlow = nativeBlurGlow,
                 minDurationMinutes = minDuration,
+                cardLoadingStyle = com.ntv2.app.core.ui.CardLoadingStyle.fromName(cardLoadingStyleName),
                 onToggleCovers = { scope.launch { settings.updateShowCovers(it) } },
                 onToggleAnimations = { scope.launch { settings.updateAnimationsEnabled(it) } },
                 onToggleCastPhotos = { scope.launch { settings.updateCastPhotos(it) } },
                 onToggleNativeBlurGlow = { scope.launch { settings.updateNativeBlurGlow(it) } },
                 onChangeMinDuration = { scope.launch { settings.updateMinDurationMinutes(it) } },
+                onChangeCardLoadingStyle = { style -> scope.launch { settings.updateCardLoadingStyle(style.name) } },
                 onManageChannels = {
                     navController.navigate(RoutePath.CHANNEL_SELECTION) { launchSingleTop = true }
                 },

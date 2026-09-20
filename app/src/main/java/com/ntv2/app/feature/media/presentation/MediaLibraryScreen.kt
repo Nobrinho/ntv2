@@ -222,6 +222,7 @@ fun MediaLibraryScreen(
         if (coverUrls.isNotEmpty()) com.ntv2.app.core.ui.prefetchCovers(coverContext, coverUrls)
     }
 
+
     // Paginação por ROLAGEM (vale para dedo e controle; na TV o foco também dispara). Sem isto, no
     // celular a próxima página só vinha pelo card "Carregar mais" e a página de cima nunca vinha.
     LaunchedEffect(gridState, state.items.size, state.hasMore, state.hasPrevious) {
@@ -411,6 +412,8 @@ fun MediaLibraryScreen(
                         LazyMediaGrid(
                             items = state.items,
                             showCovers = state.showCovers,
+                            cardLoadingStyle = state.cardLoadingStyle,
+                            animationsEnabled = state.animationsEnabled,
                             lowRamPlaybackWarnings = lowRamPlaybackWarnings,
                             hasMore = state.hasMore,
                             loadingMore = loadMoreRequested,

@@ -73,6 +73,14 @@ import com.ntv2.app.core.ui.MainTab
 import com.ntv2.app.core.ui.NavRail
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.filled.Animation
+import com.ntv2.app.core.ui.CardLoadingPlaceholder
+import com.ntv2.app.core.ui.CardLoadingStyle
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 
 private val BRAND = Color(0xFF2BEE34)
 
@@ -83,11 +91,13 @@ fun SettingsScreen(
     castPhotos: Boolean,
     nativeBlurGlow: Boolean = true,
     minDurationMinutes: Int,
+    cardLoadingStyle: CardLoadingStyle = CardLoadingStyle.DEFAULT,
     onToggleCovers: (Boolean) -> Unit,
     onToggleAnimations: (Boolean) -> Unit,
     onToggleCastPhotos: (Boolean) -> Unit,
     onToggleNativeBlurGlow: (Boolean) -> Unit = {},
     onChangeMinDuration: (Int) -> Unit,
+    onChangeCardLoadingStyle: (CardLoadingStyle) -> Unit = {},
     onManageChannels: () -> Unit,
     onOpenListedChannels: () -> Unit,
     onLogout: () -> Unit,
@@ -98,6 +108,7 @@ fun SettingsScreen(
 ) {
     var confirmLogout by remember { mutableStateOf(false) }
     var showPrivacy by remember { mutableStateOf(false) }
+    var showCardLoadingPicker by remember { mutableStateOf(false) }
     val adaptive = rememberAdaptiveLayoutInfo()
     // Um FocusRequester por item; o último focado é lembrado (inclusive ao voltar de outra tela
     // ou fechar um modal), em vez de sempre voltar ao primeiro.
@@ -106,8 +117,8 @@ fun SettingsScreen(
     fun itemMod(index: Int) = Modifier
         .focusRequester(itemFocus[index])
         .onFocusChanged { if (it.isFocused) lastFocusIndex = index }
-    LaunchedEffect(showPrivacy, confirmLogout) {
-        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout) {
+    LaunchedEffect(showPrivacy, confirmLogout, showCardLoadingPicker) {
+        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout && !showCardLoadingPicker) {
             runCatching { itemFocus[lastFocusIndex].requestFocus() }
         }
     }
@@ -186,6 +197,14 @@ fun SettingsScreen(
                         onChange = onChangeMinDuration
                     )
                     NavCard(
+                        icon = Icons.Filled.Animation,
+                        title = "Animação dos cards",
+                        subtitle = "Enquanto a capa carrega: ${cardLoadingStyle.label}",
+                        destructive = false,
+                        modifier = itemMod(4),
+                        onClick = { showCardLoadingPicker = true }
+                    )
+                    NavCard(
                         icon = Icons.Filled.Tv,
                         title = "Seleção de canais",
                         subtitle = "Gerenciar os canais disponíveis",
@@ -224,7 +243,16 @@ fun SettingsScreen(
             )
         }
 
-        if (showPrivacy) {
+        if (showCardLoadingPicker) {
+        CardLoadingPickerOverlay(
+            current = cardLoadingStyle,
+            animationsEnabled = animationsEnabled,
+            onSelect = onChangeCardLoadingStyle,
+            onDismiss = { showCardLoadingPicker = false }
+        )
+    }
+
+    if (showPrivacy) {
             PrivacyPolicyOverlay(onClose = { showPrivacy = false })
         }
 
@@ -627,3 +655,109 @@ private const val PRIVACY_POLICY_TEXT =
     "Esta política pode ser atualizada; a data no topo indica a versão vigente.\n\n" +
     "8. Contato\n" +
     "Dúvidas sobre esta política: nbrplay@outlook.com."
+
+/**
+ * Escolha da animação que o card mostra enquanto a capa não chega. Cada opção traz uma prévia ao
+ * vivo, no mesmo formato do card (2:3), para dar para comparar antes de escolher.
+ */
+@Composable
+private fun CardLoadingPickerOverlay(
+    current: CardLoadingStyle,
+    animationsEnabled: Boolean,
+    onSelect: (CardLoadingStyle) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    BackHandler(enabled = true) { onDismiss() }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xF2050505))
+            .onPreviewKeyEvent { e ->
+                e.type == KeyEventType.KeyUp && (e.key == Key.Back || e.key == Key.Escape) &&
+                    run { onDismiss(); true }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text("Animação dos cards", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Prévia de como o card aparece enquanto a capa carrega.",
+                color = Color(0xFFB0B0B0),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                items(CardLoadingStyle.entries, key = { it.name }) { style ->
+                    CardLoadingOption(
+                        style = style,
+                        selected = style == current,
+                        animationsEnabled = animationsEnabled,
+                        modifier = if (style == current) Modifier.focusRequester(firstFocus) else Modifier,
+                        onClick = { onSelect(style); onDismiss() }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardLoadingOption(
+    style: CardLoadingStyle,
+    selected: Boolean,
+    animationsEnabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        modifier = modifier
+            .width(150.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
+            .border(
+                width = if (focused || selected) 2.dp else 1.dp,
+                color = when {
+                    focused -> Color.White
+                    selected -> BRAND
+                    else -> Color(0x33FFFFFF)
+                },
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CardLoadingPlaceholder(
+            style = style,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .clip(RoundedCornerShape(8.dp)),
+            animate = animationsEnabled,
+            cover = null,
+            preview = true
+        )
+        Text(
+            if (selected) "${style.label} ·" else style.label,
+            color = if (selected) BRAND else Color.White,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1
+        )
+        Text(
+            style.description,
+            color = Color(0xFF9A9A9A),
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 3
+        )
+    }
+}

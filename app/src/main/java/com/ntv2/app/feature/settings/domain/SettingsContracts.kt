@@ -23,6 +23,11 @@ interface SettingsRepository {
 
     /** Iluminação da capa no player: desfoque nativo (true) ou versão compatível (false). */
     val nativeBlurGlow: Flow<Boolean> get() = kotlinx.coroutines.flow.flowOf(true)
+
+    /** Animação do card enquanto a capa não chega (nome do CardLoadingStyle). */
+    val cardLoadingStyle: Flow<String>
+        get() = kotlinx.coroutines.flow.flowOf(com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT.name)
+    suspend fun updateCardLoadingStyle(value: String) = Unit
     suspend fun updateNativeBlurGlow(value: Boolean) = Unit
 }
 
@@ -59,6 +64,12 @@ class DataStoreSettingsRepository(
 
     override suspend fun updateCastPhotos(value: Boolean) {
         dataStore.setCastPhotos(value)
+    }
+
+    override val cardLoadingStyle: Flow<String> = dataStore.cardLoadingStyle
+
+    override suspend fun updateCardLoadingStyle(value: String) {
+        dataStore.setCardLoadingStyle(value)
     }
 
     override val nativeBlurGlow: Flow<Boolean> = dataStore.nativeBlurGlow

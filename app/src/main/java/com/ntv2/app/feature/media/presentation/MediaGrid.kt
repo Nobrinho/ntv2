@@ -67,6 +67,10 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
+import com.ntv2.app.core.ui.CardLoadingStyle
+import com.ntv2.app.core.ui.CardLoadingPlaceholder
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -133,6 +137,8 @@ internal val CARD_TITLE_H = 56.dp
 internal fun LazyMediaGrid(
     items: List<MediaCardUi>,
     showCovers: Boolean,
+    cardLoadingStyle: CardLoadingStyle,
+    animationsEnabled: Boolean,
     lowRamPlaybackWarnings: Boolean,
     hasMore: Boolean,
     loadingMore: Boolean,
@@ -188,6 +194,8 @@ internal fun LazyMediaGrid(
                 MediaCard(
                     media = media,
                     showCover = showCovers,
+                    cardLoadingStyle = cardLoadingStyle,
+                    animationsEnabled = animationsEnabled,
                     showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning(),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -340,6 +348,8 @@ internal fun MediaGridSkeleton(
 internal fun MediaCard(
     media: MediaCardUi,
     showCover: Boolean,
+    cardLoadingStyle: CardLoadingStyle,
+    animationsEnabled: Boolean,
     showPlaybackWarning: Boolean,
     modifier: Modifier,
     onClick: () -> Unit
@@ -372,24 +382,46 @@ internal fun MediaCard(
                     // Loader por card, mas SÓ se demorar (>180ms): cache hit (voltar à grade) e
                     // cargas rápidas mostram a capa direto, sem spinner nem "blink".
                     var loaded by remember(cover) { mutableStateOf(false) }
-                    var showSpinner by remember(cover) { mutableStateOf(false) }
+                    // O blur-up precisa aparecer já (a miniatura tem que baixar ANTES da capa); os
+                    // demais só entram se a capa demorar (>180 ms), para cache hit não piscar.
+                    var showLoading by remember(cover, cardLoadingStyle) {
+                        mutableStateOf(cardLoadingStyle.startsImmediately)
+                    }
+                    var fromMemory by remember(cover) { mutableStateOf(false) }
+                    // Entrada suave da capa: sem isso a troca do placeholder pela imagem "pisca".
+                    val coverAlpha by animateFloatAsState(
+                        targetValue = if (loaded) 1f else 0f,
+                        animationSpec = tween(if (animationsEnabled && !fromMemory) 320 else 0),
+                        label = "cover-alpha"
+                    )
+                    // O placeholder fica ATRÁS e só sai quando a capa termina de aparecer.
+                    if (showLoading && coverAlpha < 1f) {
+                        CardLoadingPlaceholder(
+                            style = cardLoadingStyle,
+                            modifier = Modifier.fillMaxSize(),
+                            animate = animationsEnabled,
+                            cover = cover
+                        )
+                    }
                     AsyncImage(
                         model = cover,
                         contentDescription = media.title,
                         contentScale = ContentScale.Crop,
-                        onState = { if (it.isDone()) loaded = true },
-                        modifier = Modifier.fillMaxSize()
+                        onState = { st ->
+                            // Vindo da memória (rolar de volta), aparece na hora: sem fade a cada card.
+                            if (st is coil.compose.AsyncImagePainter.State.Success &&
+                                st.result.dataSource == coil.decode.DataSource.MEMORY_CACHE
+                            ) {
+                                fromMemory = true
+                            }
+                            if (st.isDone()) loaded = true
+                        },
+                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = coverAlpha }
                     )
-                    LaunchedEffect(cover) {
+                    LaunchedEffect(cover, cardLoadingStyle) {
+                        if (showLoading) return@LaunchedEffect
                         kotlinx.coroutines.delay(180)
-                        if (!loaded) showSpinner = true
-                    }
-                    if (showSpinner && !loaded) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(
-                                color = BRAND_GREEN, strokeWidth = 2.dp, modifier = Modifier.size(24.dp)
-                            )
-                        }
+                        if (!loaded) showLoading = true
                     }
                 } else {
                     Box(

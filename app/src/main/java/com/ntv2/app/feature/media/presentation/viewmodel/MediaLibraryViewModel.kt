@@ -273,6 +273,17 @@ class MediaLibraryViewModel(
             }
         }
         viewModelScope.launch {
+            settingsRepository.animationsEnabled.collect { on ->
+                _uiState.update { it.copy(animationsEnabled = on) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.cardLoadingStyle.collect { name ->
+                val style = com.ntv2.app.core.ui.CardLoadingStyle.fromName(name)
+                _uiState.update { it.copy(cardLoadingStyle = style) }
+            }
+        }
+        viewModelScope.launch {
             settingsRepository.showCovers.collect { show ->
                 _uiState.update { it.copy(showCovers = show) }
             }

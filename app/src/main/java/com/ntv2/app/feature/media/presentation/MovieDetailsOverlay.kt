@@ -30,6 +30,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.ntv2.app.core.ui.trapFocus
+import com.ntv2.app.core.ui.fadeInUpStaggered
+import com.ntv2.app.core.ui.slideInFromRight
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +72,7 @@ internal fun MovieDetailsOverlay(
     details: MovieDetails?,
     showCastPhotos: Boolean,
     lowRamPlaybackWarnings: Boolean,
+    animationsEnabled: Boolean,
     onPlay: () -> Unit,
     onDismiss: () -> Unit,
     playLoading: Boolean = false,
@@ -80,7 +83,11 @@ internal fun MovieDetailsOverlay(
     BackHandler(enabled = true) { onDismiss() }
     val playFocus = remember { FocusRequester() }
 
+    // O fundo é o banner do filme (nunca o pôster): só cai para a capa do card se não houver banner.
     val backdrop = details?.backdropPath ?: media.posterPath ?: media.thumbnailPath
+    // Entrada nº 4 (slide da direita): a arte de fundo entra quando termina de carregar, em vez de
+    // simplesmente aparecer de um quadro para o outro.
+    var backdropLoaded by remember(backdrop) { mutableStateOf(false) }
     LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
 
     // trapFocus: a grade continua composta por trás — o foco não pode escapar para ela.
@@ -93,7 +100,9 @@ internal fun MovieDetailsOverlay(
                     if (backdrop != null) {
                         AsyncImage(
                             model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
+                            onState = { if (it.isDone()) backdropLoaded = true },
                             modifier = Modifier.fillMaxSize()
+                                .slideInFromRight(backdropLoaded, animationsEnabled)
                         )
                     }
                     Box(
@@ -103,7 +112,8 @@ internal fun MovieDetailsOverlay(
                     )
                 }
                 DetailsInfo(
-                    media, details, showCastPhotos, lowRamPlaybackWarnings, playFocus, onPlay, onDismiss,
+                    media, details, showCastPhotos, lowRamPlaybackWarnings, animationsEnabled,
+                    playFocus, onPlay, onDismiss,
                     actionsFirst = false,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
                     playLoading = playLoading,
@@ -117,7 +127,9 @@ internal fun MovieDetailsOverlay(
             if (backdrop != null) {
                 AsyncImage(
                     model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
+                    onState = { if (it.isDone()) backdropLoaded = true },
                     modifier = Modifier.fillMaxSize()
+                        .slideInFromRight(backdropLoaded, animationsEnabled)
                 )
             }
             Box(modifier = Modifier.fillMaxSize().background(
@@ -127,7 +139,8 @@ internal fun MovieDetailsOverlay(
                 Brush.verticalGradient(0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505))
             ))
             DetailsInfo(
-                media, details, showCastPhotos, lowRamPlaybackWarnings, playFocus, onPlay, onDismiss,
+                media, details, showCastPhotos, lowRamPlaybackWarnings, animationsEnabled,
+                playFocus, onPlay, onDismiss,
                 actionsFirst = compactLandscape,
                 modifier = Modifier.fillMaxWidth(0.62f).align(Alignment.CenterStart)
                     // Rolável sempre: ao focar os botões, a coluna rola até eles (nunca ficam cortados).
@@ -177,6 +190,7 @@ internal fun DetailsInfo(
     details: MovieDetails?,
     showCastPhotos: Boolean,
     lowRamPlaybackWarnings: Boolean,
+    animationsEnabled: Boolean,
     playFocus: FocusRequester,
     onPlay: () -> Unit,
     onDismiss: () -> Unit,
@@ -241,8 +255,16 @@ internal fun DetailsInfo(
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.Top
                 ) {
-                    cast.take(8).forEach { c ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(76.dp)) {
+                    // Entrada nº 11 (stagger): os rostos sobem em sequência, um pouco depois do
+                    // anterior, em vez de a fileira inteira piscar junto.
+                    var castVisible by remember(cast) { mutableStateOf(false) }
+                    LaunchedEffect(cast) { castVisible = true }
+                    cast.take(8).forEachIndexed { index, c ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.width(76.dp)
+                                .fadeInUpStaggered(castVisible, index, animationsEnabled)
+                        ) {
                             if (c.photoUrl != null) {
                                 AsyncImage(
                                     model = c.photoUrl, contentDescription = c.name, contentScale = ContentScale.Crop,

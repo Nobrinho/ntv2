@@ -475,6 +475,7 @@ fun MediaLibraryScreen(
                 details = viewModel.detailsFor(media.mediaId),
                 showCastPhotos = state.castPhotos,
                 lowRamPlaybackWarnings = lowRamPlaybackWarnings,
+                animationsEnabled = state.animationsEnabled,
                 onPlay = {
                     // Não fecha os detalhes aqui: fechar antes da navegação (assíncrona) fazia a grid
                     // "piscar" no intervalo. O player cobre o overlay; ao voltar, os detalhes reabrem

@@ -30,6 +30,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.ntv2.app.core.ui.trapFocus
+import com.ntv2.app.core.ui.tmdbAtWidth
+import com.ntv2.app.core.ui.imageTiming
 import com.ntv2.app.core.ui.fadeInUpStaggered
 import com.ntv2.app.core.ui.slideInFromRight
 import androidx.compose.runtime.getValue
@@ -84,10 +86,21 @@ internal fun MovieDetailsOverlay(
     val playFocus = remember { FocusRequester() }
 
     // O fundo é o banner do filme (nunca o pôster): só cai para a capa do card se não houver banner.
-    val backdrop = details?.backdropPath ?: media.posterPath ?: media.thumbnailPath
+    val backdrop = details?.backdropPath?.let { tmdbAtWidth(it, "w780") }
+        ?: media.posterPath ?: media.thumbnailPath
     // Entrada nº 4 (slide da direita): a arte de fundo entra quando termina de carregar, em vez de
     // simplesmente aparecer de um quadro para o outro.
     var backdropLoaded by remember(backdrop) { mutableStateOf(false) }
+    val backdropTiming = imageTiming("fundo", backdrop)
+    // Registra o que a tela TEM no instante em que abre: se o endereço já existe aqui e a imagem só
+    // aparece 30 s depois, o atraso está no carregamento; se vier "sem imagem", está nos metadados.
+    LaunchedEffect(media.mediaId, backdrop, details) {
+        android.util.Log.i(
+            "NtvImg",
+            "detalhes ${media.mediaId}: fundo=${backdrop ?: "sem imagem"} " +
+                "elenco=${details?.cast?.count { it.photoUrl != null } ?: 0} fotos"
+        )
+    }
     LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
 
     // trapFocus: a grade continua composta por trás — o foco não pode escapar para ela.
@@ -100,7 +113,7 @@ internal fun MovieDetailsOverlay(
                     if (backdrop != null) {
                         AsyncImage(
                             model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
-                            onState = { if (it.isDone()) backdropLoaded = true },
+                            onState = { backdropTiming(it); if (it.isDone()) backdropLoaded = true },
                             modifier = Modifier.fillMaxSize()
                                 .slideInFromRight(backdropLoaded, animationsEnabled)
                         )
@@ -127,7 +140,7 @@ internal fun MovieDetailsOverlay(
             if (backdrop != null) {
                 AsyncImage(
                     model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
-                    onState = { if (it.isDone()) backdropLoaded = true },
+                    onState = { backdropTiming(it); if (it.isDone()) backdropLoaded = true },
                     modifier = Modifier.fillMaxSize()
                         .slideInFromRight(backdropLoaded, animationsEnabled)
                 )
@@ -266,8 +279,10 @@ internal fun DetailsInfo(
                                 .fadeInUpStaggered(castVisible, index, animationsEnabled)
                         ) {
                             if (c.photoUrl != null) {
+                                val castTiming = imageTiming("elenco#$index", c.photoUrl)
                                 AsyncImage(
                                     model = c.photoUrl, contentDescription = c.name, contentScale = ContentScale.Crop,
+                                    onState = castTiming,
                                     modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name))
                                 )
                             } else {

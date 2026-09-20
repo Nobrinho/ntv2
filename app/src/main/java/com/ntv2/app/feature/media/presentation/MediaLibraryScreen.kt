@@ -222,6 +222,11 @@ fun MediaLibraryScreen(
         if (coverUrls.isNotEmpty()) com.ntv2.app.core.ui.prefetchCovers(coverContext, coverUrls)
     }
 
+    // Com os Detalhes abertos, a arte de fundo e o elenco é que importam: solta a fila do prefetch
+    // para eles não entrarem atrás dela.
+    LaunchedEffect(detailsMedia?.mediaId) {
+        if (detailsMedia != null) com.ntv2.app.core.ui.cancelCoverPrefetch()
+    }
 
     // Paginação por ROLAGEM (vale para dedo e controle; na TV o foco também dispara). Sem isto, no
     // celular a próxima página só vinha pelo card "Carregar mais" e a página de cima nunca vinha.

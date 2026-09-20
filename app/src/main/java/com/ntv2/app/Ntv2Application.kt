@@ -31,8 +31,9 @@ class Ntv2Application : Application(), ImageLoaderFactory {
     // ImageLoader global do Coil, otimizado para TV (Fire TV tem RAM/CPU limitados):
     // - RGB_565 nas capas: metade da memória por bitmap.
     // - Sem crossfade: evita frames extras de fade ao rolar a grade.
-    // - Cache de memória (25% da RAM) + disco (1% do volume, 16–80 MB): menos re-decode sem
-    //   disputar espaço com os vídeos (a Fire TV tem ~5 GB livres; eram 200 MB fixos).
+    // - Cache de memória (25% da RAM) + disco (3% do volume, 64–256 MB): menos re-decode sem
+    //   disputar espaço com os vídeos. Já foi 1%/80 MB, mas o pré-carregamento das capas enchia
+    //   esse teto e expulsava o banner e o elenco dos Detalhes, que voltavam a baixar toda vez.
     // - OkHttp com TrustManager que confia nas CAs do sistema + raízes Amazon/Starfield
     //   (o image.tmdb.org usa CloudFront/Amazon; alguns aparelhos não têm essas raízes).
     override fun newImageLoader(): ImageLoader =
@@ -53,9 +54,9 @@ class Ntv2Application : Application(), ImageLoaderFactory {
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    .maxSizePercent(0.01)
-                    .minimumMaxSizeBytes(16L * 1024 * 1024)
-                    .maximumMaxSizeBytes(80L * 1024 * 1024)
+                    .maxSizePercent(0.03)
+                    .minimumMaxSizeBytes(64L * 1024 * 1024)
+                    .maximumMaxSizeBytes(256L * 1024 * 1024)
                     .build()
             }
             .build()
@@ -77,14 +78,25 @@ class Ntv2Application : Application(), ImageLoaderFactory {
             val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(composite), null) }
             OkHttpClient.Builder()
                 .dispatcher(coverDispatcher())
+                .applyImageTimeouts()
                 .sslSocketFactory(ssl.socketFactory, composite)
                 .dns(Ipv4PreferredDns)
                 .build()
         }.getOrElse {
             android.util.Log.e("Ntv2Ssl", "Falha ao montar OkHttp com CAs embutidas; usando padrão", it)
-            OkHttpClient.Builder().dispatcher(coverDispatcher()).build()
+            OkHttpClient.Builder().dispatcher(coverDispatcher()).applyImageTimeouts().build()
         }
     }
+
+    /**
+     * Sem prazo, uma conexão que ficou pendurada segura o pedido por minutos — era isso que deixava
+     * a arte da tela de Detalhes (a única imagem que não está em cache) sem aparecer. Com prazo, o
+     * pedido falha rápido e a próxima tentativa costuma pegar uma conexão boa.
+     */
+    private fun OkHttpClient.Builder.applyImageTimeouts(): OkHttpClient.Builder = this
+        .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
 
     // O padrão do OkHttp é 5 requisições simultâneas por servidor: todas as capas vêm do
     // image.tmdb.org e carregavam em fila de 5 em 5. O TMDB usa HTTP/2 (multiplexa numa conexão).

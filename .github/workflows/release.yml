@@ -71,7 +71,10 @@ jobs:
           "$APKSIGNER" verify --verbose "$SOURCE_APK"
           VERSION_CODE=$(jq -r '.elements[0].versionCode' "$METADATA")
           VERSION_NAME=$(jq -r '.elements[0].versionName' "$METADATA")
-          test "$RELEASE_TAG" = "v$VERSION_NAME"
+          if [ "$RELEASE_TAG" != "v$VERSION_NAME" ]; then
+            echo "::error::A tag $RELEASE_TAG não bate com o versionName $VERSION_NAME do app/build.gradle.kts (esperado v$VERSION_NAME)." >&2
+            exit 1
+          fi
           PREVIOUS_MANIFEST="$RUNNER_TEMP/previous-update.json"
           PREVIOUS_STATUS=$(curl --silent --show-error --location \
             --output "$PREVIOUS_MANIFEST" --write-out '%{http_code}' \
@@ -88,7 +91,10 @@ jobs:
               exit 1
               ;;
           esac
-          test "$VERSION_CODE" -gt "$PREVIOUS_CODE"
+          if [ "$VERSION_CODE" -le "$PREVIOUS_CODE" ]; then
+            echo "::error::versionCode $VERSION_CODE precisa ser maior que o publicado ($PREVIOUS_CODE). Aumente versionCode no app/build.gradle.kts." >&2
+            exit 1
+          fi
           APK_NAME="ntv-$VERSION_NAME.apk"
           cp "$SOURCE_APK" "$APK_NAME"
           APK_SIZE=$(stat -c%s "$APK_NAME")

@@ -185,6 +185,9 @@ internal fun LazyMediaGrid(
             columns = StaggeredGridCells.Fixed(columns),
             state = state,
             modifier = Modifier.fillMaxSize(),
+            // Folga nas bordas: o card focado cresce 5% e ganha o aro verde; sem isso as colunas
+            // e linhas das pontas cortavam o destaque.
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
             verticalItemSpacing = GRID_GAP
         ) {

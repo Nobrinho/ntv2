@@ -678,11 +678,15 @@ internal fun SearchResultRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // Recuo + cantos arredondados: o destaque acompanha o raio da lista (antes era
+            // quadrado por dentro e cortado pelo arredondado de fora).
+            .padding(horizontal = 6.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x26FFFFFF) else Color.Transparent)
-            .then(if (focused) Modifier.border(2.dp, Color.White) else Modifier)
-            .padding(horizontal = 24.dp, vertical = 10.dp),
+            .then(if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
+            .padding(horizontal = 18.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

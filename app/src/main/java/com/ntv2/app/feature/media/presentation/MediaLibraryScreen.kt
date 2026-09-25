@@ -343,7 +343,18 @@ fun MediaLibraryScreen(
                         channelsFocus = railChannelsFocus,
                         settingsFocus = railSettingsFocus,
                         searchActive = false,
+                        homeActive = true,
                         showClearFilter = false,
+                        // Já na grade: volta ao topo e foca o 1º card.
+                        onHome = {
+                            scope.launch {
+                                runCatching { gridState.scrollToItem(0) }
+                                withFrameNanos { }
+                                state.items.firstOrNull()?.mediaId?.let { first ->
+                                    runCatching { cardFocusRequesters[first]?.requestFocus() }
+                                }
+                            }
+                        },
                         onSearch = { searching = true },
                         onClearFilter = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
                         onChannels = { pickerFromRail = true; channelPicker = true },

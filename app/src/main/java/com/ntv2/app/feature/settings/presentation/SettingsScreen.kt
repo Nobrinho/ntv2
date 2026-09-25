@@ -142,6 +142,7 @@ fun SettingsScreen(
             if (useTvLayout) {
                 NavRail(
                     settingsActive = true,
+                    onHome = onOpenLibrary,
                     onSearch = onSearch,
                     onChannels = onOpenListedChannels,
                     onRefresh = onRefresh,

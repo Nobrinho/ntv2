@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterAltOff
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -139,7 +140,7 @@ fun RailButton(
     }
 }
 
-/** Rail de navegação da Biblioteca (Busca/Canais/Atualizar/Config). */
+/** Rail de navegação (Início/Busca/Canais/Atualizar/Config). */
 @Composable
 fun NavRail(
     firstItemFocus: FocusRequester? = null,
@@ -147,7 +148,10 @@ fun NavRail(
     settingsFocus: FocusRequester? = null,
     searchActive: Boolean = false,
     settingsActive: Boolean = false,
+    // Na Biblioteca o Início fica destacado e leva ao topo da grade; nas outras telas, volta a ela.
+    homeActive: Boolean = false,
     showClearFilter: Boolean = false,
+    onHome: () -> Unit = {},
     onSearch: () -> Unit,
     onClearFilter: () -> Unit = {},
     onChannels: () -> Unit,
@@ -155,6 +159,7 @@ fun NavRail(
     onSettings: () -> Unit
 ) {
     RailColumn(enterFocus = firstItemFocus?.let { f -> { f } }) {
+        RailButton(icon = Icons.Filled.Home, label = "Início", highlighted = homeActive, onClick = onHome)
         RailButton(
             icon = Icons.Filled.Search,
             label = "Busca",

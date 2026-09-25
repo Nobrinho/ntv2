@@ -72,7 +72,22 @@ jobs:
           VERSION_CODE=$(jq -r '.elements[0].versionCode' "$METADATA")
           VERSION_NAME=$(jq -r '.elements[0].versionName' "$METADATA")
           test "$RELEASE_TAG" = "v$VERSION_NAME"
-          PREVIOUS_CODE=$(curl -fsS "https://nobrinho.github.io/ntv2/update.json" | jq -r '.versionCode') || PREVIOUS_CODE=0
+          PREVIOUS_MANIFEST="$RUNNER_TEMP/previous-update.json"
+          PREVIOUS_STATUS=$(curl --silent --show-error --location \
+            --output "$PREVIOUS_MANIFEST" --write-out '%{http_code}' \
+            "https://nobrinho.github.io/ntv2/update.json")
+          case "$PREVIOUS_STATUS" in
+            200)
+              PREVIOUS_CODE=$(jq -er '.versionCode | numbers' "$PREVIOUS_MANIFEST")
+              ;;
+            404)
+              PREVIOUS_CODE=0
+              ;;
+            *)
+              echo "Não foi possível consultar a versão publicada (HTTP $PREVIOUS_STATUS)." >&2
+              exit 1
+              ;;
+          esac
           test "$VERSION_CODE" -gt "$PREVIOUS_CODE"
           APK_NAME="ntv-$VERSION_NAME.apk"
           cp "$SOURCE_APK" "$APK_NAME"

@@ -47,7 +47,7 @@ class ConnectionTester(
 
         val networkType = networkType()
         r = r.copy(
-            network = networkType?.let { CheckResult.Ok(it) } ?: CheckResult.Failed("Sem rede conectada"),
+            network = networkType?.let { CheckResult.Ok(it) } ?: CheckResult.Failed("Sem rede"),
             internet = CheckResult.Running
         )
         emit(r)
@@ -59,21 +59,21 @@ class ConnectionTester(
 
         val internetMs = latencyMs(INTERNET_PROBE_URL)
         r = r.copy(
-            internet = internetMs?.let { CheckResult.Ok("$it ms", good = it < 300) } ?: CheckResult.Failed("Sem acesso à internet"),
+            internet = internetMs?.let { CheckResult.Ok("$it ms", good = it < 300) } ?: CheckResult.Failed("Sem acesso"),
             telegram = CheckResult.Running
         )
         emit(r)
 
         val telegramMs = runCatching { gateway.pingTelegramMs() }.getOrNull()
         r = r.copy(
-            telegram = telegramMs?.let { CheckResult.Ok("$it ms", good = it < 500) } ?: CheckResult.Failed("Telegram não respondeu"),
+            telegram = telegramMs?.let { CheckResult.Ok("$it ms", good = it < 500) } ?: CheckResult.Failed("Sem resposta"),
             speed = CheckResult.Running
         )
         emit(r)
 
         val mbps = downloadMbps()
         r = r.copy(
-            speed = mbps?.let { CheckResult.Ok(formatMbps(it), good = it >= GOOD_MBPS) } ?: CheckResult.Failed("Não foi possível medir")
+            speed = mbps?.let { CheckResult.Ok(formatMbps(it), good = it >= GOOD_MBPS) } ?: CheckResult.Failed("Falhou")
         )
         val (verdict, good) = verdict(internetMs, telegramMs, mbps)
         emit(r.copy(verdict = verdict, verdictGood = good))

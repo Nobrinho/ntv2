@@ -120,10 +120,6 @@ internal fun GestureAdjustmentOverlay(
         PlayerGestureTarget.Volume -> Alignment.CenterStart
         PlayerGestureTarget.Brightness -> Alignment.CenterEnd
     }
-    val label = when (adjustment.target) {
-        PlayerGestureTarget.Volume -> "Volume"
-        PlayerGestureTarget.Brightness -> "Brilho"
-    }
     val icon = when (adjustment.target) {
         PlayerGestureTarget.Volume -> Icons.AutoMirrored.Filled.VolumeUp
         PlayerGestureTarget.Brightness -> Icons.Filled.Brightness6
@@ -136,21 +132,16 @@ internal fun GestureAdjustmentOverlay(
     ) {
         Column(
             modifier = Modifier
-                .width(86.dp)
+                .width(48.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xB3000000))
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 14.dp),
+                .padding(vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                Text(label, color = Color.White, style = MaterialTheme.typography.bodySmall)
-            }
+            // Só ícone + barra (sem texto): o ícone já diz se é volume ou brilho.
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
             Box(
                 modifier = Modifier
                     .height(96.dp)
@@ -166,11 +157,6 @@ internal fun GestureAdjustmentOverlay(
                         .background(Color.White)
                 )
             }
-            Text(
-                text = "${adjustment.percent}%",
-                color = Color.White,
-                style = MaterialTheme.typography.titleSmall
-            )
         }
     }
 }
@@ -195,6 +181,7 @@ internal fun StreamingControlsOverlay(
     onDismiss: () -> Unit,
     onInteract: () -> Unit,
     onSeek: (Long) -> Unit,
+    onTapSeek: (Long) -> Unit = onSeek,
     onSeekTo: (Long) -> Unit,
     onRestart: () -> Unit,
     onToggle: () -> Unit,
@@ -222,6 +209,7 @@ internal fun StreamingControlsOverlay(
             onDismiss = onDismiss,
             onInteract = onInteract,
             onSeek = onSeek,
+            onTapSeek = onTapSeek,
             onSeekTo = onSeekTo,
             onRestart = onRestart,
             onToggle = onToggle,
@@ -255,6 +243,7 @@ internal fun StreamingControlsOverlay(
         onDismiss = onDismiss,
         onInteract = onInteract,
         onSeek = onSeek,
+        onTapSeek = onTapSeek,
         onSeekTo = onSeekTo,
         onToggle = onToggle,
         onToggleSubtitle = onToggleSubtitle,
@@ -285,6 +274,7 @@ internal fun LandscapeControlsOverlay(
     onDismiss: () -> Unit,
     onInteract: () -> Unit,
     onSeek: (Long) -> Unit,
+    onTapSeek: (Long) -> Unit = onSeek,
     onSeekTo: (Long) -> Unit,
     onToggle: () -> Unit,
     onToggleSubtitle: () -> Unit,
@@ -317,7 +307,7 @@ internal fun LandscapeControlsOverlay(
             .background(Color(0x26000000))
             .then(
                 if (isTv) Modifier.clickable(onClick = onDismiss)
-                else Modifier.tapToSeek(onTap = onDismiss, onSeek = { onSeek(it); onInteract() })
+                else Modifier.tapToSeek(onTap = onDismiss, onSeek = { onTapSeek(it); onInteract() })
             )
     ) {
         Box(
@@ -493,6 +483,7 @@ internal fun PortraitControlsOverlay(
     onDismiss: () -> Unit,
     onInteract: () -> Unit,
     onSeek: (Long) -> Unit,
+    onTapSeek: (Long) -> Unit = onSeek,
     onSeekTo: (Long) -> Unit,
     onRestart: () -> Unit,
     onToggle: () -> Unit,
@@ -508,7 +499,7 @@ internal fun PortraitControlsOverlay(
     Box(
         modifier = modifier
             .background(Color(0x33000000))
-            .tapToSeek(onTap = onDismiss, onSeek = { onSeek(it); onInteract() })
+            .tapToSeek(onTap = onDismiss, onSeek = { onTapSeek(it); onInteract() })
     ) {
         Box(
             modifier = Modifier

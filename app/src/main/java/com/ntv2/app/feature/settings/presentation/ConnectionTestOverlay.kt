@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -94,9 +95,9 @@ internal fun ConnectionTestOverlay(
         ) {
             Text("Teste de conexão", color = Color.White, style = MaterialTheme.typography.titleLarge)
             CheckRow(Icons.Filled.Wifi, "Rede", report.network)
-            CheckRow(Icons.Filled.Cloud, "Internet (latência)", report.internet)
-            CheckRow(Icons.Filled.Send, "Telegram (latência)", report.telegram)
-            CheckRow(Icons.Filled.Speed, "Velocidade de download", report.speed)
+            CheckRow(Icons.Filled.Cloud, "Internet", report.internet)
+            CheckRow(Icons.Filled.Send, "Telegram", report.telegram)
+            CheckRow(Icons.Filled.Speed, "Velocidade", report.speed)
 
             report.verdict?.let { verdict ->
                 val color = if (report.verdictGood) OK_GREEN else WARN_YELLOW
@@ -112,15 +113,28 @@ internal fun ConnectionTestOverlay(
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TestButton(
-                    icon = Icons.Filled.Refresh,
-                    label = if (report.running) "Testando…" else "Testar de novo",
-                    enabled = !report.running,
-                    modifier = Modifier.weight(1f).focusRequester(actionFocus),
-                    onClick = { run++ }
-                )
-                TestButton(icon = Icons.Filled.Close, label = "Fechar", modifier = Modifier.weight(1f), onClick = onClose)
+            // Celular estreito: botões empilhados (lado a lado o "Testar de novo" era cortado).
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val retry: @Composable (Modifier) -> Unit = { m ->
+                    TestButton(
+                        icon = Icons.Filled.Refresh,
+                        label = if (report.running) "Testando…" else "Testar de novo",
+                        enabled = !report.running,
+                        modifier = m.focusRequester(actionFocus),
+                        onClick = { run++ }
+                    )
+                }
+                if (maxWidth < 400.dp) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        retry(Modifier.fillMaxWidth())
+                        TestButton(icon = Icons.Filled.Close, label = "Fechar", modifier = Modifier.fillMaxWidth(), onClick = onClose)
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        retry(Modifier.weight(1f))
+                        TestButton(icon = Icons.Filled.Close, label = "Fechar", modifier = Modifier.weight(1f), onClick = onClose)
+                    }
+                }
             }
         }
     }
@@ -138,7 +152,7 @@ private fun CheckRow(icon: ImageVector, label: String, result: CheckResult) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, contentDescription = null, tint = Color(0xFFB0B0B0), modifier = Modifier.size(22.dp))
-        Text(label, color = Color.White, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Text(label, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f))
         when (result) {
             CheckResult.Pending -> Text("—", color = Color(0xFF6A6A6A), style = MaterialTheme.typography.titleSmall)
             CheckResult.Running -> CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
@@ -155,7 +169,7 @@ private fun CheckRow(icon: ImageVector, label: String, result: CheckResult) {
 @Composable
 private fun StatusValue(text: String, color: Color, icon: ImageVector) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, color = color, style = MaterialTheme.typography.titleSmall)
+        Text(text, color = color, style = MaterialTheme.typography.titleSmall, maxLines = 1)
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
     }
 }

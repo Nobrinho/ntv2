@@ -428,6 +428,14 @@ fun PlaybackScreen(
         activeGestureTarget = null
     }
 
+    var tapSeekFeedback by remember { mutableStateOf<TapSeekFeedback?>(null) }
+    LaunchedEffect(tapSeekFeedback?.nonce) {
+        if (tapSeekFeedback != null) {
+            delay(TAP_SEEK_FEEDBACK_MS)
+            tapSeekFeedback = null
+        }
+    }
+
     fun seekBy(delta: Long) {
         if (state.isPlaceholderMode) return
         val base = pendingSeekMs ?: (if (state.castingTo != null) positionMs else viewModel.player?.currentPosition) ?: positionMs
@@ -437,6 +445,20 @@ fun PlaybackScreen(
         pendingSeekMs = target
         seekNonce++
         controlsNonce++
+    }
+
+    // Toque duplo (celular): mostra na lateral tocada quanto voltou/avançou; toques seguidos no
+    // mesmo lado somam (10s, 20s, 30s…) enquanto o indicador está na tela.
+    fun tapSeek(delta: Long) {
+        if (state.isPlaceholderMode) return
+        seekBy(delta)
+        val forward = delta > 0
+        val previous = tapSeekFeedback?.takeIf { it.forward == forward }
+        tapSeekFeedback = TapSeekFeedback(
+            forward = forward,
+            totalMs = (previous?.totalMs ?: 0L) + kotlin.math.abs(delta),
+            nonce = (tapSeekFeedback?.nonce ?: 0) + 1
+        )
     }
 
     fun seekTo(position: Long) {
@@ -516,11 +538,16 @@ fun PlaybackScreen(
                     isTv = adaptive.isTv,
                     onReveal = { reveal() },
                     onSeek = { delta -> seekBy(delta); reveal() },
+                    onTapSeek = { delta -> tapSeek(delta) },
                     onToggle = { togglePlay(); reveal() },
                     onVerticalAdjustmentStart = ::startVerticalAdjustment,
                     onVerticalAdjustment = ::adjustVerticalGesture,
                     onVerticalAdjustmentEnd = ::finishVerticalAdjustment
                 )
+
+                tapSeekFeedback?.let { feedback ->
+                    TapSeekIndicator(feedback = feedback, modifier = Modifier.fillMaxSize())
+                }
 
                 // Transmitindo: no lugar do vídeo, a capa + "Transmitindo para…" (controles por cima).
                 state.castingTo?.let { device ->
@@ -562,6 +589,7 @@ fun PlaybackScreen(
                         onDismiss = { controlsVisible = false },
                         onInteract = { controlsNonce++ },
                         onSeek = { delta -> seekBy(delta) },
+                        onTapSeek = { delta -> tapSeek(delta) },
                         onSeekTo = { position -> seekTo(position) },
                         onRestart = { seekBy(-displayPositionMs) },
                         onToggle = { togglePlay(); controlsNonce++ },
@@ -693,6 +721,7 @@ internal fun VideoSurface(
     isTv: Boolean,
     onReveal: () -> Unit,
     onSeek: (Long) -> Unit,
+    onTapSeek: (Long) -> Unit = onSeek,
     onToggle: () -> Unit,
     onVerticalAdjustmentStart: (Float, Float) -> Unit,
     onVerticalAdjustment: (Float, Float) -> Unit,
@@ -729,7 +758,7 @@ internal fun VideoSurface(
                 }
             }
             // Celular: toque duplo nas laterais volta/avança (no lugar dos botões -10/+10).
-            .then(if (isTv) Modifier.clickable { onReveal() } else Modifier.tapToSeek(onTap = onReveal, onSeek = onSeek)),
+            .then(if (isTv) Modifier.clickable { onReveal() } else Modifier.tapToSeek(onTap = onReveal, onSeek = onTapSeek)),
         contentAlignment = Alignment.Center
     ) {
         if (!isPlaceholderMode) {

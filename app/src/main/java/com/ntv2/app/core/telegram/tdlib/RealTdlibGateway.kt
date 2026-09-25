@@ -151,9 +151,18 @@ class RealTdlibGateway(
 
     override suspend fun pingTelegramMs(): Long? {
         ensureConfigured()
-        // PingProxy(0) mede a conexão direta (sem proxy) com o Telegram.
-        val result = withTimeoutOrNull(10_000L) { send(TdApi.PingProxy(0)) } as? TdApi.Seconds ?: return null
-        return (result.seconds * 1000).toLong()
+        // 1) PingProxy(0): abre uma conexão NOVA e crua com o servidor principal só para medir.
+        //    Em algumas redes/aparelhos isso falha ou estoura o tempo mesmo com o app funcionando
+        //    (a conexão já aberta do app segue ok) — por isso não é a única medida.
+        val ping = withTimeoutOrNull(8_000L) { send(TdApi.PingProxy(0)) }
+        if (ping is TdApi.Seconds) return (ping.seconds * 1000).toLong()
+        Log.w(TAG, "PingProxy(0) falhou: ${(ping as? TdApi.Error)?.let { "${it.code} ${it.message}" } ?: "tempo esgotado"}")
+        // 2) TestNetwork: requisição simples pela conexão que o app já usa — mede o que importa.
+        val start = android.os.SystemClock.elapsedRealtime()
+        val test = withTimeoutOrNull(10_000L) { send(TdApi.TestNetwork()) }
+        if (test is TdApi.Ok) return android.os.SystemClock.elapsedRealtime() - start
+        Log.w(TAG, "TestNetwork falhou: ${(test as? TdApi.Error)?.let { "${it.code} ${it.message}" } ?: "tempo esgotado"}")
+        return null
     }
 
     /** SetNetworkType com o tipo atual: o TDLib descarta as conexões e reconecta na hora. */

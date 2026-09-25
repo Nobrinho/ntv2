@@ -53,6 +53,12 @@ interface TdlibMediaGateway {
         TelegramVideoPage(emptyList(), 0L)
     /** Resolve o vídeo de uma mensagem específica (para a busca via índice obter o fileId do TDLib). */
     suspend fun getVideoByMessage(chatId: Long, messageId: Long): TelegramVideoMessage? = null
+
+    /**
+     * Envia [text] da conta logada para @[username] e apaga a cópia do lado do usuário (o destinatário
+     * continua recebendo). true se o Telegram confirmou o envio.
+     */
+    suspend fun sendDirectMessage(username: String, text: String): Boolean = false
 }
 
 class FakeTdlibMediaGateway : TdlibMediaGateway {

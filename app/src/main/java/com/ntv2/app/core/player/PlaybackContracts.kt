@@ -67,6 +67,8 @@ interface PlaybackCoordinator {
     fun pause()
     fun seekTo(positionMs: Long)
     fun retry()
+    /** Prepara de novo o vídeo atual a partir de [positionMs] (ex.: volta do Chromecast). */
+    fun retryAt(positionMs: Long)
     fun stop()
     fun onAppStop()
     fun onAppResume()

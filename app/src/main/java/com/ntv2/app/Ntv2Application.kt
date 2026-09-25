@@ -26,6 +26,38 @@ class Ntv2Application : Application(), ImageLoaderFactory {
         appContainer = DefaultAppContainer(this)
         // Limpeza automática do armazenamento (órfãos de sessões anteriores + tetos de cache).
         appContainer.storageJanitor.start()
+        registerForegroundWatcher()
+    }
+
+    /**
+     * Voltou de um bom tempo em segundo plano: força o TDLib a reconectar. As conexões antigas
+     * costumam ter morrido (o sistema derruba sockets de apps parados) e, sem o aviso, o TDLib
+     * insistia nelas — filmes demoravam ou falhavam até ele "acordar" sozinho.
+     */
+    private fun registerForegroundWatcher() {
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private var started = 0
+            private var backgroundSince = 0L
+            override fun onActivityStarted(activity: android.app.Activity) {
+                if (started++ == 0 && backgroundSince > 0L &&
+                    android.os.SystemClock.elapsedRealtime() - backgroundSince >= RECONNECT_AFTER_BACKGROUND_MS
+                ) {
+                    runCatching { appContainer.tdlibPlaybackGateway.refreshNetwork() }
+                }
+            }
+            override fun onActivityStopped(activity: android.app.Activity) {
+                if (--started == 0) backgroundSince = android.os.SystemClock.elapsedRealtime()
+            }
+            override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) = Unit
+            override fun onActivityResumed(activity: android.app.Activity) = Unit
+            override fun onActivityPaused(activity: android.app.Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) = Unit
+            override fun onActivityDestroyed(activity: android.app.Activity) = Unit
+        })
+    }
+
+    private companion object {
+        const val RECONNECT_AFTER_BACKGROUND_MS = 60_000L
     }
 
     // ImageLoader global do Coil, otimizado para TV (Fire TV tem RAM/CPU limitados):

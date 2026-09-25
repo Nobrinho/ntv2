@@ -53,6 +53,11 @@ sealed interface MediaLibraryAction {
     data class DetailsOpened(val media: MediaCardUi) : MediaLibraryAction
     /** Fechou os Detalhes sem assistir: cancela o pré-download. */
     data class DetailsClosed(val mediaId: String) : MediaLibraryAction
+    /** Usuário reportou um problema na mídia (envio ao servidor/Telegram ainda a definir). */
+    data class ReportMedia(
+        val media: MediaCardUi,
+        val reason: com.ntv2.app.feature.media.presentation.MediaReportReason
+    ) : MediaLibraryAction
 }
 
 /** Teto padrão de cards mantidos por canal (o AppNavHost ajusta por aparelho; ver loadPrevious). */
@@ -73,7 +78,8 @@ class MediaLibraryViewModel(
     // Pré-download do início do vídeo na tela de Detalhes (null = desligado, ex.: testes).
     private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null,
     // Teto de cards mantidos por canal (menor só nos testes, para exercitar o descarte/volta).
-    private val maxRetainedItems: Int = MAX_RETAINED_ITEMS
+    private val maxRetainedItems: Int = MAX_RETAINED_ITEMS,
+    private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null
 ) : ViewModel() {
 
     // mediaId -> fileId com pré-download em andamento (cancelado se sair sem assistir).
@@ -200,6 +206,22 @@ class MediaLibraryViewModel(
                 openVideoJob = null
                 _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = false, pendingNavigation = null) }
                 prefetching.remove(action.mediaId)?.let { videoPrefetcher?.cancel(it) }
+            }
+
+            is MediaLibraryAction.ReportMedia -> {
+                val media = action.media
+                val details = mediaDetailsCache.get(media.mediaId)
+                val report = com.ntv2.app.feature.media.data.report.MediaReport(
+                    reasonLabel = action.reason.label,
+                    title = details?.title ?: media.title,
+                    year = details?.year,
+                    channelName = media.channelName,
+                    mediaId = media.mediaId
+                )
+                viewModelScope.launch {
+                    val ok = withContext(ioDispatcher) { mediaReporter?.send(report) ?: false }
+                    android.util.Log.i("NtvReport", "reporte ${action.reason.name} mídia=${media.mediaId} enviado=$ok")
+                }
             }
 
             MediaLibraryAction.ConsumeNavigation -> {
@@ -841,7 +863,8 @@ class MediaLibraryViewModelFactory(
     private val gridStep: Int = 2,
     private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
     private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null,
-    private val maxRetainedItems: Int = MAX_RETAINED_ITEMS
+    private val maxRetainedItems: Int = MAX_RETAINED_ITEMS,
+    private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -855,6 +878,7 @@ class MediaLibraryViewModelFactory(
                 gridStep = gridStep,
                 searchIndexRepository = searchIndexRepository,
                 videoPrefetcher = videoPrefetcher,
+                mediaReporter = mediaReporter,
                 maxRetainedItems = maxRetainedItems
             ) as T
         }

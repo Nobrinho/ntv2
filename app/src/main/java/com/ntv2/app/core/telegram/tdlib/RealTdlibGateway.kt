@@ -124,6 +124,53 @@ class RealTdlibGateway(
 
     override val authorizationState: Flow<TdAuthorizationState> = auth.asStateFlow()
 
+    // Estado da conexão do TDLib com os servidores. Começa "pronto" até o 1º UpdateConnectionState.
+    private val connectionReady = MutableStateFlow(true)
+    override val networkReady: kotlinx.coroutines.flow.StateFlow<Boolean> = connectionReady.asStateFlow()
+
+    init {
+        registerNetworkCallback()
+    }
+
+    /**
+     * Informa o TDLib das trocas de rede. Sem isso, após muito tempo em segundo plano (ou troca de
+     * Wi‑Fi) os sockets antigos morriam em silêncio e o TDLib insistia neles por um bom tempo:
+     * vídeos demoravam/falhavam até ele perceber sozinho.
+     */
+    private fun registerNetworkCallback() {
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
+        runCatching {
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) = refreshNetwork()
+                override fun onLost(network: android.net.Network) {
+                    client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeNone()), null)
+                }
+            })
+        }.onFailure { Log.w(TAG, "Sem callback de rede", it) }
+    }
+
+    override suspend fun pingTelegramMs(): Long? {
+        ensureConfigured()
+        // PingProxy(0) mede a conexão direta (sem proxy) com o Telegram.
+        val result = withTimeoutOrNull(10_000L) { send(TdApi.PingProxy(0)) } as? TdApi.Seconds ?: return null
+        return (result.seconds * 1000).toLong()
+    }
+
+    /** SetNetworkType com o tipo atual: o TDLib descarta as conexões e reconecta na hora. */
+    override fun refreshNetwork() {
+        val active = client ?: return
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val caps = runCatching { cm?.getNetworkCapabilities(cm.activeNetwork) }.getOrNull()
+        val type: TdApi.NetworkType = when {
+            caps == null -> TdApi.NetworkTypeOther()
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> TdApi.NetworkTypeWiFi()
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) ->
+                TdApi.NetworkTypeMobile()
+            else -> TdApi.NetworkTypeOther()
+        }
+        active.send(TdApi.SetNetworkType(type), null)
+    }
+
     // Sinal one-shot de sessão revogada externamente. replay=1 sobrevive à recriação do cliente
     // (que emite WaitPhoneNumber logo em seguida) e garante entrega mesmo se o coletor for lento.
     private val _sessionRevoked = MutableSharedFlow<Unit>(
@@ -500,6 +547,29 @@ class RealTdlibGateway(
         )
     }
 
+    // Envios aguardando confirmação do servidor: id temporário → id definitivo (null = falhou).
+    private val pendingSends = java.util.concurrent.ConcurrentHashMap<Long, kotlinx.coroutines.CompletableDeferred<Long?>>()
+
+    override suspend fun sendDirectMessage(username: String, text: String): Boolean {
+        ensureConfigured()
+        val chat = send(TdApi.SearchPublicChat(username.removePrefix("@"))) as? TdApi.Chat ?: return false
+        val hadHistory = chat.lastMessage != null
+        val content = TdApi.InputMessageText(TdApi.FormattedText(text, emptyArray()), null, false)
+        val sent = send(TdApi.SendMessage(chat.id, null, null, null, null, content)) as? TdApi.Message ?: return false
+        val done = kotlinx.coroutines.CompletableDeferred<Long?>()
+        pendingSends[sent.id] = done
+        // A confirmação pode ter chegado antes do registro acima: nesse caso a mensagem já não é "pendente".
+        if (sent.sendingState == null) pendingSends.remove(sent.id)?.complete(sent.id)
+        val finalId = withTimeoutOrNull(30_000L) { done.await() }
+        pendingSends.remove(sent.id)
+        if (finalId == null) return false
+        // Some só para o usuário (revoke=false): não polui a lista de conversas dele.
+        runCatching { send(TdApi.DeleteMessages(chat.id, longArrayOf(finalId), false)) }
+        // Conversa criada só para o reporte: tira da lista (não mexe se já existia histórico).
+        if (!hadHistory) runCatching { send(TdApi.DeleteChatHistory(chat.id, true, false)) }
+        return true
+    }
+
     private suspend fun searchVideos(
         chatId: Long,
         query: String,
@@ -815,6 +885,14 @@ class RealTdlibGateway(
     private fun handleUpdate(update: TdApi.Object) {
         when (update) {
             is TdApi.UpdateAuthorizationState -> mapAuthorizationState(update.authorizationState)
+            is TdApi.UpdateMessageSendSucceeded ->
+                pendingSends.remove(update.oldMessageId)?.complete(update.message.id)
+            is TdApi.UpdateMessageSendFailed ->
+                pendingSends.remove(update.oldMessageId)?.complete(null)
+            is TdApi.UpdateConnectionState -> {
+                connectionReady.value = update.state is TdApi.ConnectionStateReady
+                Log.i(TAG, "conexão TDLib: ${update.state.javaClass.simpleName}")
+            }
             is TdApi.UpdateFile -> {
                 // Só atualiza arquivos acompanhados (abertos/observados pelo player). Antes criava um
                 // estado para TODO arquivo que o TDLib tocava (miniaturas, avatares, pôsteres) e o

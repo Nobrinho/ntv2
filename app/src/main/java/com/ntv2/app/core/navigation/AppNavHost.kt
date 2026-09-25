@@ -246,7 +246,8 @@ fun AppNavHost(
                     maxRetainedItems = maxRetainedCards,
                     gridStep = mediaGridStep,
                     searchIndexRepository = appContainer.searchIndexRepository,
-                    videoPrefetcher = appContainer.videoPrefetcher
+                    videoPrefetcher = appContainer.videoPrefetcher,
+                    mediaReporter = com.ntv2.app.feature.media.data.report.MediaReporter(appContainer.tdlibMediaGateway)
                 )
             )
             MediaLibraryScreen(
@@ -352,7 +353,13 @@ fun AppNavHost(
                 onCheckForUpdates = { updateViewModel.check(manual = true) },
                 onStartUpdateDownload = updateViewModel::startDownload,
                 onInstallUpdate = updateViewModel::install,
-                onCancelUpdateDownload = updateViewModel::cancelDownload
+                onCancelUpdateDownload = updateViewModel::cancelDownload,
+                runConnectionTest = {
+                    com.ntv2.app.core.network.ConnectionTester(
+                        navController.context,
+                        appContainer.tdlibPlaybackGateway
+                    ).run()
+                }
             )
         }
 
@@ -377,7 +384,11 @@ fun AppNavHost(
             val playerViewModel: PlayerScreenViewModel = viewModel(
                 factory = PlayerScreenViewModelFactory(
                     appContainer.playbackController,
-                    appContainer.mediaDetailsCache
+                    appContainer.mediaDetailsCache,
+                    appContainer.tdlibPlaybackGateway.networkReady,
+                    castManager = appContainer.castManager,
+                    streamServer = appContainer.localStreamServer,
+                    progressStore = appContainer.playbackProgressStore
                 )
             )
             val playerAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)

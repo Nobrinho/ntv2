@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,9 +81,11 @@ internal fun MovieDetailsOverlay(
     playLoading: Boolean = false,
     playFailed: Boolean = false,
     onRestart: () -> Unit = {},
-    isTv: Boolean = true
+    isTv: Boolean = true,
+    onReport: (MediaReportReason) -> Unit = {}
 ) {
     BackHandler(enabled = true) { onDismiss() }
+    var reporting by remember { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
 
     // O fundo é o banner do filme (nunca o pôster): só cai para a capa do card se não houver banner.
@@ -133,7 +136,8 @@ internal fun MovieDetailsOverlay(
                     playFailed = playFailed,
                     onRestart = onRestart,
                     showBackButton = isTv,
-                    fillActions = !isTv
+                    fillActions = !isTv,
+                    onReportClick = { reporting = true }
                 )
             }
         } else {
@@ -162,7 +166,8 @@ internal fun MovieDetailsOverlay(
                 playLoading = playLoading,
                 playFailed = playFailed,
                 onRestart = onRestart,
-                showBackButton = isTv
+                showBackButton = isTv,
+                onReportClick = { reporting = true }
             )
         }
         // Celular: fechar pelo X no canto superior esquerdo (mesmo padrão do player), em vez do
@@ -175,6 +180,16 @@ internal fun MovieDetailsOverlay(
                     .statusBarsPadding()
                     .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                     .padding(12.dp)
+            )
+        }
+        if (reporting) {
+            ReportMediaDialog(
+                title = details?.title ?: media.title,
+                onReport = onReport,
+                onDismiss = {
+                    reporting = false
+                    runCatching { playFocus.requestFocus() }
+                }
             )
         }
     }
@@ -213,7 +228,8 @@ internal fun DetailsInfo(
     playFailed: Boolean = false,
     onRestart: () -> Unit = {},
     showBackButton: Boolean = true,
-    fillActions: Boolean = false
+    fillActions: Boolean = false,
+    onReportClick: () -> Unit = {}
 ) {
     val title = details?.title ?: media.title
     val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
@@ -251,6 +267,7 @@ internal fun DetailsInfo(
                 showBackButton = showBackButton,
                 fillWidth = fillActions
             )
+            ReportLink(onReportClick)
         }
         details?.genres?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
@@ -306,7 +323,28 @@ internal fun DetailsInfo(
                 showBackButton = showBackButton,
                 fillWidth = fillActions
             )
+            ReportLink(onReportClick)
         }
+    }
+}
+
+/** Ação discreta abaixo dos botões: abre o reporte de problema da mídia. */
+@Composable
+internal fun ReportLink(onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(if (focused) Color.White else Color.Transparent)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val tint = if (focused) Color.Black else Color(0xFFB0B0B0)
+        Icon(Icons.Filled.Flag, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+        Text("Reportar problema", color = tint, style = MaterialTheme.typography.labelLarge)
     }
 }
 

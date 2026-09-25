@@ -8,6 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
@@ -37,6 +38,19 @@ interface TdlibPlaybackGateway {
 
     /** Bytes contíguos já baixados a partir de [offset] (reconhece qualquer região no disco). */
     suspend fun downloadedPrefixSize(fileId: Int, offset: Long): Long
+
+    /** false enquanto o TDLib ainda conecta aos servidores (sem rede, conectando, sincronizando). */
+    val networkReady: StateFlow<Boolean> get() = ALWAYS_READY
+
+    /** Avisa o TDLib para refazer as conexões (ex.: app voltou de muito tempo em segundo plano). */
+    fun refreshNetwork() {}
+
+    /** Latência (ms) até o servidor do Telegram, ou null se não respondeu. */
+    suspend fun pingTelegramMs(): Long? = null
+
+    private companion object {
+        val ALWAYS_READY: StateFlow<Boolean> = MutableStateFlow(true)
+    }
 }
 
 class FakeTdlibPlaybackGateway(

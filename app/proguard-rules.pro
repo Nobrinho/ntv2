@@ -12,3 +12,6 @@
 -keep class com.ntv2.app.core.player.io.NativeFileIo {
     native <methods>;
 }
+
+# Cast: a classe de opções é instanciada por reflexão (nome no AndroidManifest).
+-keep class com.ntv2.app.core.cast.CastOptionsProvider { *; }

@@ -314,6 +314,13 @@ class DefaultPlaybackCoordinator(
         }
     }
 
+    override fun retryAt(positionMs: Long) {
+        val media = currentMedia ?: return
+        scope.launch(Dispatchers.Main) {
+            prepare(media.copy(startPositionMs = positionMs.coerceAtLeast(0L)))
+        }
+    }
+
     override fun stop() {
         stopInternal(closeSession = false)
     }

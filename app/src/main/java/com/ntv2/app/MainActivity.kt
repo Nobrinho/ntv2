@@ -1,4 +1,4 @@
-﻿package com.ntv2.app
+package com.ntv2.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -11,5 +11,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             Ntv2App(appContainer = appContainer)
         }
+    }
+
+    // Android 8–11: sair do app com vídeo tocando entra em PiP (12+ usa a auto-entrada).
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        com.ntv2.app.feature.playback.presentation.PlayerPip.onUserLeaveHint(this)
     }
 }

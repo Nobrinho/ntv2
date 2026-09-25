@@ -48,6 +48,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
@@ -344,6 +346,8 @@ internal fun MediaGridSkeleton(
     }
 }
 
+private val FOCUS_ACCENT = Color(0xFF2BEE34)
+
 @Composable
 internal fun MediaCard(
     media: MediaCardUi,
@@ -358,16 +362,42 @@ internal fun MediaCard(
     // Com pôster → capa retrato (9:16). Sem pôster (capas ON) → frame 16:9. Capas OFF → placeholder.
     val cover = if (showCover) (media.posterPath ?: media.thumbnailPath) else null
     val showTitle = !showCover || media.posterPath == null
+    // Foco: aro verde (cor de destaque do app) com contorno escuro por dentro, desenhado POR CIMA
+    // da capa e com leve zoom. Só a borda branca sumia em pôsteres claros e o usuário se perdia.
+    val scale by animateFloatAsState(
+        targetValue = if (focused) 1.05f else 1f,
+        animationSpec = tween(if (animationsEnabled) 140 else 0),
+        label = "card-focus-scale"
+    )
     Box(
         modifier = modifier
+            .zIndex(if (focused) 1f else 0f)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x22FFFFFF) else Color(0x0FFFFFFF))
-            .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else Color(0x33FFFFFF),
-                shape = RoundedCornerShape(10.dp)
+            .then(
+                if (focused) Modifier.drawWithContent {
+                    drawContent()
+                    val outer = 4.dp.toPx()
+                    val inner = 2.dp.toPx()
+                    val radius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx())
+                    drawRoundRect(
+                        color = FOCUS_ACCENT,
+                        topLeft = androidx.compose.ui.geometry.Offset(outer / 2, outer / 2),
+                        size = androidx.compose.ui.geometry.Size(size.width - outer, size.height - outer),
+                        cornerRadius = radius,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(outer)
+                    )
+                    drawRoundRect(
+                        color = Color(0xE6000000),
+                        topLeft = androidx.compose.ui.geometry.Offset(outer + inner / 2, outer + inner / 2),
+                        size = androidx.compose.ui.geometry.Size(size.width - 2 * outer - inner, size.height - 2 * outer - inner),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius((10.dp.toPx() - outer).coerceAtLeast(0f)),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(inner)
+                    )
+                } else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
             )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {

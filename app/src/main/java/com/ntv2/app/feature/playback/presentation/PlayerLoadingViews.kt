@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -265,7 +266,7 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xF21B1E22))
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
-                .padding(28.dp)
+                .padding(horizontal = 20.dp, vertical = 24.dp)
                 .trapFocus(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -294,14 +295,38 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                ErrorActionButton(
-                    icon = Icons.Filled.Refresh,
-                    label = "Tentar novamente",
-                    modifier = Modifier.focusRequester(retryFocus),
-                    onClick = onRetry
-                )
-                ErrorActionButton(icon = Icons.AutoMirrored.Filled.ArrowBack, label = "Voltar", onClick = onBack)
+            // Celular em pé: os dois botões não cabem lado a lado ("Voltar" quebrava letra a letra);
+            // empilha com largura total. Telas largas mantêm a linha.
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                if (maxWidth < 400.dp) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ErrorActionButton(
+                            icon = Icons.Filled.Refresh,
+                            label = "Tentar novamente",
+                            modifier = Modifier.fillMaxWidth().focusRequester(retryFocus),
+                            onClick = onRetry
+                        )
+                        ErrorActionButton(
+                            icon = Icons.AutoMirrored.Filled.ArrowBack,
+                            label = "Voltar",
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onBack
+                        )
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        ErrorActionButton(
+                            icon = Icons.Filled.Refresh,
+                            label = "Tentar novamente",
+                            modifier = Modifier.focusRequester(retryFocus),
+                            onClick = onRetry
+                        )
+                        ErrorActionButton(icon = Icons.AutoMirrored.Filled.ArrowBack, label = "Voltar", onClick = onBack)
+                    }
+                }
             }
         }
     }
@@ -323,12 +348,12 @@ internal fun ErrorActionButton(
             .background(if (focused) Color.White else Color(0x22FFFFFF))
             .border(1.dp, if (focused) Color.White else Color(0x44FFFFFF), RoundedCornerShape(10.dp))
             .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val content = if (focused) Color.Black else Color.White
         Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
-        Text(label, color = content, style = MaterialTheme.typography.titleMedium)
+        Text(label, color = content, style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
     }
 }
 

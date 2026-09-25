@@ -79,6 +79,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.NetworkCheck
 import com.ntv2.app.core.ui.CardLoadingPlaceholder
 import com.ntv2.app.core.ui.CardLoadingStyle
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -113,8 +114,10 @@ fun SettingsScreen(
     onCancelUpdateDownload: () -> Unit = {},
     // Rail: Busca abre a busca da Biblioteca; Atualizar recarrega a Biblioteca.
     onSearch: () -> Unit = onOpenLibrary,
-    onRefresh: () -> Unit = onOpenLibrary
+    onRefresh: () -> Unit = onOpenLibrary,
+    runConnectionTest: (() -> kotlinx.coroutines.flow.Flow<com.ntv2.app.core.network.ConnectionReport>)? = null
 ) {
+    var showConnectionTest by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var showPrivacy by remember { mutableStateOf(false) }
     var showCardLoadingPicker by remember { mutableStateOf(false) }
@@ -126,8 +129,8 @@ fun SettingsScreen(
     fun itemMod(index: Int) = Modifier
         .focusRequester(itemFocus[index])
         .onFocusChanged { if (it.isFocused) lastFocusIndex = index }
-    LaunchedEffect(showPrivacy, confirmLogout, showCardLoadingPicker) {
-        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout && !showCardLoadingPicker) {
+    LaunchedEffect(showPrivacy, confirmLogout, showCardLoadingPicker, showConnectionTest) {
+        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout && !showCardLoadingPicker && !showConnectionTest) {
             runCatching { itemFocus[lastFocusIndex].requestFocus() }
         }
     }
@@ -221,6 +224,16 @@ fun SettingsScreen(
                         modifier = itemMod(5),
                         onClick = onManageChannels
                     )
+                    if (runConnectionTest != null) {
+                        NavCard(
+                            icon = Icons.Filled.NetworkCheck,
+                            title = "Teste de conexão",
+                            subtitle = "Medir internet, Telegram e velocidade neste aparelho",
+                            destructive = false,
+                            modifier = itemMod(10),
+                            onClick = { showConnectionTest = true }
+                        )
+                    }
                     NavCard(
                         icon = Icons.Filled.SystemUpdate,
                         title = "Atualizações",
@@ -281,6 +294,10 @@ fun SettingsScreen(
             PrivacyPolicyOverlay(onClose = { showPrivacy = false })
         }
 
+        if (showConnectionTest && runConnectionTest != null) {
+            ConnectionTestOverlay(runTest = runConnectionTest, onClose = { showConnectionTest = false })
+        }
+
         if (confirmLogout) {
             ConfirmDialog(
                 title = "Sair da conta?",
@@ -323,7 +340,7 @@ private fun ToggleCard(
     }
 }
 
-private const val SETTINGS_ITEM_COUNT = 10
+private const val SETTINGS_ITEM_COUNT = 11
 
 private fun updateSubtitle(state: UpdateUiState): String = when (state.stage) {
     UpdateStage.IDLE -> "Versão ${BuildConfig.VERSION_NAME} · Verificar atualizações"
@@ -664,16 +681,23 @@ private fun PrivacyCloseButton(onClose: () -> Unit) {
 }
 
 private const val PRIVACY_POLICY_TEXT =
-    "Última atualização: 12/09/2026\n\n" +
+    "Última atualização: 24/09/2026\n\n" +
     "O Nbr PLAY é um aplicativo cliente de mídia para TV que exibe e reproduz vídeos dos " +
     "canais do Telegram escolhidos pelo próprio usuário. O aplicativo não hospeda, não " +
     "distribui e não disponibiliza conteúdo: ele apenas organiza e reproduz o que já existe " +
     "nos canais aos quais a sua conta do Telegram tem acesso.\n\n" +
     "1. Dados que tratamos\n" +
-    "Não possuímos servidores próprios e não coletamos, armazenamos ou compartilhamos seus " +
-    "dados pessoais conosco. O aplicativo se conecta diretamente ao Telegram usando a API " +
-    "oficial do Telegram (TDLib). A autenticação (por QR Code ou telefone) é feita entre o " +
-    "seu dispositivo e o Telegram.\n\n" +
+    "Não possuímos servidores próprios e não coletamos seus dados pessoais em segundo plano. O " +
+    "aplicativo se conecta diretamente ao Telegram usando a API oficial do Telegram (TDLib). A " +
+    "autenticação (por QR Code ou telefone) é feita entre o seu dispositivo e o Telegram.\n\n" +
+    "Reportar problema: quando VOCÊ usa a opção \"Reportar problema\" em um filme, o aplicativo " +
+    "envia, pela sua própria conta do Telegram, uma mensagem privada ao administrador do app " +
+    "contendo o motivo escolhido, o título do filme, o canal, o modelo do aparelho, a versão do " +
+    "Android e a versão do aplicativo. Como a mensagem sai da sua conta, o administrador vê o seu " +
+    "perfil do Telegram. A cópia da mensagem é apagada do seu lado; nada é enviado sem a sua ação.\n\n" +
+    "Teste de conexão: ao usar o teste, o aparelho acessa servidores de teste do Google " +
+    "(gstatic.com) e da Cloudflare (speed.cloudflare.com) apenas para medir latência e " +
+    "velocidade. Nenhum dado pessoal é enviado e o resultado fica só no aparelho.\n\n" +
     "2. Armazenamento no dispositivo\n" +
     "Ficam salvos apenas localmente no seu aparelho: a sessão de login do Telegram (para " +
     "manter você conectado), os canais que você selecionou, suas preferências (capas, " +
@@ -681,8 +705,9 @@ private const val PRIVACY_POLICY_TEXT =
     "enviados para nós nem para terceiros e podem ser apagados ao sair da conta ou desinstalar " +
     "o aplicativo.\n\n" +
     "3. Permissões\n" +
-    "O aplicativo usa apenas a permissão de Internet, necessária para se comunicar com o " +
-    "Telegram e reproduzir os vídeos.\n\n" +
+    "Internet: para se comunicar com o Telegram e reproduzir os vídeos.\n" +
+    "Estado da rede: para detectar quedas e trocas de rede e reconectar ao Telegram mais rápido.\n" +
+    "Instalar atualizações: para instalar novas versões do aplicativo, sempre com a sua confirmação.\n\n" +
     "4. Terceiros\n" +
     "O uso do Telegram está sujeito à Política de Privacidade e aos Termos do próprio Telegram. " +
     "Não utilizamos publicidade nem ferramentas de análise/rastreamento.\n\n" +

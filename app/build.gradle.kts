@@ -171,6 +171,9 @@ dependencies {
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    // Chromecast (só celular: o Fire TV não tem Google Play Services; o app checa antes de usar).
+    implementation(libs.play.services.cast.framework)
+    implementation(libs.androidx.mediarouter)
     // Decoder FFmpeg por software (ac3/eac3/dts/truehd) para aparelhos sem esses codecs.
     implementation(project(":ffmpeg-decoder"))
 

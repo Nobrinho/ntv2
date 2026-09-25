@@ -37,7 +37,17 @@ data class PlayerScreenUiState(
     /** Aviso extra durante a espera (ex.: vídeo que precisa baixar mais antes de tocar). */
     val loadingHint: String? = null,
     /** Falha ao carregar: a tela mostra o motivo e os botões Tentar novamente / Voltar. */
-    val loadError: PlayerLoadError? = null
+    val loadError: PlayerLoadError? = null,
+    /** Há Chromecast na rede (mostra o botão Transmitir). */
+    val castAvailable: Boolean = false,
+    /** Transmitindo agora: nome do aparelho (null = tocando aqui). */
+    val castingTo: String? = null,
+    /** Chromecast conectando / carregando o vídeo. */
+    val castConnecting: Boolean = false,
+    /** O vídeo terminou no Chromecast. */
+    val castEnded: Boolean = false,
+    /** Aviso sobre a transmissão (ex.: sem Wi-Fi, formato não suportado). */
+    val castMessage: String? = null
 )
 
 data class DownloadProgress(
@@ -58,6 +68,11 @@ private const val STALL_RESTART_MS = 12_000L
 // Depois de esgotar as reinicializações, esse tempo parado vira erro.
 private const val STALL_FAIL_MS = 20_000L
 private const val MAX_RESTARTS = 2
+// Nenhum byte recebido ainda: o 1º arquivo de um canal pode estar num servidor (DC) do Telegram ao
+// qual o app ainda não se conectou nesta sessão — o handshake demora, sobretudo no Fire TV. Cancelar
+// o download nesse meio‑tempo recomeçava o handshake e o vídeo nunca iniciava; espera mais.
+private const val FIRST_BYTE_RESTART_MS = 30_000L
+private const val FIRST_BYTE_FAIL_MS = 50_000L
 // Tocando há esse tempo sem o 1º quadro, mas baixando: avisa que o vídeo precisa de mais dados.
 private const val SLOW_START_HINT_MS = 20_000L
 
@@ -89,7 +104,12 @@ sealed interface PlayerScreenAction {
 
 class PlayerScreenViewModel(
     private val playbackController: PlaybackController,
-    private val mediaDetailsCache: MediaDetailsCache? = null
+    private val mediaDetailsCache: MediaDetailsCache? = null,
+    /** false enquanto o TDLib (re)conecta: esse tempo não conta como download parado. */
+    private val networkReady: StateFlow<Boolean> = MutableStateFlow(true),
+    private val castManager: com.ntv2.app.core.cast.CastManager? = null,
+    private val streamServer: com.ntv2.app.core.cast.LocalStreamServer? = null,
+    private val progressStore: com.ntv2.app.core.player.progress.PlaybackProgressStore? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlayerScreenUiState())
@@ -102,18 +122,137 @@ class PlayerScreenViewModel(
     private var lastRequest: PlaybackPrepareRequest? = null
     private var preparingFileId: Int = 0
 
+    // Transmitindo: o player local fica parado e o estado exibido vem do Chromecast.
+    private val casting = MutableStateFlow(false)
+    private var castMediaId: String? = null
+    private var castFileName: String? = null
+    private var lastCastSaveAt = 0L
+
     init {
+        val remote = castManager?.remote ?: MutableStateFlow(com.ntv2.app.core.cast.RemotePlayback())
         observeJob = viewModelScope.launch {
-            playbackController.snapshot.collect { snapshot ->
-                _uiState.update { it.copy(snapshot = snapshot) }
+            kotlinx.coroutines.flow.combine(playbackController.snapshot, remote, casting) { snap, r, isCasting ->
+                if (!isCasting) snap else snap.copy(
+                    state = when {
+                        r.isBuffering -> PlaybackState.Buffering
+                        r.isPlaying -> PlaybackState.Ready
+                        else -> PlaybackState.Paused
+                    },
+                    isPlaying = r.isPlaying,
+                    currentPositionMs = r.positionMs
+                )
+            }.collect { snapshot -> _uiState.update { it.copy(snapshot = snapshot) } }
+        }
+        castManager?.let { manager ->
+            // Sem Google Play Services (Fire TV) o start não faz nada e o status fica "Unsupported".
+            manager.start()
+            viewModelScope.launch { manager.status.collect { status -> onCastStatus(status) } }
+            viewModelScope.launch {
+                remote.collect { r ->
+                    if (!casting.value) return@collect
+                    if (r.positionMs > 0L || r.isPlaying) _uiState.update { it.copy(castConnecting = false) }
+                    if (r.ended) _uiState.update { it.copy(castEnded = true) }
+                    r.error?.let { msg -> _uiState.update { it.copy(castMessage = msg) } }
+                    saveCastProgress(r)
+                }
             }
         }
+    }
+
+    private fun saveCastProgress(r: com.ntv2.app.core.cast.RemotePlayback) {
+        val mediaId = castMediaId ?: return
+        val t = now()
+        if (t - lastCastSaveAt < 5_000L || r.positionMs <= 0L) return
+        lastCastSaveAt = t
+        val duration = r.durationMs.takeIf { it > 0L } ?: uiState.value.durationSeconds * 1_000L
+        viewModelScope.launch { runCatching { progressStore?.onProgress(mediaId, r.positionMs, duration) } }
+    }
+
+    private fun onCastStatus(status: com.ntv2.app.core.cast.CastStatus) {
+        val connected = status is com.ntv2.app.core.cast.CastStatus.Connected
+        val connecting = status is com.ntv2.app.core.cast.CastStatus.Connecting
+        val available = status !is com.ntv2.app.core.cast.CastStatus.Unsupported &&
+            status !is com.ntv2.app.core.cast.CastStatus.NoDevices
+        _uiState.update { it.copy(castAvailable = available, castConnecting = connecting || (it.castConnecting && casting.value)) }
+        when {
+            connected && !casting.value -> startCasting((status as com.ntv2.app.core.cast.CastStatus.Connected).deviceName)
+            !connected && !connecting && casting.value -> stopCasting()
+        }
+    }
+
+    /** Abre a lista de Chromecasts (ou o controle do conectado). Precisa do contexto da Activity. */
+    fun openCastPicker(activityContext: android.content.Context) {
+        castManager?.showDevicePicker(activityContext)
+    }
+
+    /** Parar de transmitir (botão da tela): encerra a sessão; a volta ao local vem pelo status. */
+    fun stopCastingByUser() {
+        castManager?.endSession()
+    }
+
+    fun dismissCastMessage() {
+        _uiState.update { it.copy(castMessage = null) }
+    }
+
+    private fun startCasting(deviceName: String) {
+        val request = lastRequest ?: return
+        val server = streamServer ?: return
+        val manager = castManager ?: return
+        if (uiState.value.isPlaceholderMode) {
+            _uiState.update { it.copy(castMessage = "Aguarde o vídeo começar para transmitir.") }
+            return
+        }
+        val totalBytes = playbackController.snapshot.value.expectedBytes?.takeIf { it > 0L } ?: run {
+            _uiState.update { it.copy(castMessage = "Não foi possível transmitir: tamanho do vídeo desconhecido.") }
+            return
+        }
+        val position = playbackController.player?.currentPosition ?: uiState.value.snapshot.currentPositionMs
+        val mime = mimeTypeFor(castFileName)
+        val url = server.serve(request.fileId, "tgfile://video/${request.fileId}", totalBytes, mime) ?: run {
+            _uiState.update { it.copy(castMessage = "Conecte o celular ao mesmo Wi-Fi do Chromecast para transmitir.") }
+            return
+        }
+        watchdogJob?.cancel()
+        playbackController.suspendForCast()
+        castMediaId = request.mediaId
+        casting.value = true
+        _uiState.update {
+            it.copy(castingTo = deviceName, castConnecting = true, castEnded = false, castMessage = null, loadError = null)
+        }
+        manager.load(
+            url = url,
+            title = uiState.value.title,
+            posterUrl = uiState.value.thumbnailPath,
+            mimeType = mime,
+            startPositionMs = position,
+            durationMs = request.durationSeconds * 1_000L
+        )
+    }
+
+    private fun stopCasting() {
+        val position = castManager?.remote?.value?.positionMs ?: 0L
+        casting.value = false
+        castMediaId = null
+        streamServer?.stop()
+        _uiState.update { it.copy(castingTo = null, castConnecting = false) }
+        // Voltou para o aparelho: continua daqui de onde o Chromecast parou.
+        playbackController.resumeLocalAt(position)
+        startWatchdog()
+    }
+
+    private fun mimeTypeFor(fileName: String?): String = when (fileName?.substringAfterLast('.', "")?.lowercase()) {
+        "mkv" -> "video/x-matroska"
+        "webm" -> "video/webm"
+        "mov" -> "video/quicktime"
+        "ts" -> "video/mp2t"
+        else -> "video/mp4"
     }
 
     fun onAction(action: PlayerScreenAction) {
         when (action) {
             is PlayerScreenAction.Prepare -> {
                 preparingFileId = action.fileId
+                castFileName = action.fileName
                 val details = mediaDetailsCache?.get(action.mediaId)
                 _uiState.update {
                     it.copy(
@@ -136,10 +275,21 @@ class PlayerScreenViewModel(
                 )
             }
 
-            PlayerScreenAction.Play -> if (!uiState.value.isPlaceholderMode) playbackController.play()
-            PlayerScreenAction.Pause -> if (!uiState.value.isPlaceholderMode) playbackController.pause()
+            PlayerScreenAction.Play -> when {
+                casting.value -> castManager?.play()
+                !uiState.value.isPlaceholderMode -> playbackController.play()
+            }
+            PlayerScreenAction.Pause -> when {
+                casting.value -> castManager?.pause()
+                !uiState.value.isPlaceholderMode -> playbackController.pause()
+            }
             PlayerScreenAction.Retry -> if (!uiState.value.isPlaceholderMode) playbackController.retry()
             is PlayerScreenAction.SeekBy -> {
+                if (casting.value) {
+                    val current = castManager?.remote?.value?.positionMs ?: 0L
+                    castManager?.seekTo((current + action.deltaMs).coerceAtLeast(0L))
+                    return
+                }
                 if (uiState.value.isPlaceholderMode) return
                 // Usa a posição REAL do player (o snapshot só atualiza em mudanças de estado).
                 val current = playbackController.player?.currentPosition
@@ -147,6 +297,10 @@ class PlayerScreenViewModel(
                 playbackController.seekTo((current + action.deltaMs).coerceAtLeast(0L))
             }
             is PlayerScreenAction.SeekTo -> {
+                if (casting.value) {
+                    castManager?.seekTo(action.positionMs.coerceAtLeast(0L))
+                    return
+                }
                 if (uiState.value.isPlaceholderMode) return
                 playbackController.seekTo(action.positionMs.coerceAtLeast(0L))
             }
@@ -158,8 +312,9 @@ class PlayerScreenViewModel(
                 playbackController.selectTextTrack(action.id)
             }
 
-            PlayerScreenAction.OnAppStop -> if (!uiState.value.isPlaceholderMode) playbackController.onAppStop()
-            PlayerScreenAction.OnAppResume -> if (!uiState.value.isPlaceholderMode) playbackController.onAppResume()
+            // Transmitindo, sair do app não pausa: o vídeo segue no Chromecast.
+            PlayerScreenAction.OnAppStop -> if (!uiState.value.isPlaceholderMode && !casting.value) playbackController.onAppStop()
+            PlayerScreenAction.OnAppResume -> if (!uiState.value.isPlaceholderMode && !casting.value) playbackController.onAppResume()
             PlayerScreenAction.Release -> playbackController.release()
             PlayerScreenAction.RetryLoad -> {
                 val request = lastRequest ?: return
@@ -175,6 +330,18 @@ class PlayerScreenViewModel(
     }
 
     override fun onCleared() {
+        // Saiu do player transmitindo: guarda a posição do Chromecast e encerra a transmissão.
+        if (casting.value) {
+            val mediaId = castMediaId
+            val r = castManager?.remote?.value
+            if (mediaId != null && r != null && r.positionMs > 0L) {
+                val duration = r.durationMs.takeIf { it > 0L } ?: uiState.value.durationSeconds * 1_000L
+                kotlinx.coroutines.runBlocking { runCatching { progressStore?.onProgress(mediaId, r.positionMs, duration) } }
+            }
+            casting.value = false
+            streamServer?.stop()
+            castManager?.endSession()
+        }
         observeJob?.cancel()
         prepareJob?.cancel()
         watchdogJob?.cancel()
@@ -249,16 +416,22 @@ class PlayerScreenViewModel(
                             }
                         }
 
+                        if (!networkReady.value) {
+                            lastProgressAt = t
+                            _uiState.update { it.copy(statusMessage = "conectando ao Telegram…") }
+                        }
+                        val neverStarted = lastBytes <= 0L
+                        val restartAfter = if (neverStarted) FIRST_BYTE_RESTART_MS else STALL_RESTART_MS
+                        val failAfter = if (neverStarted) FIRST_BYTE_FAIL_MS else STALL_FAIL_MS
                         val stalledFor = t - lastProgressAt
-                        if (stalledFor >= STALL_RESTART_MS && restarts < MAX_RESTARTS) {
+                        if (stalledFor >= restartAfter && restarts < MAX_RESTARTS) {
                             restarts++
                             playbackController.restartDownload(request.fileId)
                             lastProgressAt = t
                             _uiState.update {
                                 it.copy(statusMessage = "download parado — reconectando ($restarts de $MAX_RESTARTS)…")
                             }
-                        } else if (stalledFor >= STALL_FAIL_MS && restarts >= MAX_RESTARTS) {
-                            val neverStarted = lastBytes <= 0L
+                        } else if (stalledFor >= failAfter && restarts >= MAX_RESTARTS) {
                             fail(
                                 if (availability is MediaAvailability.TdlibFileUnavailable && neverStarted) {
                                     PlayerLoadError(
@@ -360,7 +533,7 @@ class PlayerScreenViewModel(
                     }
                     continue
                 }
-                if (snap.downloadedBytes > lastBytes) {
+                if (snap.downloadedBytes > lastBytes || !networkReady.value) {
                     lastBytes = snap.downloadedBytes
                     lastProgressAt = t
                 }
@@ -451,12 +624,16 @@ class PlayerScreenViewModel(
 
 class PlayerScreenViewModelFactory(
     private val playbackController: PlaybackController,
-    private val mediaDetailsCache: MediaDetailsCache? = null
+    private val mediaDetailsCache: MediaDetailsCache? = null,
+    private val networkReady: StateFlow<Boolean> = MutableStateFlow(true),
+    private val castManager: com.ntv2.app.core.cast.CastManager? = null,
+    private val streamServer: com.ntv2.app.core.cast.LocalStreamServer? = null,
+    private val progressStore: com.ntv2.app.core.player.progress.PlaybackProgressStore? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(PlayerScreenViewModel::class.java)) {
-            return PlayerScreenViewModel(playbackController, mediaDetailsCache) as T
+            return PlayerScreenViewModel(playbackController, mediaDetailsCache, networkReady, castManager, streamServer, progressStore) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

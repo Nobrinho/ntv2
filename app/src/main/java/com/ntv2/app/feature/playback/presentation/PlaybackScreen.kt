@@ -244,7 +244,11 @@ fun PlaybackScreen(
     var durationMs by remember(durationSeconds) { mutableStateOf(durationSeconds * 1000L) }
     LaunchedEffect(state.isPlaceholderMode) {
         while (true) {
-            viewModel.player?.let { p ->
+            val current = viewModel.uiState.value
+            if (current.castingTo != null) {
+                // Transmitindo: a posição vem do Chromecast (o player local está parado).
+                positionMs = current.snapshot.currentPositionMs
+            } else viewModel.player?.let { p ->
                 positionMs = p.currentPosition.coerceAtLeast(0L)
                 if (p.duration > 0L) durationMs = p.duration
             }
@@ -256,6 +260,30 @@ fun PlaybackScreen(
     // sozinha após alguns segundos durante a reprodução; permanece visível quando pausado.
     var controlsVisible by remember { mutableStateOf(false) }
     var controlsNonce by remember { mutableStateOf(0) }
+
+    // Picture-in-picture (celular): armado enquanto toca; na janelinha só o vídeo aparece.
+    val pipSupported = remember(activity) { !adaptive.isTv && PlayerPip.isSupported(activity) }
+    var inPip by remember {
+        mutableStateOf(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity?.isInPictureInPictureMode == true)
+    }
+    DisposableEffect(activity) {
+        val component = activity as? androidx.activity.ComponentActivity
+        val listener = androidx.core.util.Consumer<androidx.core.app.PictureInPictureModeChangedInfo> {
+            inPip = it.isInPictureInPictureMode
+        }
+        component?.addOnPictureInPictureModeChangedListener(listener)
+        onDispose { component?.removeOnPictureInPictureModeChangedListener(listener) }
+    }
+    val pipArmed = pipSupported && !state.isPlaceholderMode && state.snapshot.isPlaying && state.loadError == null &&
+        state.castingTo == null
+    LaunchedEffect(pipArmed, state.snapshot.tracks.videoWidth, state.snapshot.tracks.videoHeight) {
+        if (pipSupported) {
+            PlayerPip.update(activity, pipArmed, state.snapshot.tracks.videoWidth, state.snapshot.tracks.videoHeight)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { if (pipSupported) PlayerPip.update(activity, armed = false, videoWidth = 0, videoHeight = 0) }
+    }
     fun reveal() {
         if (state.isPlaceholderMode) return
         controlsVisible = true
@@ -309,6 +337,12 @@ fun PlaybackScreen(
 
     // Seletor de faixa (legenda) aberto sobre o player.
     var trackPicker by remember { mutableStateOf<TrackPicker?>(null) }
+    LaunchedEffect(inPip) {
+        if (inPip) {
+            controlsVisible = false
+            trackPicker = null
+        }
+    }
     // Sub-seletor (áudio/legenda) aberto a partir de Opções: Voltar retorna para Opções.
     var pickerFromSettings by remember { mutableStateOf(false) }
     // Ao fechar o modal, devolve o foco ao botão Opções (ou à linha do tempo, se indisponível).
@@ -396,7 +430,7 @@ fun PlaybackScreen(
 
     fun seekBy(delta: Long) {
         if (state.isPlaceholderMode) return
-        val base = pendingSeekMs ?: viewModel.player?.currentPosition ?: positionMs
+        val base = pendingSeekMs ?: (if (state.castingTo != null) positionMs else viewModel.player?.currentPosition) ?: positionMs
         val max = if (durationMs > 0L) durationMs else Long.MAX_VALUE
         val target = (base + delta).coerceIn(0L, max)
         seekFeedbackMs += target - base
@@ -429,7 +463,7 @@ fun PlaybackScreen(
     BackHandler(enabled = state.loadError != null) { onBack() }
 
     // Vídeo terminou: fecha o player e volta aos Detalhes.
-    val ended = !state.isPlaceholderMode && state.snapshot.state == PlaybackState.Ended
+    val ended = (!state.isPlaceholderMode && state.snapshot.state == PlaybackState.Ended) || state.castEnded
     LaunchedEffect(ended) { if (ended) onBack() }
 
     Box(
@@ -488,6 +522,18 @@ fun PlaybackScreen(
                     onVerticalAdjustmentEnd = ::finishVerticalAdjustment
                 )
 
+                // Transmitindo: no lugar do vídeo, a capa + "Transmitindo para…" (controles por cima).
+                state.castingTo?.let { device ->
+                    CastingOverlay(
+                        deviceName = device,
+                        connecting = state.castConnecting,
+                        posterPath = state.thumbnailPath,
+                        onStop = { viewModel.stopCastingByUser() },
+                        onReveal = { reveal() },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
                 gestureAdjustment?.let { adjustment ->
                     GestureAdjustmentOverlay(
                         modifier = Modifier.fillMaxSize(),
@@ -533,10 +579,15 @@ fun PlaybackScreen(
                         onFullscreen = {
                             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                             controlsNonce++
-                        }
+                        },
+                        onPip = if (pipSupported && state.castingTo == null) ({ PlayerPip.enter(activity) }) else null,
+                        onCast = if (state.castAvailable && !adaptive.isTv) ({ activity?.let { viewModel.openCastPicker(it) } }) else null,
+                        castActive = state.castingTo != null
                     )
                 }
-                if (animationsEnabled) {
+                if (inPip) {
+                    // Janelinha do PiP: sem controles (o sistema oferece play/fechar).
+                } else if (animationsEnabled) {
                     // FQN: dentro do Column externo o Kotlin escolheria ColumnScope.AnimatedVisibility.
                     androidx.compose.animation.AnimatedVisibility(
                         visible = controlsVisible,
@@ -559,6 +610,23 @@ fun PlaybackScreen(
                     .padding(bottom = 48.dp)
                     .background(Color(0xCC000000), RoundedCornerShape(12.dp))
                     .padding(horizontal = 20.dp, vertical = 12.dp)
+            )
+        }
+
+        state.castMessage?.let { message ->
+            LaunchedEffect(message) {
+                delay(5_000L)
+                viewModel.dismissCastMessage()
+            }
+            Text(
+                text = message,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 72.dp, start = 16.dp, end = 16.dp)
+                    .background(Color(0xE6000000), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             )
         }
 
@@ -660,7 +728,8 @@ internal fun VideoSurface(
                     )
                 }
             }
-            .clickable { onReveal() },
+            // Celular: toque duplo nas laterais volta/avança (no lugar dos botões -10/+10).
+            .then(if (isTv) Modifier.clickable { onReveal() } else Modifier.tapToSeek(onTap = onReveal, onSeek = onSeek)),
         contentAlignment = Alignment.Center
     ) {
         if (!isPlaceholderMode) {

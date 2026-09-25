@@ -491,6 +491,7 @@ fun MediaLibraryScreen(
                     viewModel.onAction(MediaLibraryAction.OpenVideo(media))
                 },
                 onRestart = { viewModel.onAction(MediaLibraryAction.RestartVideo(media)) },
+                onReport = { reason -> viewModel.onAction(MediaLibraryAction.ReportMedia(media, reason)) },
                 isTv = adaptive.isTv,
                 onDismiss = {
                     detailsMedia = null
@@ -586,6 +587,7 @@ fun MediaLibraryScreen(
                     onClear = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
                     onClose = {
                         searching = false
+                        searchReturnMediaId = null
                         viewModel.onAction(MediaLibraryAction.SearchChanged(""))
                     },
                     onLoadMore = { viewModel.onAction(MediaLibraryAction.LoadMoreSearch) },
@@ -593,9 +595,10 @@ fun MediaLibraryScreen(
                     onSelect = { media ->
                         viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                         viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
+                        // Mantém a consulta: ao fechar os Detalhes a busca reabre com os resultados.
+                        searchReturnMediaId = media.mediaId
                         detailsMedia = media
                         searching = false
-                        viewModel.onAction(MediaLibraryAction.SearchChanged(""))
                     }
                 )
             }

@@ -57,6 +57,12 @@ interface PlaybackController {
     fun selectTextTrack(id: String?)
     fun discardMedia(fileId: Int)
 
+    /** Transmitindo: para o player local (mantém o arquivo aberto para o servidor do Cast). */
+    fun suspendForCast()
+
+    /** Fim da transmissão: volta a tocar aqui a partir de [positionMs]. */
+    fun resumeLocalAt(positionMs: Long)
+
     /** Download travado: cancela e pede de novo ao TDLib (retoma de onde parou). */
     suspend fun restartDownload(fileId: Int)
 }
@@ -151,6 +157,10 @@ class DefaultPlaybackController(
     override fun selectTextTrack(id: String?) = coordinator.selectTextTrack(id)
 
     override fun discardMedia(fileId: Int) = coordinator.discardMedia(fileId)
+
+    override fun suspendForCast() = coordinator.stop()
+
+    override fun resumeLocalAt(positionMs: Long) = coordinator.retryAt(positionMs)
 
     override suspend fun restartDownload(fileId: Int) = coordinator.restartDownload(fileId)
 }

@@ -68,6 +68,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.composed
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -199,7 +202,10 @@ internal fun StreamingControlsOverlay(
     onOpenSubtitle: () -> Unit,
     onToggleSubtitle: () -> Unit,
     onOpenSettings: () -> Unit,
-    onFullscreen: () -> Unit
+    onFullscreen: () -> Unit,
+    onPip: (() -> Unit)? = null,
+    onCast: (() -> Unit)? = null,
+    castActive: Boolean = false
 ) {
     if (compact) {
         PortraitControlsOverlay(
@@ -223,7 +229,10 @@ internal fun StreamingControlsOverlay(
             onOpenSubtitle = onOpenSubtitle,
             onToggleSubtitle = onToggleSubtitle,
             onOpenSettings = onOpenSettings,
-            onFullscreen = onFullscreen
+            onFullscreen = onFullscreen,
+            onPip = onPip,
+            onCast = onCast,
+            castActive = castActive
         )
         return
     }
@@ -250,7 +259,10 @@ internal fun StreamingControlsOverlay(
         onToggle = onToggle,
         onToggleSubtitle = onToggleSubtitle,
         onOpenSettings = onOpenSettings,
-        onFullscreen = onFullscreen
+        onFullscreen = onFullscreen,
+        onPip = onPip,
+        onCast = onCast,
+        castActive = castActive
     )
 }
 
@@ -277,7 +289,10 @@ internal fun LandscapeControlsOverlay(
     onToggle: () -> Unit,
     onToggleSubtitle: () -> Unit,
     onOpenSettings: () -> Unit,
-    onFullscreen: () -> Unit
+    onFullscreen: () -> Unit,
+    onPip: (() -> Unit)? = null,
+    onCast: (() -> Unit)? = null,
+    castActive: Boolean = false
 ) {
     // Amarração de foco para o dpad da TV: barra superior <-> controles centrais <-> scrubber,
     // e a linha da barra superior (Fechar -> Legenda -> Opções).
@@ -300,7 +315,10 @@ internal fun LandscapeControlsOverlay(
     Box(
         modifier = modifier
             .background(Color(0x26000000))
-            .clickable(onClick = onDismiss)
+            .then(
+                if (isTv) Modifier.clickable(onClick = onDismiss)
+                else Modifier.tapToSeek(onTap = onDismiss, onSeek = { onSeek(it); onInteract() })
+            )
     ) {
         Box(
             modifier = Modifier
@@ -356,7 +374,7 @@ internal fun LandscapeControlsOverlay(
                     )
                     // PiP não se aplica à TV.
                     if (!isTv) {
-                        PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onDismiss)
+                        if (onPip != null) PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onPip)
                     }
                 }
                 ScrollingTitle(
@@ -371,7 +389,7 @@ internal fun LandscapeControlsOverlay(
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Espelhamento/transmissão não se aplica à TV.
                     if (!isTv) {
-                        PortraitTopIcon(Icons.Filled.Cast, "Transmitir", onInteract, enabled = false)
+                        if (onCast != null) PortraitTopIcon(Icons.Filled.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
                     }
                     PortraitTopIcon(
                         Icons.Filled.ClosedCaption,
@@ -397,25 +415,27 @@ internal fun LandscapeControlsOverlay(
             }
         }
 
-        Row(
+        // Sem botões -10/+10: na TV o dpad ←/→ avança/volta; no celular, toque duplo nas laterais.
+        OverlayRoundButton(
+            icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
+            size = CENTER_PLAY_SIZE,
+            iconSize = CENTER_PLAY_ICON,
+            strong = false,
             modifier = Modifier
                 .align(Alignment.Center)
-                .focusProperties { up = if (settingsEnabled) topBarFocus else closeFocus },
-            horizontalArrangement = Arrangement.spacedBy(72.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            PortraitSeekButton("-10") { onSeek(-DPAD_SEEK_MS); onInteract() }
-            OverlayRoundButton(
-                icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
-                size = 86.dp,
-                iconSize = 46.dp,
-                strong = false,
-                modifier = Modifier.focusRequester(centerFocus),
-                onClick = { onToggle(); onInteract() }
-            )
-            PortraitSeekButton("+10") { onSeek(DPAD_SEEK_MS); onInteract() }
-        }
+                .focusProperties { up = if (settingsEnabled) topBarFocus else closeFocus }
+                .focusRequester(centerFocus)
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.DirectionLeft -> { onSeek(-dpadSeekStep(event)); onInteract(); true }
+                        Key.DirectionRight -> { onSeek(dpadSeekStep(event)); onInteract(); true }
+                        else -> false
+                    }
+                },
+            onClick = { onToggle(); onInteract() }
+        )
 
         Column(
             modifier = Modifier
@@ -480,12 +500,15 @@ internal fun PortraitControlsOverlay(
     onOpenSubtitle: () -> Unit,
     onToggleSubtitle: () -> Unit,
     onOpenSettings: () -> Unit,
-    onFullscreen: () -> Unit
+    onFullscreen: () -> Unit,
+    onPip: (() -> Unit)? = null,
+    onCast: (() -> Unit)? = null,
+    castActive: Boolean = false
 ) {
     Box(
         modifier = modifier
             .background(Color(0x33000000))
-            .clickable(onClick = onDismiss)
+            .tapToSeek(onTap = onDismiss, onSeek = { onSeek(it); onInteract() })
     ) {
         Box(
             modifier = Modifier
@@ -516,8 +539,8 @@ internal fun PortraitControlsOverlay(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 PortraitTopIcon(Icons.Filled.Close, "Fechar", onBack)
-                PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onDismiss)
-                PortraitTopIcon(Icons.Filled.Cast, "Transmitir", onInteract, enabled = false)
+                if (onPip != null) PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onPip)
+                if (onCast != null) PortraitTopIcon(Icons.Filled.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
                     PortraitTopIcon(
                         Icons.Filled.ClosedCaption,
                         "Legenda",
@@ -590,16 +613,14 @@ internal fun PortraitControlsOverlay(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                PortraitSeekButton("-10") { onSeek(-DPAD_SEEK_MS); onInteract() }
                 OverlayRoundButton(
                     icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
-                    size = 86.dp,
-                    iconSize = 46.dp,
+                    size = CENTER_PLAY_SIZE,
+                    iconSize = CENTER_PLAY_ICON,
                     strong = false,
                     onClick = { onToggle(); onInteract() }
                 )
-                PortraitSeekButton("+10") { onSeek(DPAD_SEEK_MS); onInteract() }
             }
 
             if (tracks.audios.size > 1) {
@@ -616,6 +637,24 @@ internal fun PortraitControlsOverlay(
                 }
             }
         }
+    }
+}
+
+private val CENTER_PLAY_SIZE = 64.dp
+private val CENTER_PLAY_ICON = 34.dp
+
+/**
+ * Toque simples → [onTap]; toque duplo na metade esquerda/direita → volta/avança [DPAD_SEEK_MS]
+ * (substitui os botões -10/+10). Toques duplos seguidos acumulam no feedback de seek.
+ */
+internal fun Modifier.tapToSeek(onTap: () -> Unit, onSeek: (Long) -> Unit): Modifier = composed {
+    val tap by rememberUpdatedState(onTap)
+    val seek by rememberUpdatedState(onSeek)
+    pointerInput(Unit) {
+        detectTapGestures(
+            onTap = { tap() },
+            onDoubleTap = { offset -> seek(if (offset.x < size.width / 2f) -DPAD_SEEK_MS else DPAD_SEEK_MS) }
+        )
     }
 }
 
@@ -668,30 +707,6 @@ internal fun FullscreenControlButton(onClick: () -> Unit) {
             contentDescription = "Tela cheia",
             tint = Color.White,
             modifier = Modifier.size(28.dp)
-        )
-    }
-}
-
-@Composable
-internal fun PortraitSeekButton(
-    label: String,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .size(62.dp)
-            .clip(CircleShape)
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color.Transparent),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = if (focused) Color.Black else Color.White,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
         )
     }
 }

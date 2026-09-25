@@ -77,6 +77,8 @@ interface AppContainer {
     val playbackCoordinator: PlaybackCoordinator
     val playbackSourceResolver: PlaybackSourceResolver
     val playbackController: PlaybackController
+    val castManager: com.ntv2.app.core.cast.CastManager
+    val localStreamServer: com.ntv2.app.core.cast.LocalStreamServer
     val playbackProgressStore: PlaybackProgressStore
     val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher
     val storageJanitor: StorageJanitor
@@ -218,6 +220,15 @@ class DefaultAppContainer(
 
     override val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher by lazy {
         com.ntv2.app.core.player.prefetch.TdlibVideoPrefetcher(tdlibPlaybackGateway)
+    }
+
+    override val castManager: com.ntv2.app.core.cast.CastManager by lazy {
+        com.ntv2.app.core.cast.CastManager(appContext)
+    }
+
+    // Entrega o vídeo ao Chromecast pela mesma fonte do player (baixa do TDLib sob demanda).
+    override val localStreamServer: com.ntv2.app.core.cast.LocalStreamServer by lazy {
+        com.ntv2.app.core.cast.LocalStreamServer(appContext, growingFileDataSourceFactory)
     }
 
     override val playbackController: PlaybackController by lazy {

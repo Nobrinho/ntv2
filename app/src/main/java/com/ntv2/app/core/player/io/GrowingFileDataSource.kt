@@ -35,7 +35,8 @@ class GrowingFileDataSourceFactory(
     }
 }
 
-private const val NUDGE_INTERVAL_MS = 2_000L
+private const val NUDGE_INTERVAL_MS = 1_000L
+private const val COVERAGE_POLL_MS = 75L
 // De quantos em quantos bytes lidos reavaliamos o que liberar do disco.
 private const val EVICT_CHECK_STEP_BYTES = 8L * 1024L * 1024L
 private const val TAG = "NtvDiskWindow"
@@ -154,6 +155,9 @@ private class GrowingFileDataSource(
                         bytesRemaining -= read
                     }
                     bytesTransferred(read)
+                    // Renova a janela antes de consumir os últimos bytes disponíveis. Antes este
+                    // pedido só acontecia no estado Wait, quando o player já tinha parado.
+                    maybeRequestAhead()
                     maybeEvictBehind()
                     return read
                 }
@@ -217,7 +221,7 @@ private class GrowingFileDataSource(
                 lastNudgeAt = now
             }
 
-            delay(300L)
+            delay(COVERAGE_POLL_MS)
 
             val downloaded = partialFileAccessor.downloadedBytes(fileId)
             if (downloaded > lastDownloaded) {
@@ -255,8 +259,9 @@ private class GrowingFileDataSource(
         // filme grande enche o disco e o TDLib faz abort() (ENOSPC no binlog) → app fecha. Aqui
         // a reprodução degrada (para de baixar adiante) em vez de derrubar o app.
         if (!hasEnoughFreeSpace()) return
-        val desiredEnd = readPosition + readAheadBytes
-        if (desiredEnd > lastRequestedEnd) {
+        val remainingAhead = lastRequestedEnd - readPosition
+        if (remainingAhead <= readAheadBytes / 2L) {
+            val desiredEnd = readPosition + readAheadBytes
             // Estende o download CONTÍGUO a partir da base (aumenta o tamanho), sem mover o offset
             // à frente — assim não abre buracos que travariam a leitura.
             partialFileAccessor.requestRange(

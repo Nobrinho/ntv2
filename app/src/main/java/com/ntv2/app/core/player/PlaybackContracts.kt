@@ -39,6 +39,8 @@ data class MediaTrackOption(
 data class MediaTracksInfo(
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
+    val videoFrameRate: Float = 0f,
+    val videoMimeType: String? = null,
     val audios: List<MediaTrackOption> = emptyList(),
     val subtitles: List<MediaTrackOption> = emptyList()
 ) {

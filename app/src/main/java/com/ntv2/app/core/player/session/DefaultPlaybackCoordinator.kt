@@ -3,9 +3,11 @@
 package com.ntv2.app.core.player.session
 
 import android.net.Uri
+import android.os.Build
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -38,6 +40,8 @@ private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
 private const val VIDEO_FREEZE_RECOVER_MS = 3_000L
 // Limite de recuperações por mídia (evita laço se o arquivo realmente não decodifica).
 private const val MAX_FREEZE_RECOVERIES = 5
+private const val FIRE_TV_DROPPED_FRAME_RECOVERY_THRESHOLD = 24
+private const val FIRE_TV_RECOVERY_COOLDOWN_MS = 30_000L
 
 class DefaultPlaybackCoordinator(
     private val playbackDataSource: TelegramPlaybackDataSource,
@@ -69,6 +73,7 @@ class DefaultPlaybackCoordinator(
     // erro; voltamos ao áudio padrão e retomamos da mesma posição em vez de travar.
     private var pendingAudioSwitch: Boolean = false
     private var positionBeforeAudioSwitch: Long = 0L
+    private var lastDecoderRecoveryAt = 0L
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -217,6 +222,7 @@ class DefaultPlaybackCoordinator(
         }
         freezeJob = scope.launch(Dispatchers.Main) {
             var lastFrames = -1L
+            var lastDroppedFrames = -1L
             var lastPositionMs = 0L
             var frozenForMs = 0L
             while (true) {
@@ -225,6 +231,7 @@ class DefaultPlaybackCoordinator(
                 val counters = player.videoDecoderCounters
                 if (counters == null || !player.isPlaying || player.playbackState != Player.STATE_READY) {
                     lastFrames = -1L
+                    lastDroppedFrames = -1L
                     frozenForMs = 0L
                     continue
                 }
@@ -232,10 +239,32 @@ class DefaultPlaybackCoordinator(
                 val frames = counters.renderedOutputBufferCount.toLong() +
                     counters.droppedBufferCount + counters.skippedOutputBufferCount
                 val positionMs = player.currentPosition
+                val droppedFrames = counters.droppedBufferCount.toLong()
+                val newlyDropped = if (lastDroppedFrames >= 0L) droppedFrames - lastDroppedFrames else 0L
+                lastDroppedFrames = droppedFrames
                 val clockAdvanced = positionMs - lastPositionMs >= 700L
                 frozenForMs = if (lastFrames >= 0L && frames == lastFrames && clockAdvanced) frozenForMs + 1_000L else 0L
                 lastFrames = frames
                 lastPositionMs = positionMs
+                val affectedFireTvVp9 = Build.MANUFACTURER.equals("Amazon", ignoreCase = true) &&
+                    Build.MODEL.equals("AFTKM", ignoreCase = true) &&
+                    snapshotState.value.tracks.videoMimeType == MimeTypes.VIDEO_VP9
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (affectedFireTvVp9 &&
+                    newlyDropped >= FIRE_TV_DROPPED_FRAME_RECOVERY_THRESHOLD &&
+                    now - lastDecoderRecoveryAt >= FIRE_TV_RECOVERY_COOLDOWN_MS &&
+                    freezeRecoveries < MAX_FREEZE_RECOVERIES
+                ) {
+                    freezeRecoveries++
+                    lastDecoderRecoveryAt = now
+                    android.util.Log.w(
+                        "NtvPlayer",
+                        "VP9/AFTKM descartou $newlyDropped quadros em 1s na posição ${positionMs}ms — " +
+                            "recriando decodificador ($freezeRecoveries/$MAX_FREEZE_RECOVERIES)"
+                    )
+                    retry()
+                    return@launch
+                }
                 if (frozenForMs >= VIDEO_FREEZE_RECOVER_MS && freezeRecoveries < MAX_FREEZE_RECOVERIES) {
                     freezeRecoveries++
                     android.util.Log.w(
@@ -367,6 +396,8 @@ class DefaultPlaybackCoordinator(
     private fun buildTracksInfo(tracks: Tracks): MediaTracksInfo {
         var videoWidth = 0
         var videoHeight = 0
+        var videoFrameRate = 0f
+        var videoMimeType: String? = null
         val audios = mutableListOf<MediaTrackOption>()
         val subtitles = mutableListOf<MediaTrackOption>()
 
@@ -378,6 +409,8 @@ class DefaultPlaybackCoordinator(
                     C.TRACK_TYPE_VIDEO -> if (selected || videoHeight == 0) {
                         if (format.width > 0) videoWidth = format.width
                         if (format.height > 0) videoHeight = format.height
+                        if (format.frameRate > 0f) videoFrameRate = format.frameRate
+                        videoMimeType = format.sampleMimeType
                     }
                     // Sem filtro de suporte: lista todas as faixas de áudio do container
                     // (ex.: 2º áudio/dublagem), como a versão anterior fazia. A reprodução
@@ -397,7 +430,14 @@ class DefaultPlaybackCoordinator(
                 }
             }
         }
-        return MediaTracksInfo(videoWidth, videoHeight, audios, subtitles)
+        return MediaTracksInfo(
+            videoWidth = videoWidth,
+            videoHeight = videoHeight,
+            videoFrameRate = videoFrameRate,
+            videoMimeType = videoMimeType,
+            audios = audios,
+            subtitles = subtitles
+        )
     }
 
     private fun audioLabel(format: Format, index: Int): String {

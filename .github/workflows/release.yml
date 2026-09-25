@@ -1,0 +1,138 @@
+name: Publicar atualização do NTV
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  actions: read
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "release-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restaurar chave de assinatura
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.NTV_SIGNING_KEY_BASE64 }}
+        run: |
+          test -n "$SIGNING_KEY_BASE64"
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/ntv-release.jks"
+
+      - name: Testar e gerar APK assinado
+        env:
+          STORE_PASSWORD: ${{ secrets.NTV_SIGNING_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.NTV_SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.NTV_SIGNING_KEY_PASSWORD }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          ./gradlew testReleaseUnitTest assembleRelease \
+            -PreleaseStoreFile="$RUNNER_TEMP/ntv-release.jks" \
+            -PreleaseStorePassword="$STORE_PASSWORD" \
+            -PreleaseKeyAlias="$KEY_ALIAS" \
+            -PreleaseKeyPassword="$KEY_PASSWORD" \
+            -PtelegramApiId="$TELEGRAM_API_ID" \
+            -PtelegramApiHash="$TELEGRAM_API_HASH"
+
+      - name: Preparar APK e manifesto
+        id: metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          METADATA=app/build/outputs/apk/release/output-metadata.json
+          SOURCE_APK=$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)
+          test -f "$SOURCE_APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$SOURCE_APK"
+          VERSION_CODE=$(jq -r '.elements[0].versionCode' "$METADATA")
+          VERSION_NAME=$(jq -r '.elements[0].versionName' "$METADATA")
+          test "$RELEASE_TAG" = "v$VERSION_NAME"
+          PREVIOUS_CODE=$(curl -fsS "https://nobrinho.github.io/ntv2/update.json" | jq -r '.versionCode') || PREVIOUS_CODE=0
+          test "$VERSION_CODE" -gt "$PREVIOUS_CODE"
+          APK_NAME="ntv-$VERSION_NAME.apk"
+          cp "$SOURCE_APK" "$APK_NAME"
+          APK_SIZE=$(stat -c%s "$APK_NAME")
+          APK_SHA256=$(sha256sum "$APK_NAME" | cut -d' ' -f1)
+          DOWNLOAD_URL="https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/$APK_NAME"
+          jq -n \
+            --arg applicationId "com.ntv2.app" \
+            --argjson versionCode "$VERSION_CODE" \
+            --arg versionName "$VERSION_NAME" \
+            --arg publishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg downloadUrl "$DOWNLOAD_URL" \
+            --argjson sizeBytes "$APK_SIZE" \
+            --arg sha256 "$APK_SHA256" \
+            '{
+              schemaVersion: 1,
+              applicationId: $applicationId,
+              versionCode: $versionCode,
+              versionName: $versionName,
+              minimumAndroidSdk: 23,
+              publishedAt: $publishedAt,
+              downloadUrl: $downloadUrl,
+              sizeBytes: $sizeBytes,
+              sha256: $sha256,
+              required: false,
+              minimumSupportedVersionCode: 4,
+              notes: ["Atualização do NTV " + $versionName]
+            }' > update.json
+          echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Criar GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_NAME: ${{ steps.metadata.outputs.apk_name }}
+        run: gh release create "${{ github.ref_name }}" "$APK_NAME" update.json --generate-notes --verify-tag
+
+      - name: Validar arquivo publicado
+        env:
+          APK_NAME: ${{ steps.metadata.outputs.apk_name }}
+        run: |
+          EXPECTED=$(jq -r '.sha256' update.json)
+          curl --fail --location --retry 5 \
+            "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$APK_NAME" \
+            --output published.apk
+          test "$(sha256sum published.apk | cut -d' ' -f1)" = "$EXPECTED"
+
+      - name: Preparar GitHub Pages
+        run: |
+          mkdir pages
+          cp -R site/. pages/
+          cp update.json pages/update.json
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+
+      - name: Enviar conteúdo do Pages
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: pages
+
+      - name: Publicar manifesto estável
+        id: pages
+        uses: actions/deploy-pages@v5

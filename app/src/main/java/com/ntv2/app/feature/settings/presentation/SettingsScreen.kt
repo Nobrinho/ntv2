@@ -78,9 +78,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.icons.filled.Animation
+import androidx.compose.material.icons.filled.SystemUpdate
 import com.ntv2.app.core.ui.CardLoadingPlaceholder
 import com.ntv2.app.core.ui.CardLoadingStyle
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import com.ntv2.app.BuildConfig
+import com.ntv2.app.feature.update.presentation.UpdateStage
+import com.ntv2.app.feature.update.presentation.UpdateUiState
 
 private val BRAND = Color(0xFF2BEE34)
 
@@ -102,6 +106,11 @@ fun SettingsScreen(
     onOpenListedChannels: () -> Unit,
     onLogout: () -> Unit,
     onOpenLibrary: () -> Unit,
+    updateState: UpdateUiState = UpdateUiState(),
+    onCheckForUpdates: () -> Unit = {},
+    onStartUpdateDownload: () -> Unit = {},
+    onInstallUpdate: () -> Unit = {},
+    onCancelUpdateDownload: () -> Unit = {},
     // Rail: Busca abre a busca da Biblioteca; Atualizar recarrega a Biblioteca.
     onSearch: () -> Unit = onOpenLibrary,
     onRefresh: () -> Unit = onOpenLibrary
@@ -213,6 +222,22 @@ fun SettingsScreen(
                         onClick = onManageChannels
                     )
                     NavCard(
+                        icon = Icons.Filled.SystemUpdate,
+                        title = "Atualizações",
+                        subtitle = updateSubtitle(updateState),
+                        destructive = false,
+                        modifier = itemMod(9),
+                        onClick = {
+                            when (updateState.stage) {
+                                UpdateStage.AVAILABLE -> onStartUpdateDownload()
+                                UpdateStage.READY_TO_INSTALL, UpdateStage.PERMISSION_REQUIRED -> onInstallUpdate()
+                                UpdateStage.DOWNLOADING, UpdateStage.WAITING_FOR_DOWNLOAD -> onCancelUpdateDownload()
+                                UpdateStage.VERIFYING, UpdateStage.CHECKING -> Unit
+                                else -> onCheckForUpdates()
+                            }
+                        }
+                    )
+                    NavCard(
                         icon = Icons.Filled.Shield,
                         title = "Política de privacidade",
                         subtitle = "Como o app trata seus dados",
@@ -298,7 +323,23 @@ private fun ToggleCard(
     }
 }
 
-private const val SETTINGS_ITEM_COUNT = 9
+private const val SETTINGS_ITEM_COUNT = 10
+
+private fun updateSubtitle(state: UpdateUiState): String = when (state.stage) {
+    UpdateStage.IDLE -> "Versão ${BuildConfig.VERSION_NAME} · Verificar atualizações"
+    UpdateStage.CHECKING -> "Verificando…"
+    UpdateStage.UP_TO_DATE -> "Versão ${BuildConfig.VERSION_NAME} · Você está atualizado"
+    UpdateStage.AVAILABLE -> "Nova versão ${state.update?.versionName.orEmpty()} disponível"
+    UpdateStage.WAITING_FOR_DOWNLOAD -> "Aguardando conexão · selecione para cancelar"
+    UpdateStage.DOWNLOADING -> {
+        val percent = state.progress?.times(100)?.toInt()
+        if (percent != null) "Baixando $percent% · selecione para cancelar" else "Baixando atualização…"
+    }
+    UpdateStage.VERIFYING -> "Verificando segurança do APK…"
+    UpdateStage.READY_TO_INSTALL -> "Versão ${state.update?.versionName.orEmpty()} pronta para instalar"
+    UpdateStage.PERMISSION_REQUIRED -> "Permita esta fonte e selecione para instalar"
+    UpdateStage.UNSUPPORTED, UpdateStage.ERROR -> state.message ?: "Não foi possível verificar"
+}
 
 private val DURATION_STEPS = listOf(0, 5, 10, 15, 20, 30, 45, 60, 90, 120)
 

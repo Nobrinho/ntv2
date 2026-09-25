@@ -190,6 +190,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    testImplementation(libs.json)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

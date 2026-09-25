@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
+import android.os.Build
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
@@ -62,6 +63,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.Player
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
@@ -71,6 +73,7 @@ import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.player.PlaybackState
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import kotlin.math.abs
 
 internal const val DPAD_SEEK_MS = 10_000L
 internal const val CONTROLS_TIMEOUT_MS = 6_000L
@@ -131,6 +134,41 @@ fun PlaybackScreen(
         configuration.screenHeightDp.dp
     } else {
         configuration.screenHeightDp.dp
+    }
+
+    // O AFTKM apresentou bloqueios longos do compositor ao reproduzir VP9/23,976 fps com a
+    // saída fixa em 59,94 Hz. Para esse conjunto específico, usa um modo da mesma resolução e
+    // com a cadência do conteúdo. Celulares e outros modelos não entram neste workaround.
+    val videoFrameRate = state.snapshot.tracks.videoFrameRate
+    val videoMimeType = state.snapshot.tracks.videoMimeType
+    DisposableEffect(activity, videoFrameRate, videoMimeType) {
+        val window = activity?.window
+        val originalModeId = window?.attributes?.preferredDisplayModeId ?: 0
+        val affectedFireTvVp9 = Build.MANUFACTURER.equals("Amazon", ignoreCase = true) &&
+            Build.MODEL.equals("AFTKM", ignoreCase = true) &&
+            videoMimeType == MimeTypes.VIDEO_VP9 && videoFrameRate > 0f
+        if (window != null && affectedFireTvVp9) {
+            @Suppress("DEPRECATION")
+            val display = activity.windowManager.defaultDisplay
+            val current = display.mode
+            val best = display.supportedModes
+                .asSequence()
+                .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+                .minByOrNull { abs(it.refreshRate - videoFrameRate) }
+                ?.takeIf { abs(it.refreshRate - videoFrameRate) <= 0.15f }
+            if (best != null && best.modeId != current.modeId) {
+                window.attributes = window.attributes.apply { preferredDisplayModeId = best.modeId }
+                android.util.Log.i(
+                    "NtvPlayer",
+                    "VP9/AFTKM: saída ${current.refreshRate}Hz → ${best.refreshRate}Hz para vídeo ${videoFrameRate}fps"
+                )
+            }
+        }
+        onDispose {
+            if (window != null && window.attributes.preferredDisplayModeId != originalModeId) {
+                window.attributes = window.attributes.apply { preferredDisplayModeId = originalModeId }
+            }
+        }
     }
 
     DisposableEffect(activity, view) {

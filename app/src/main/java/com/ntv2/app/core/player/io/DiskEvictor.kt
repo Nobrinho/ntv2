@@ -33,7 +33,7 @@ internal class DiskEvictor(
 
     private fun generation(fileId: Int): AtomicInteger = generations.computeIfAbsent(fileId) { AtomicInteger() }
 
-    fun submit(fileId: Int, path: String, start: Long, end: Long) {
+    fun submit(fileId: Int, path: String, start: Long, end: Long, onProgress: (Long) -> Unit = {}) {
         if (end <= start) return
         val gen = generation(fileId).get()
         executor.execute {
@@ -59,6 +59,9 @@ internal class DiskEvictor(
                     break
                 }
                 position += length
+                // Só publica como liberado aquilo que o sistema de arquivos confirmou. Assim uma
+                // falha no punch hole nunca faz o player tratar bytes válidos como ausentes.
+                onProgress(position)
                 if (position < end) Thread.sleep(pauseMs)
             }
             if (position > start) {

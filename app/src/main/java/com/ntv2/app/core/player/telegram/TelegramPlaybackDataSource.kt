@@ -41,8 +41,8 @@ interface PartialFileAccessor {
     fun evictedEnd(fileId: Int): Long = 0L
 
     /**
-     * Libera do disco [start, end) em segundo plano. O trecho é marcado como liberado ANTES de
-     * liberar, para uma leitura/seek nele rebaixar em vez de ler zeros.
+     * Libera do disco [start, end) em segundo plano. A implementação só avança [evictedEnd]
+     * depois que o sistema de arquivos confirmar a liberação.
      */
     fun scheduleEviction(fileId: Int, start: Long, end: Long) = Unit
 

@@ -95,8 +95,9 @@ class TdlibTelegramPlaybackDataSource(
 
     override fun scheduleEviction(fileId: Int, start: Long, end: Long) {
         val path = resolvePath(fileId)?.takeIf { it.isNotEmpty() } ?: return
-        evictedEnds.merge(fileId, end) { old, new -> maxOf(old, new) }
-        evictor.submit(fileId, path, start, end)
+        evictor.submit(fileId, path, start, end) { confirmedEnd ->
+            evictedEnds.merge(fileId, confirmedEnd) { old, new -> maxOf(old, new) }
+        }
     }
 
     override suspend fun resetLocalCopy(fileId: Int) {

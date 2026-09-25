@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "applicationId": "com.ntv2.app",
+  "versionCode": 4,
+  "versionName": "0.3.0",
+  "minimumAndroidSdk": 23,
+  "publishedAt": "2026-09-23T00:00:00Z",
+  "downloadUrl": "https://github.com/Nobrinho/ntv2/releases/download/v0.3.0/ntv-0.3.0.apk",
+  "sizeBytes": 1,
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "required": false,
+  "minimumSupportedVersionCode": 4,
+  "notes": ["Versão inicial do sistema de atualizações."]
+}

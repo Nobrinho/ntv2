@@ -65,6 +65,10 @@ import com.ntv2.app.feature.playback.presentation.PlayerScreenViewModel
 import com.ntv2.app.feature.playback.presentation.PlayerScreenViewModelFactory
 import com.ntv2.app.feature.settings.presentation.SettingsScreen
 import com.ntv2.app.feature.splash.presentation.SplashScreen
+import com.ntv2.app.feature.update.presentation.UpdateStage
+import com.ntv2.app.feature.update.presentation.UpdateViewModel
+import com.ntv2.app.feature.update.presentation.UpdateViewModelFactory
+import androidx.compose.material.icons.filled.SystemUpdate
 
 @Composable
 fun AppNavHost(
@@ -72,6 +76,16 @@ fun AppNavHost(
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
+    val updateViewModel: UpdateViewModel = viewModel(
+        factory = UpdateViewModelFactory(
+            repository = appContainer.updateRepository,
+            downloader = appContainer.updateDownloadManager,
+            verifier = appContainer.updateVerifier,
+            installer = appContainer.updateInstaller,
+            preferences = appContainer.updatePreferences
+        )
+    )
+    val updateState by updateViewModel.state.collectAsState()
     val activityManager = remember(context) {
         context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
     }
@@ -90,6 +104,7 @@ fun AppNavHost(
     // Pedidos vindos do rail das Configurações: abrir a busca / atualizar a Biblioteca.
     var openSearchRequest by remember { mutableStateOf(0) }
     var refreshLibraryRequest by remember { mutableStateOf(0) }
+    var dismissedUpdatePromptVersion by remember { mutableStateOf<Long?>(null) }
     // Cobre a tela com feedback enquanto o logout (recriação do cliente TDLib) acontece.
     var loggingOut by remember { mutableStateOf(false) }
     // Splash como OVERLAY: o app real (Login → Biblioteca) monta e carrega POR TRÁS enquanto a
@@ -332,7 +347,12 @@ fun AppNavHost(
                         popUpTo(RoutePath.MEDIA_LIBRARY) { inclusive = false }
                         launchSingleTop = true
                     }
-                }
+                },
+                updateState = updateState,
+                onCheckForUpdates = { updateViewModel.check(manual = true) },
+                onStartUpdateDownload = updateViewModel::startDownload,
+                onInstallUpdate = updateViewModel::install,
+                onCancelUpdateDownload = updateViewModel::cancelDownload
             )
         }
 
@@ -397,6 +417,59 @@ fun AppNavHost(
             destructive = true,
             onConfirm = { (context as? Activity)?.finish() },
             onDismiss = { showExitDialog = false; focusRestoreSignal++ }
+        )
+    }
+
+    val canShowUpdatePrompt = !showSplash &&
+        currentRoute != RoutePath.LOGIN &&
+        currentRoute != RoutePath.PLAYBACK_PLACEHOLDER &&
+        (updateState.mandatory || dismissedUpdatePromptVersion != updateState.update?.versionCode)
+    if (canShowUpdatePrompt && updateState.stage == UpdateStage.AVAILABLE) {
+        val update = updateState.update
+        val notes = update?.notes?.take(4)?.joinToString("\n") { "• $it" }.orEmpty()
+        ConfirmDialog(
+            title = if (updateState.mandatory) "Atualização necessária" else "Nova versão disponível",
+            message = buildString {
+                append("NTV ${update?.versionName.orEmpty()}")
+                if (notes.isNotBlank()) append("\n\n").append(notes)
+            },
+            icon = Icons.Filled.SystemUpdate,
+            confirmLabel = "Baixar atualização",
+            confirmIcon = Icons.Filled.SystemUpdate,
+            cancelLabel = if (updateState.mandatory) "Atualização necessária" else "Agora não",
+            cancelIcon = Icons.Filled.Close,
+            onConfirm = {
+                dismissedUpdatePromptVersion = null
+                updateViewModel.startDownload()
+            },
+            onDismiss = {
+                if (!updateState.mandatory) {
+                    dismissedUpdatePromptVersion = update?.versionCode
+                    updateViewModel.ignoreCurrentVersion()
+                }
+            }
+        )
+    }
+
+    if (canShowUpdatePrompt &&
+        (updateState.stage == UpdateStage.READY_TO_INSTALL ||
+            updateState.stage == UpdateStage.PERMISSION_REQUIRED)
+    ) {
+        ConfirmDialog(
+            title = "Atualização pronta",
+            message = updateState.message
+                ?: "O download foi validado. O Android pedirá a confirmação da instalação.",
+            icon = Icons.Filled.SystemUpdate,
+            confirmLabel = "Instalar",
+            confirmIcon = Icons.Filled.SystemUpdate,
+            cancelLabel = "Depois",
+            cancelIcon = Icons.Filled.Close,
+            onConfirm = updateViewModel::install,
+            onDismiss = {
+                if (!updateState.mandatory) {
+                    dismissedUpdatePromptVersion = updateState.update?.versionCode
+                }
+            }
         )
     }
 

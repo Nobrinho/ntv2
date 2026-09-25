@@ -23,12 +23,12 @@ class DefaultExoPlayerProvider(
     override fun create(): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                7_000,
-                30_000,
-                1_200,
-                2_200
+                15_000,
+                45_000,
+                2_500,
+                5_000
             )
-            .setTargetBufferBytes(8 * 1024 * 1024)
+            .setTargetBufferBytes(32 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 

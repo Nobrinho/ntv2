@@ -56,6 +56,12 @@ import com.ntv2.app.core.telegram.media.FakeTdlibStorageGateway
 import android.content.pm.ApplicationInfo
 import coil.imageLoader
 import java.io.File
+import com.ntv2.app.feature.update.data.ApkDownloadManager
+import com.ntv2.app.feature.update.data.HttpUpdateRepository
+import com.ntv2.app.feature.update.data.UpdatePreferences
+import com.ntv2.app.feature.update.domain.UpdateRepository
+import com.ntv2.app.feature.update.installer.ApkVerifier
+import com.ntv2.app.feature.update.installer.AppUpdateInstaller
 
 interface AppContainer {
     val tdlibAuthGateway: TdlibAuthGateway
@@ -85,6 +91,11 @@ interface AppContainer {
     val settingsRepository: SettingsRepository
     val mediaDetailsCache: MediaDetailsCache
     val searchIndexRepository: SearchIndexRepository
+    val updateRepository: UpdateRepository
+    val updateDownloadManager: ApkDownloadManager
+    val updateVerifier: ApkVerifier
+    val updateInstaller: AppUpdateInstaller
+    val updatePreferences: UpdatePreferences
 }
 
 class DefaultAppContainer(
@@ -258,8 +269,18 @@ class DefaultAppContainer(
         SearchIndexRepository(indexUrl = SEARCH_INDEX_URL)
     }
 
+    override val updateRepository: UpdateRepository by lazy {
+        HttpUpdateRepository(manifestUrl = UPDATE_MANIFEST_URL)
+    }
+
+    override val updateDownloadManager: ApkDownloadManager by lazy { ApkDownloadManager(appContext) }
+    override val updateVerifier: ApkVerifier by lazy { ApkVerifier(appContext) }
+    override val updateInstaller: AppUpdateInstaller by lazy { AppUpdateInstaller(appContext) }
+    override val updatePreferences: UpdatePreferences by lazy { UpdatePreferences(appContext) }
+
     private companion object {
         // Índice de busca publicado pelo bot (GitHub Pages). Trocar aqui se mudar de host.
         const val SEARCH_INDEX_URL = "https://nobrinho.github.io/nbrplay-privacy/docs/index.json"
+        const val UPDATE_MANIFEST_URL = "https://nobrinho.github.io/ntv2/update.json"
     }
 }

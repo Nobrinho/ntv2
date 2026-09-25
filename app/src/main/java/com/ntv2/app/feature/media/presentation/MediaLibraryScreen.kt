@@ -474,7 +474,10 @@ fun MediaLibraryScreen(
             )
         }
 
-        detailsMedia?.let { media ->
+        detailsMedia?.let { opened ->
+            // Progresso pode ter mudado depois que os Detalhes abriram (ex.: voltou do player).
+            val media = state.progressOverrides[opened.mediaId]
+                ?.let { opened.copy(progress = it) } ?: opened
             MovieDetailsOverlay(
                 media = media,
                 details = viewModel.detailsFor(media.mediaId),

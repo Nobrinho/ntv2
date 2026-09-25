@@ -81,6 +81,8 @@ class MediaLibraryViewModel(
     // Cards do índice (sem fileId) já resolvidos no TDLib: reaproveitados ao apertar Assistir.
     private val resolvedVideos = mutableMapOf<String, MediaItemSummary>()
     private var detailsOpenMediaId: String? = null
+    // Resolução do fileId (card do índice) em andamento; cancelada se os Detalhes fecharem antes.
+    private var openVideoJob: Job? = null
 
     private val _uiState = MutableStateFlow(MediaLibraryUiState(isLoading = true))
     val uiState: StateFlow<MediaLibraryUiState> = _uiState.asStateFlow()
@@ -116,6 +118,7 @@ class MediaLibraryViewModel(
 
     init {
         observeSelectionAndFilter()
+        observeProgressChanges()
         // Pré-carrega o índice de busca em background para a 1ª busca já vir instantânea.
         searchIndexRepository?.let { repo -> viewModelScope.launch { runCatching { repo.covers(0L) } } }
     }
@@ -192,6 +195,10 @@ class MediaLibraryViewModel(
             is MediaLibraryAction.DetailsOpened -> startPrefetch(action.media)
             is MediaLibraryAction.DetailsClosed -> {
                 if (detailsOpenMediaId == action.mediaId) detailsOpenMediaId = null
+                // Saiu dos Detalhes com o Assistir carregando: aborta, senão o player abria sobre a grade.
+                openVideoJob?.cancel()
+                openVideoJob = null
+                _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = false, pendingNavigation = null) }
                 prefetching.remove(action.mediaId)?.let { videoPrefetcher?.cancel(it) }
             }
 
@@ -419,7 +426,8 @@ class MediaLibraryViewModel(
                 returnToDetailsMedia = media
             )
         }
-        viewModelScope.launch {
+        openVideoJob?.cancel()
+        openVideoJob = viewModelScope.launch {
             val resolved = resolvedVideos[media.mediaId] ?: withContext(ioDispatcher) {
                 runCatching { mediaRepository.getVideoByMessage(media.channelId, media.channelName, messageId) }.getOrNull()
             }
@@ -690,6 +698,25 @@ class MediaLibraryViewModel(
         } else {
             mediaRepository.searchChannelVideos(channelId, channelTitle, query, fromMessageId, limit)
         }
+
+    /** Progresso gravado/limpo (ex.: ao sair do player): atualiza cards e Detalhes abertos. */
+    private fun observeProgressChanges() {
+        viewModelScope.launch {
+            progressStore.changes.collect { mediaId ->
+                val s = _uiState.value
+                val card = s.returnToDetailsMedia?.takeIf { it.mediaId == mediaId }
+                    ?: s.items.firstOrNull { it.mediaId == mediaId }
+                    ?: s.searchResults.firstOrNull { it.mediaId == mediaId }
+                val totalMs = (card?.durationSeconds ?: 0) * 1_000L
+                val savedMs = withContext(ioDispatcher) {
+                    runCatching { progressStore.savedPositions(listOf(mediaId))[mediaId] }.getOrNull()
+                } ?: 0L
+                val progress = if (totalMs > 0L && savedMs > 0L) (savedMs.toFloat() / totalMs).coerceIn(0f, 1f) else 0f
+                _uiState.update { it.copy(progressOverrides = it.progressOverrides + (mediaId to progress)) }
+                projectSections()
+            }
+        }
+    }
 
     private fun projectSections() {
         viewModelScope.launch {

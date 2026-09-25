@@ -93,6 +93,9 @@ data class MediaLibraryUiState(
     val returnToDetailsMediaId: String? = null,
     // Card completo dos Detalhes que abriram o player (resultados da busca não estão em items).
     val returnToDetailsMedia: MediaCardUi? = null,
+    /** Progresso atualizado (0..1) por mediaId, gravado depois que o card foi montado (ex.: ao sair
+     *  do player). Os Detalhes usam isto para mostrar Continuar/Recomeçar sem reabrir. */
+    val progressOverrides: Map<String, Float> = emptyMap(),
     val focusRestoreNonce: Long = 0,
     val pendingNavigation: MediaNavigationPayload? = null
 )

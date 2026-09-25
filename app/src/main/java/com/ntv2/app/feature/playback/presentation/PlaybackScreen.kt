@@ -428,6 +428,10 @@ fun PlaybackScreen(
     // Com a tela de erro aberta, Voltar sai do player direto.
     BackHandler(enabled = state.loadError != null) { onBack() }
 
+    // Vídeo terminou: fecha o player e volta aos Detalhes.
+    val ended = !state.isPlaceholderMode && state.snapshot.state == PlaybackState.Ended
+    LaunchedEffect(ended) { if (ended) onBack() }
+
     Box(
         modifier = Modifier
             .fillMaxSize()

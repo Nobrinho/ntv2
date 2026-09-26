@@ -93,6 +93,9 @@ fun MediaLibraryScreen(
     // Teclado de busca próprio (D-pad) e picker de canal ativo — overlays na tela.
     var searching by remember { mutableStateOf(false) }
     var channelPicker by remember { mutableStateOf(false) }
+    // Histórico (TV, pelo rail) e "Meu" (celular, aba com segmented): overlays sobre a biblioteca.
+    var showHistory by remember { mutableStateOf(false) }
+    var showMyStuff by remember { mutableStateOf(false) }
     // Card selecionado para a tela de Detalhes (overlay estilo Netflix/Prime).
     var detailsMedia by remember { mutableStateOf<MediaCardUi?>(null) }
     // TV: resultado da busca que abriu os Detalhes. Ao fechar os Detalhes, a busca reabre com a
@@ -359,7 +362,8 @@ fun MediaLibraryScreen(
                         onClearFilter = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
                         onChannels = { pickerFromRail = true; channelPicker = true },
                         onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
-                        onSettings = { returnToSettingsButton = true; onOpenSettings() }
+                        onSettings = { returnToSettingsButton = true; onOpenSettings() },
+                        onHistory = { showHistory = true }
                     )
                 }
             }
@@ -396,6 +400,54 @@ fun MediaLibraryScreen(
                     )
                 }
 
+                val openDetails: (MediaCardUi) -> Unit = { media ->
+                    viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
+                    viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                    viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
+                    detailsMedia = media
+                }
+                // As trilhas de personalização entram como CABEÇALHO da grade (rolam junto com os
+                // cards), para o D-pad descer da trilha para a grade e a grade nunca ser empurrada
+                // para fora da tela.
+                val hasTracks = state.continueWatching.isNotEmpty() ||
+                    state.myList.isNotEmpty() || state.recommendations.isNotEmpty()
+                val libraryHeader: (@Composable () -> Unit)? = if (!hasTracks) null else {
+                    {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            if (state.continueWatching.isNotEmpty()) {
+                                ContinueWatchingRow(
+                                    items = state.continueWatching,
+                                    showCovers = state.showCovers,
+                                    useTvLayout = useTvLayout,
+                                    onCardClick = openDetails
+                                )
+                            }
+                            if (state.myList.isNotEmpty()) {
+                                PosterTrackRow(
+                                    label = "Minha lista",
+                                    items = state.myList,
+                                    showCovers = state.showCovers,
+                                    useTvLayout = useTvLayout,
+                                    onCardClick = openDetails
+                                )
+                            }
+                            if (state.recommendations.isNotEmpty()) {
+                                PosterTrackRow(
+                                    label = "Recomendados para você",
+                                    items = state.recommendations,
+                                    showCovers = state.showCovers,
+                                    useTvLayout = useTvLayout,
+                                    onCardClick = openDetails
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     state.isLoading -> MediaGridSkeleton(
                         showCovers = state.showCovers,
@@ -468,20 +520,47 @@ fun MediaLibraryScreen(
                                 lastIdBeforeLoad = state.items.lastOrNull()?.mediaId
                                 loadMoreRequested = true
                                 viewModel.onAction(MediaLibraryAction.LoadMore)
-                            }
+                            },
+                            headerContent = libraryHeader
                         )
                     }
+                }
                 }
             }
         }
 
         if (!useTvLayout) {
             MainBottomNav(
-                selected = MainTab.Library,
-                onLibrary = {},
+                selected = if (showMyStuff) MainTab.MyStuff else MainTab.Library,
+                onLibrary = { showMyStuff = false },
                 onChannels = { channelPicker = true },
                 onSettings = onOpenSettings,
+                onMyStuff = { showMyStuff = true },
                 modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+
+        if (showMyStuff) {
+            MyStuffOverlay(
+                continueWatching = state.continueWatching,
+                myList = state.myList,
+                history = state.history,
+                showCovers = state.showCovers,
+                onCardClick = { media ->
+                    showMyStuff = false
+                    viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                    viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
+                    detailsMedia = media
+                },
+                onContinue = { media ->
+                    showMyStuff = false
+                    viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
+                    viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                    viewModel.onAction(MediaLibraryAction.OpenVideo(media))
+                },
+                onRemoveHistory = { mediaId -> viewModel.onAction(MediaLibraryAction.RemoveFromHistory(mediaId)) },
+                onClearHistory = { viewModel.onAction(MediaLibraryAction.ClearHistory) },
+                onClose = { showMyStuff = false }
             )
         }
 
@@ -504,6 +583,13 @@ fun MediaLibraryScreen(
                 onRestart = { viewModel.onAction(MediaLibraryAction.RestartVideo(media)) },
                 onReport = { reason -> viewModel.onAction(MediaLibraryAction.ReportMedia(media, reason)) },
                 isTv = adaptive.isTv,
+                isFavorite = state.favoriteIds.contains(media.mediaId),
+                onToggleFavorite = { viewModel.onAction(MediaLibraryAction.ToggleFavorite(media)) },
+                recommendations = remember(media.mediaId, state.items.size) { viewModel.recommendationsFor(media.mediaId) },
+                onRecommendationClick = { rec ->
+                    viewModel.onAction(MediaLibraryAction.DetailsOpened(rec))
+                    detailsMedia = rec
+                },
                 onDismiss = {
                     detailsMedia = null
                     viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
@@ -512,6 +598,23 @@ fun MediaLibraryScreen(
                 },
                 playLoading = state.isOpeningVideo,
                 playFailed = state.openVideoFailed
+            )
+        }
+
+        if (showHistory) {
+            HistoryOverlay(
+                entries = state.history,
+                showCovers = state.showCovers,
+                useTvLayout = useTvLayout,
+                onContinue = { media ->
+                    showHistory = false
+                    viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
+                    viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                    viewModel.onAction(MediaLibraryAction.OpenVideo(media))
+                },
+                onRemove = { mediaId -> viewModel.onAction(MediaLibraryAction.RemoveFromHistory(mediaId)) },
+                onClear = { viewModel.onAction(MediaLibraryAction.ClearHistory) },
+                onClose = { showHistory = false }
             )
         }
 

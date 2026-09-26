@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
@@ -29,6 +30,7 @@ private val BRAND = Color(0xFF2BEE34)
 
 enum class MainTab {
     Library,
+    MyStuff,
     Channels,
     Settings
 }
@@ -39,7 +41,9 @@ fun MainBottomNav(
     onLibrary: () -> Unit,
     onChannels: () -> Unit,
     onSettings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // "Meu" (histórico/personalização): só aparece quando a tela fornece a ação.
+    onMyStuff: (() -> Unit)? = null
 ) {
     Row(
         modifier = modifier
@@ -57,6 +61,15 @@ fun MainBottomNav(
             modifier = Modifier.weight(1f),
             onClick = onLibrary
         )
+        if (onMyStuff != null) {
+            MainBottomNavItem(
+                icon = Icons.Filled.Favorite,
+                label = "Meu",
+                selected = selected == MainTab.MyStuff,
+                modifier = Modifier.weight(1f),
+                onClick = onMyStuff
+            )
+        }
         MainBottomNavItem(
             icon = Icons.Filled.Subscriptions,
             label = "Canais",

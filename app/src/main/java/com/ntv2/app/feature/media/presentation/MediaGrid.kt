@@ -150,15 +150,18 @@ internal fun LazyMediaGrid(
     onCardClick: (MediaCardUi) -> Unit,
     loadMoreFocus: FocusRequester,
     onLoadMore: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Conteúdo fixo no topo da grade (trilhas de personalização), rolando junto com os cards.
+    headerContent: (@Composable () -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
+    val hasHeader = headerContent != null
     // Grade de alturas mistas: a busca espacial padrão do ↑/↓ às vezes pula de coluna.
     // Aqui ↑/↓ seguem a mesma coluna (lane); se o alvo não está visível, rola um card e tenta de novo.
     fun moveInLane(mediaId: String, down: Boolean): Boolean {
         val cur = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == mediaId } ?: return false
         fun target() = state.layoutInfo.visibleItemsInfo
-            .filter { it.lane == cur.lane && it.key != "load-more" }
+            .filter { it.lane == cur.lane && it.key != "load-more" && it.key != "library-header" }
             .filter { if (down) it.index > cur.index else it.index < cur.index }
             .let { l -> if (down) l.minByOrNull { it.index } else l.maxByOrNull { it.index } }
         fun focusLoadMore(): Boolean = down && hasMore &&
@@ -167,6 +170,9 @@ internal fun LazyMediaGrid(
             runCatching { focusRequesterFor(t.key as String).requestFocus() }
             return true
         }
+        // Subindo sem card acima na coluna (1ª linha): com cabeçalho (trilhas), deixa a busca de foco
+        // padrão levar às trilhas — ela rola sozinha. Sem isto, ficava rolando preso na 1ª linha.
+        if (!down && hasHeader) return false
         if (state.layoutInfo.visibleItemsInfo.any { it.key == "load-more" } && focusLoadMore()) return true
         val canScroll = if (down) state.canScrollForward else state.canScrollBackward
         if (!canScroll) return false
@@ -191,6 +197,11 @@ internal fun LazyMediaGrid(
             horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
             verticalItemSpacing = GRID_GAP
         ) {
+            if (headerContent != null) {
+                item(key = "library-header", span = StaggeredGridItemSpan.FullLine) {
+                    headerContent()
+                }
+            }
             items(
                 items = items,
                 key = { it.mediaId }

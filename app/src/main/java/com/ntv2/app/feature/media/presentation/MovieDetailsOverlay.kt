@@ -23,6 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -82,7 +84,11 @@ internal fun MovieDetailsOverlay(
     playFailed: Boolean = false,
     onRestart: () -> Unit = {},
     isTv: Boolean = true,
-    onReport: (MediaReportReason) -> Unit = {}
+    onReport: (MediaReportReason) -> Unit = {},
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
+    recommendations: List<MediaCardUi> = emptyList(),
+    onRecommendationClick: (MediaCardUi) -> Unit = {}
 ) {
     BackHandler(enabled = true) { onDismiss() }
     var reporting by remember { mutableStateOf(false) }
@@ -137,7 +143,11 @@ internal fun MovieDetailsOverlay(
                     onRestart = onRestart,
                     showBackButton = isTv,
                     fillActions = !isTv,
-                    onReportClick = { reporting = true }
+                    onReportClick = { reporting = true },
+                    isFavorite = isFavorite,
+                    onToggleFavorite = onToggleFavorite,
+                    recommendations = recommendations,
+                    onRecommendationClick = onRecommendationClick
                 )
             }
         } else {
@@ -167,7 +177,11 @@ internal fun MovieDetailsOverlay(
                 playFailed = playFailed,
                 onRestart = onRestart,
                 showBackButton = isTv,
-                onReportClick = { reporting = true }
+                onReportClick = { reporting = true },
+                isFavorite = isFavorite,
+                onToggleFavorite = onToggleFavorite,
+                recommendations = recommendations,
+                onRecommendationClick = onRecommendationClick
             )
         }
         // Celular: fechar pelo X no canto superior esquerdo (mesmo padrão do player), em vez do
@@ -229,7 +243,11 @@ internal fun DetailsInfo(
     onRestart: () -> Unit = {},
     showBackButton: Boolean = true,
     fillActions: Boolean = false,
-    onReportClick: () -> Unit = {}
+    onReportClick: () -> Unit = {},
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
+    recommendations: List<MediaCardUi> = emptyList(),
+    onRecommendationClick: (MediaCardUi) -> Unit = {}
 ) {
     val title = details?.title ?: media.title
     val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
@@ -265,7 +283,9 @@ internal fun DetailsInfo(
             DetailsActionRow(
                 media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
                 showBackButton = showBackButton,
-                fillWidth = fillActions
+                fillWidth = fillActions,
+                isFavorite = isFavorite,
+                onToggleFavorite = onToggleFavorite
             )
             ReportLink(onReportClick)
         }
@@ -321,9 +341,72 @@ internal fun DetailsInfo(
             DetailsActionRow(
                 media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
                 showBackButton = showBackButton,
-                fillWidth = fillActions
+                fillWidth = fillActions,
+                isFavorite = isFavorite,
+                onToggleFavorite = onToggleFavorite
             )
             ReportLink(onReportClick)
+        }
+
+        if (recommendations.isNotEmpty()) {
+            RecommendationsRow(
+                seedTitle = title,
+                items = recommendations,
+                onClick = onRecommendationClick
+            )
+        }
+    }
+}
+
+/** "Porque você viu <título>": trilha de pôsteres recomendados dentro dos Detalhes. */
+@Composable
+internal fun RecommendationsRow(
+    seedTitle: String,
+    items: List<MediaCardUi>,
+    onClick: (MediaCardUi) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "Porque você viu $seedTitle",
+            color = Color.White,
+            style = MaterialTheme.typography.titleMedium
+        )
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items.take(12).forEach { rec ->
+                RecommendationPoster(media = rec, onClick = { onClick(rec) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecommendationPoster(media: MediaCardUi, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val cover = media.posterPath ?: media.thumbnailPath
+    Box(
+        modifier = Modifier
+            .width(104.dp)
+            .aspectRatio(2f / 3f)
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(Color(0xFF1C1C20))
+            .then(if (focused) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
+    ) {
+        if (cover != null) {
+            AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else {
+            Text(
+                media.title,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
+            )
         }
     }
 }
@@ -392,11 +475,14 @@ internal fun DetailsActionRow(
     onRestart: () -> Unit = {},
     showBackButton: Boolean = true,
     // Celular em pé: os botões dividem a largura toda (nunca cortam na lateral).
-    fillWidth: Boolean = false
+    fillWidth: Boolean = false,
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier.focusGroup().then(if (fillWidth) Modifier.fillMaxWidth() else Modifier),
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         val share = if (fillWidth) Modifier.weight(1f) else Modifier
         DetailButton(
@@ -418,9 +504,39 @@ internal fun DetailsActionRow(
         if (media.progress > 0f && !playLoading) {
             DetailButton(icon = Icons.Filled.Replay, label = "Recomeçar", primary = false, onClick = onRestart, modifier = share)
         }
+        // Coração: adiciona/remove da "Minha lista". Só ícone (não divide a largura no celular).
+        FavoriteToggleButton(isFavorite = isFavorite, onClick = onToggleFavorite)
         if (showBackButton) {
             DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss, modifier = share)
         }
+    }
+}
+
+/** Botão circular de favoritar (coração preenchido = na lista). */
+@Composable
+internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val border = if (isFavorite) BRAND_GREEN else Color(0x33FFFFFF)
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(if (isFavorite) Color(0x242BEE34) else Color(0x1FFFFFFF))
+            .border(
+                width = if (focused) 2.dp else 1.dp,
+                color = if (focused) Color.White else border,
+                shape = RoundedCornerShape(10.dp)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = if (isFavorite) "Remover da minha lista" else "Adicionar à minha lista",
+            tint = if (isFavorite) BRAND_GREEN else Color.White,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
 

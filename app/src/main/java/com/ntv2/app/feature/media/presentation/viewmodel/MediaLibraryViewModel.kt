@@ -7,6 +7,12 @@ import com.ntv2.app.feature.channels.domain.ChannelRepository
 import com.ntv2.app.feature.channels.domain.ChannelSummary
 import com.ntv2.app.feature.media.domain.MediaItemSummary
 import com.ntv2.app.core.player.progress.PlaybackProgressStore
+import com.ntv2.app.core.player.progress.PlaybackProgressPolicy
+import com.ntv2.app.core.player.progress.WatchedItem
+import com.ntv2.app.core.player.progress.WatchedMediaMeta
+import com.ntv2.app.core.library.FavoriteMedia
+import com.ntv2.app.core.library.UserLibraryRepository
+import com.ntv2.app.core.recommendations.RecommendationEngine
 import com.ntv2.app.feature.media.domain.MediaDetailsCache
 import com.ntv2.app.feature.media.domain.MediaRepository
 import com.ntv2.app.feature.media.domain.MovieDetails
@@ -58,6 +64,12 @@ sealed interface MediaLibraryAction {
         val media: MediaCardUi,
         val reason: com.ntv2.app.feature.media.presentation.MediaReportReason
     ) : MediaLibraryAction
+    /** Adiciona/remove o título da "Minha lista". */
+    data class ToggleFavorite(val media: MediaCardUi) : MediaLibraryAction
+    /** Remove um título do histórico. */
+    data class RemoveFromHistory(val mediaId: String) : MediaLibraryAction
+    /** Limpa todo o histórico. */
+    data object ClearHistory : MediaLibraryAction
 }
 
 /** Teto padrão de cards mantidos por canal (o AppNavHost ajusta por aparelho; ver loadPrevious). */
@@ -69,6 +81,8 @@ class MediaLibraryViewModel(
     private val settingsRepository: SettingsRepository,
     private val progressStore: PlaybackProgressStore,
     private val mediaDetailsCache: MediaDetailsCache,
+    // Minha lista (favoritos). Nulo em testes que não exercitam personalização.
+    private val userLibraryRepository: UserLibraryRepository? = null,
     // Passo da grade por dispositivo: TV = 5 colunas, celular = 2. A paginação carrega múltiplos
     // desse passo para as linhas fecharem completas (sem sobra de meia linha).
     private val gridStep: Int = 2,
@@ -81,6 +95,12 @@ class MediaLibraryViewModel(
     private val maxRetainedItems: Int = MAX_RETAINED_ITEMS,
     private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null
 ) : ViewModel() {
+
+    // Gosto do usuário para recomendações (gêneros crus de favoritos/histórico) + ids a excluir.
+    private var favoriteGenresRaw: List<String?> = emptyList()
+    private var historyGenresRaw: List<String?> = emptyList()
+    private var watchedIds: Set<String> = emptySet()
+    private var favoriteIdsSet: Set<String> = emptySet()
 
     // mediaId -> fileId com pré-download em andamento (cancelado se sair sem assistir).
     private val prefetching = mutableMapOf<String, Int>()
@@ -125,6 +145,8 @@ class MediaLibraryViewModel(
     init {
         observeSelectionAndFilter()
         observeProgressChanges()
+        observeContinueWatching()
+        observeFavorites()
         // Pré-carrega o índice de busca em background para a 1ª busca já vir instantânea.
         searchIndexRepository?.let { repo -> viewModelScope.launch { runCatching { repo.covers(0L) } } }
     }
@@ -222,6 +244,16 @@ class MediaLibraryViewModel(
                     val ok = withContext(ioDispatcher) { mediaReporter?.send(report) ?: false }
                     android.util.Log.i("NtvReport", "reporte ${action.reason.name} mídia=${media.mediaId} enviado=$ok")
                 }
+            }
+
+            is MediaLibraryAction.ToggleFavorite -> toggleFavorite(action.media)
+
+            is MediaLibraryAction.RemoveFromHistory -> viewModelScope.launch {
+                withContext(ioDispatcher) { runCatching { progressStore.removeFromHistory(action.mediaId) } }
+            }
+
+            MediaLibraryAction.ClearHistory -> viewModelScope.launch {
+                withContext(ioDispatcher) { runCatching { progressStore.clearHistory() } }
             }
 
             MediaLibraryAction.ConsumeNavigation -> {
@@ -387,6 +419,7 @@ class MediaLibraryViewModel(
                     emptyState = emptyStateFor(sections)
                 )
             }
+            recomputeRecommendations()
         }
     }
 
@@ -417,6 +450,7 @@ class MediaLibraryViewModel(
     }
 
     private fun openVideo(media: MediaCardUi) {
+        recordOpened(media)
         // Card normal (já tem fileId do TDLib): navega direto.
         if (media.fileId != 0) {
             _uiState.update {
@@ -652,6 +686,7 @@ class MediaLibraryViewModel(
                         loadMoreNonce = it.loadMoreNonce + 1
                     )
                 }
+                recomputeRecommendations()
             }.onFailure { error ->
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 _uiState.update {
@@ -740,6 +775,150 @@ class MediaLibraryViewModel(
         }
     }
 
+    /** Observa o histórico: projeta a trilha "Continuar assistindo" e a lista completa do Histórico. */
+    private fun observeContinueWatching() {
+        viewModelScope.launch {
+            progressStore.observeHistory().collect { items ->
+                val cont = items.asSequence()
+                    .filter { !it.completed }
+                    .filter { it.lastPositionMs >= PlaybackProgressPolicy.MIN_POSITION_MS }
+                    .filter { it.durationMs <= 0L || it.lastPositionMs < it.durationMs - PlaybackProgressPolicy.END_GUARD_MS }
+                    .take(20)
+                    .map { it.toContinueCard() }
+                    .toList()
+                val history = items.map {
+                    com.ntv2.app.feature.media.presentation.state.HistoryEntryUi(
+                        card = it.toContinueCard(),
+                        completed = it.completed,
+                        updatedAt = it.updatedAt
+                    )
+                }
+                _uiState.update { it.copy(continueWatching = cont, history = history) }
+                watchedIds = items.mapTo(HashSet()) { it.mediaId }
+                historyGenresRaw = items.map { it.genres }
+                recomputeRecommendations()
+            }
+        }
+    }
+
+    /** Recalcula "Recomendados para você": gosto (fav+histórico) × catálogo do canal, sem repetir. */
+    private fun recomputeRecommendations() {
+        val taste = RecommendationEngine.buildTaste(favoriteGenresRaw, historyGenresRaw)
+        if (taste.isEmpty()) {
+            if (_uiState.value.recommendations.isNotEmpty()) _uiState.update { it.copy(recommendations = emptyList()) }
+            return
+        }
+        val summaries = channelOrder.flatMap { channelItems[it].orEmpty() }
+        if (summaries.isEmpty()) {
+            if (_uiState.value.recommendations.isNotEmpty()) _uiState.update { it.copy(recommendations = emptyList()) }
+            return
+        }
+        val candidates = summaries.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
+        val ids = RecommendationEngine.recommend(taste, candidates, exclude = favoriteIdsSet + watchedIds, limit = 20)
+        val byId = summaries.associateBy { it.mediaId }
+        val cards = ids.mapNotNull { byId[it]?.toCard(0L) }
+        _uiState.update { it.copy(recommendations = cards) }
+    }
+
+    /** Observa a Minha lista: ids (para o coração) e a trilha de cards. */
+    private fun observeFavorites() {
+        val repo = userLibraryRepository ?: return
+        viewModelScope.launch {
+            repo.observeFavoriteIds().collect { ids ->
+                favoriteIdsSet = ids
+                _uiState.update { it.copy(favoriteIds = ids) }
+                recomputeRecommendations()
+            }
+        }
+        viewModelScope.launch {
+            repo.observeFavorites().collect { favs ->
+                favoriteGenresRaw = favs.map { it.genres }
+                _uiState.update { it.copy(myList = favs.map { f -> f.toCard() }) }
+                recomputeRecommendations()
+            }
+        }
+    }
+
+    private fun FavoriteMedia.toCard(): MediaCardUi = MediaCardUi(
+        mediaId = mediaId,
+        channelId = channelId,
+        channelName = channelTitle,
+        title = title,
+        caption = null,
+        fileName = null,
+        durationSeconds = durationSeconds,
+        thumbnailPath = thumbnailPath,
+        posterPath = posterPath,
+        fileId = 0,
+        progress = 0f
+    )
+
+    private fun toggleFavorite(media: MediaCardUi) {
+        val repo = userLibraryRepository ?: return
+        val details = mediaDetailsCache.get(media.mediaId)
+        viewModelScope.launch {
+            withContext(ioDispatcher) {
+                runCatching {
+                    repo.toggle(
+                        FavoriteMedia(
+                            mediaId = media.mediaId,
+                            channelId = media.channelId,
+                            channelTitle = media.channelName,
+                            title = media.title,
+                            posterPath = media.posterPath,
+                            thumbnailPath = media.thumbnailPath,
+                            durationSeconds = media.durationSeconds,
+                            tmdbId = null,
+                            genres = details?.genres,
+                            addedAt = 0L
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    private fun WatchedItem.toContinueCard(): MediaCardUi {
+        val durationSeconds = (durationMs / 1_000L).toInt()
+        val progress = if (durationMs > 0L) (lastPositionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+        return MediaCardUi(
+            mediaId = mediaId,
+            channelId = channelId,
+            channelName = channelTitle,
+            title = title,
+            caption = null,
+            fileName = null,
+            durationSeconds = durationSeconds,
+            thumbnailPath = thumbnailPath,
+            posterPath = posterPath,
+            fileId = 0,
+            progress = progress
+        )
+    }
+
+    /** Grava o título no histórico ao abrir (metadados denormalizados p/ Continuar/Histórico). */
+    private fun recordOpened(media: MediaCardUi) {
+        val genres = mediaDetailsCache.get(media.mediaId)?.genres
+        viewModelScope.launch {
+            withContext(ioDispatcher) {
+                runCatching {
+                    progressStore.recordOpened(
+                        WatchedMediaMeta(
+                            mediaId = media.mediaId,
+                            channelId = media.channelId,
+                            channelTitle = media.channelName,
+                            title = media.title,
+                            posterPath = media.posterPath,
+                            thumbnailPath = media.thumbnailPath,
+                            durationSeconds = media.durationSeconds,
+                            genres = genres
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     private fun projectSections() {
         viewModelScope.launch {
             val sections = computeSections()
@@ -784,6 +963,19 @@ class MediaLibraryViewModel(
 
     /** Detalhes ricos para a tela de Detalhes (lidos do cache por mediaId). */
     fun detailsFor(mediaId: String): MovieDetails? = mediaDetailsCache.get(mediaId)
+
+    /** "Porque você viu X": recomendações pelos gêneros DESTE título, dentro do catálogo do canal. */
+    fun recommendationsFor(mediaId: String, limit: Int = 12): List<MediaCardUi> {
+        val seedGenres = RecommendationEngine.parseGenres(mediaDetailsCache.get(mediaId)?.genres)
+        if (seedGenres.isEmpty()) return emptyList()
+        val taste = seedGenres.associateWith { 1 }
+        val summaries = channelOrder.flatMap { channelItems[it].orEmpty() }
+        if (summaries.isEmpty()) return emptyList()
+        val candidates = summaries.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
+        val ids = RecommendationEngine.recommend(taste, candidates, exclude = setOf(mediaId), limit = limit)
+        val byId = summaries.associateBy { it.mediaId }
+        return ids.mapNotNull { byId[it]?.toCard(0L) }
+    }
 
     /** Remove filmes repetidos pelo mesmo TMDB id (canal rico), mantendo o primeiro. Itens sem id
      *  (ex.: canais Polemic) passam sem alteração. */
@@ -859,6 +1051,7 @@ class MediaLibraryViewModelFactory(
     private val channelRepository: ChannelRepository,
     private val settingsRepository: SettingsRepository,
     private val progressStore: PlaybackProgressStore,
+    private val userLibraryRepository: UserLibraryRepository? = null,
     private val mediaDetailsCache: MediaDetailsCache,
     private val gridStep: Int = 2,
     private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
@@ -874,6 +1067,7 @@ class MediaLibraryViewModelFactory(
                 channelRepository = channelRepository,
                 settingsRepository = settingsRepository,
                 progressStore = progressStore,
+                userLibraryRepository = userLibraryRepository,
                 mediaDetailsCache = mediaDetailsCache,
                 gridStep = gridStep,
                 searchIndexRepository = searchIndexRepository,

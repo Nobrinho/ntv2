@@ -80,6 +80,7 @@ interface AppContainer {
     val castManager: com.ntv2.app.core.cast.CastManager
     val localStreamServer: com.ntv2.app.core.cast.LocalStreamServer
     val playbackProgressStore: PlaybackProgressStore
+    val userLibraryRepository: com.ntv2.app.core.library.UserLibraryRepository
     val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher
     val storageJanitor: StorageJanitor
 
@@ -202,7 +203,11 @@ class DefaultAppContainer(
     }
 
     override val playbackProgressStore: PlaybackProgressStore by lazy {
-        RoomPlaybackProgressStore(appDatabase.playbackProgressDao())
+        RoomPlaybackProgressStore(appDatabase.playbackProgressDao(), appDatabase.watchHistoryDao())
+    }
+
+    override val userLibraryRepository: com.ntv2.app.core.library.UserLibraryRepository by lazy {
+        com.ntv2.app.core.library.RoomUserLibraryRepository(appDatabase.favoriteDao())
     }
 
     override val playbackCoordinator: PlaybackCoordinator by lazy {
@@ -250,7 +255,7 @@ class DefaultAppContainer(
             AppDatabase::class.java,
             "ntv2.db"
         )
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
             .fallbackToDestructiveMigration()
             .build()
     }

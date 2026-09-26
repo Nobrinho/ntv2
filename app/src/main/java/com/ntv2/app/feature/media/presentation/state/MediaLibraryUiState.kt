@@ -20,6 +20,13 @@ data class MediaCardUi(
     val progress: Float = 0f
 )
 
+/** Uma linha do Histórico: card + se foi concluído + quando foi atualizado (para agrupar por dia). */
+data class HistoryEntryUi(
+    val card: MediaCardUi,
+    val completed: Boolean,
+    val updatedAt: Long
+)
+
 data class ChannelMediaSectionUi(
     val channelId: Long,
     val channelName: String,
@@ -58,6 +65,16 @@ data class MediaLibraryUiState(
     val sections: List<ChannelMediaSectionUi> = emptyList(),
     /** Grade plana do canal ativo (novo layout). */
     val items: List<MediaCardUi> = emptyList(),
+    /** Trilha "Continuar assistindo" (histórico não concluído, mais recente primeiro). */
+    val continueWatching: List<MediaCardUi> = emptyList(),
+    /** Trilha "Minha lista" (favoritos, mais recente primeiro). */
+    val myList: List<MediaCardUi> = emptyList(),
+    /** Ids favoritados — para marcar o coração nos cards/detalhes. */
+    val favoriteIds: Set<String> = emptySet(),
+    /** Histórico completo (assistidos + em andamento), mais recente primeiro. */
+    val history: List<HistoryEntryUi> = emptyList(),
+    /** Trilha "Recomendados para você" (por gênero, do histórico + favoritos). */
+    val recommendations: List<MediaCardUi> = emptyList(),
     /** Resultados próprios da busca; não substituem a grade principal. */
     val searchResults: List<MediaCardUi> = emptyList(),
     val hasMore: Boolean = false,

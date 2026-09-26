@@ -16,9 +16,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterAltOff
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -61,17 +64,19 @@ fun RailColumn(
             .background(Color(0xFF0C0C0C))
             .then(if (enterFocus != null) Modifier.focusEnterTo(enterFocus) else Modifier)
             .focusGroup()
-            .padding(vertical = 24.dp, horizontal = 10.dp),
+            // Rolável só como salvaguarda em telas muito baixas; nos tamanhos normais tudo cabe sem
+            // rolar (espaçamentos/margens enxutos abaixo).
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 14.dp, horizontal = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Image(
             painter = painterResource(R.drawable.ic_splash_logo),
             contentDescription = "Nbr PLAY",
             colorFilter = ColorFilter.tint(BRAND),
-            modifier = Modifier.size(52.dp)
+            modifier = Modifier.size(44.dp)
         )
-        Spacer(Modifier.height(4.dp))
         content()
     }
 }
@@ -121,11 +126,11 @@ fun RailButton(
                 if (cta && focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp))
                 else Modifier
             )
-            .padding(vertical = 10.dp),
+            .padding(vertical = 7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(26.dp))
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
         Text(
             label,
             color = when {
@@ -156,7 +161,9 @@ fun NavRail(
     onClearFilter: () -> Unit = {},
     onChannels: () -> Unit,
     onRefresh: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    // "Histórico": só aparece quando a tela fornece a ação (ex.: Biblioteca).
+    onHistory: (() -> Unit)? = null
 ) {
     RailColumn(enterFocus = firstItemFocus?.let { f -> { f } }) {
         RailButton(icon = Icons.Filled.Home, label = "Início", highlighted = homeActive, onClick = onHome)
@@ -178,6 +185,9 @@ fun NavRail(
             onClick = onChannels
         )
         RailButton(Icons.Filled.Refresh, "Atualizar", onClick = onRefresh)
+        if (onHistory != null) {
+            RailButton(Icons.Filled.History, "Histórico", onClick = onHistory)
+        }
         RailButton(
             Icons.Filled.Settings,
             "Config",

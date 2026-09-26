@@ -242,6 +242,7 @@ fun AppNavHost(
                     channelRepository = appContainer.channelRepository,
                     settingsRepository = appContainer.settingsRepository,
                     progressStore = appContainer.playbackProgressStore,
+                    userLibraryRepository = appContainer.userLibraryRepository,
                     mediaDetailsCache = appContainer.mediaDetailsCache,
                     maxRetainedItems = maxRetainedCards,
                     gridStep = mediaGridStep,

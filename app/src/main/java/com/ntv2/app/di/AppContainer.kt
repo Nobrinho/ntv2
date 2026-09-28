@@ -178,8 +178,10 @@ class DefaultAppContainer(
         TdlibTelegramPlaybackDataSource(tdlibPlaybackGateway)
     }
 
+    private val videoDecoderPolicy = com.ntv2.app.core.player.exoplayer.VideoDecoderPolicy()
+
     private val exoPlayerProvider: ExoPlayerProvider by lazy {
-        DefaultExoPlayerProvider(appContext, playbackTuning.ramBufferBytes)
+        DefaultExoPlayerProvider(appContext, playbackTuning.ramBufferBytes, videoDecoderPolicy)
     }
 
     private val growingFileDataSourceFactory: GrowingFileDataSourceFactory by lazy {
@@ -214,7 +216,9 @@ class DefaultAppContainer(
             dataSourceFactory = growingFileDataSourceFactory,
             progressStore = playbackProgressStore,
             ramBufferBytes = playbackTuning.ramBufferBytes.toLong(),
-            refreshNetwork = { tdlibPlaybackGateway.refreshNetwork() }
+            refreshNetwork = { tdlibPlaybackGateway.refreshNetwork() },
+            videoDecoderPolicy = videoDecoderPolicy,
+            softwareDecoderMemory = com.ntv2.app.core.player.exoplayer.SharedPrefsSoftwareDecoderMemory(appContext)
         )
     }
 

@@ -73,7 +73,6 @@ import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.player.PlaybackState
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
-import kotlin.math.abs
 
 internal const val DPAD_SEEK_MS = 10_000L
 internal const val CONTROLS_TIMEOUT_MS = 6_000L
@@ -137,31 +136,52 @@ fun PlaybackScreen(
         configuration.screenHeightDp.dp
     }
 
-    // O AFTKM apresentou bloqueios longos do compositor ao reproduzir VP9/23,976 fps com a
-    // saída fixa em 59,94 Hz. Para esse conjunto específico, usa um modo da mesma resolução e
-    // com a cadência do conteúdo. Celulares e outros modelos não entram neste workaround.
-    val videoFrameRate = state.snapshot.tracks.videoFrameRate
-    val videoMimeType = state.snapshot.tracks.videoMimeType
-    DisposableEffect(activity, videoFrameRate, videoMimeType) {
+    // Modo de saída da TV conforme o vídeo (ver DisplayModeChooser):
+    //  - vídeo 4K e TV aceita 4K na cadência dele: sai em 4K (o Fire TV não reduz cada quadro p/ 1080p);
+    //  - VP9 no AFTKM: casa a cadência (bloqueios do compositor com 23,976 fps em 59,94 Hz).
+    // Só em TV; celulares não trocam o modo da tela.
+    // Guarda o último vídeo conhecido: num retry as faixas zeram por um instante, e trocar o modo
+    // da TV (4K ↔ 1080p) a cada retry deixaria a tela preta por alguns segundos.
+    val tracks = state.snapshot.tracks
+    // Só os campos de vídeo: trocar áudio/legenda não pode disparar troca de modo da TV.
+    var displayVideo by remember { mutableStateOf<DisplayVideo?>(null) }
+    LaunchedEffect(tracks.videoFrameRate, tracks.videoWidth, tracks.videoHeight, tracks.videoMimeType) {
+        if (tracks.videoFrameRate > 0f) {
+            displayVideo = DisplayVideo(tracks.videoWidth, tracks.videoHeight, tracks.videoFrameRate, tracks.videoMimeType)
+        }
+    }
+    DisposableEffect(activity, displayVideo) {
         val window = activity?.window
         val originalModeId = window?.attributes?.preferredDisplayModeId ?: 0
-        val affectedFireTvVp9 = Build.MANUFACTURER.equals("Amazon", ignoreCase = true) &&
-            Build.MODEL.equals("AFTKM", ignoreCase = true) &&
-            videoMimeType == MimeTypes.VIDEO_VP9 && videoFrameRate > 0f
-        if (window != null && affectedFireTvVp9) {
+        val video = displayVideo
+        val videoFrameRate = video?.frameRate ?: 0f
+        val videoMimeType = video?.mimeType
+        val videoWidth = video?.width ?: 0
+        val videoHeight = video?.height ?: 0
+        if (window != null && adaptive.isTv && videoFrameRate > 0f) {
+            val matchFrameRate = Build.MANUFACTURER.equals("Amazon", ignoreCase = true) &&
+                Build.MODEL.equals("AFTKM", ignoreCase = true) &&
+                videoMimeType == MimeTypes.VIDEO_VP9
             @Suppress("DEPRECATION")
             val display = activity.windowManager.defaultDisplay
-            val current = display.mode
-            val best = display.supportedModes
-                .asSequence()
-                .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
-                .minByOrNull { abs(it.refreshRate - videoFrameRate) }
-                ?.takeIf { abs(it.refreshRate - videoFrameRate) <= 0.15f }
-            if (best != null && best.modeId != current.modeId) {
-                window.attributes = window.attributes.apply { preferredDisplayModeId = best.modeId }
+            fun android.view.Display.Mode.spec() =
+                DisplayModeSpec(modeId, physicalWidth, physicalHeight, refreshRate)
+            val current = display.mode.spec()
+            val best = DisplayModeChooser.choose(
+                current = current,
+                supported = display.supportedModes.map { it.spec() },
+                videoWidth = videoWidth,
+                videoHeight = videoHeight,
+                videoFrameRate = videoFrameRate,
+                matchFrameRate = matchFrameRate
+            )
+            if (best != null) {
+                window.attributes = window.attributes.apply { preferredDisplayModeId = best.id }
                 android.util.Log.i(
                     "NtvPlayer",
-                    "VP9/AFTKM: saída ${current.refreshRate}Hz → ${best.refreshRate}Hz para vídeo ${videoFrameRate}fps"
+                    "modo da tela: ${current.width}x${current.height}@${current.refreshRate}Hz → " +
+                        "${best.width}x${best.height}@${best.refreshRate}Hz para vídeo " +
+                        "${videoWidth}x$videoHeight@${videoFrameRate}fps ($videoMimeType)"
                 )
             }
         }

@@ -20,7 +20,9 @@ interface ExoPlayerProvider {
 class DefaultExoPlayerProvider(
     private val context: Context,
     /** Teto do buffer em RAM (ver StreamProfiles.ramBufferBytes). */
-    private val ramBufferBytes: Int = 64 * 1024 * 1024
+    private val ramBufferBytes: Int = 64 * 1024 * 1024,
+    /** Hardware ou software para o vídeo (troca para software se o hardware falhar no vídeo). */
+    private val videoDecoderPolicy: VideoDecoderPolicy = VideoDecoderPolicy()
 ) : ExoPlayerProvider {
 
     override fun create(): ExoPlayer {
@@ -44,6 +46,9 @@ class DefaultExoPlayerProvider(
         // hardware não decodifica (AC3/EAC3/DTS/TrueHD) tocam por software.
         val renderersFactory = DefaultRenderersFactory(context.applicationContext)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setMediaCodecSelector(videoDecoderPolicy.codecSelector)
+            // Se o 1º decodificador não inicializar, tenta o próximo da lista em vez de falhar.
+            .setEnableDecoderFallback(true)
 
         val player = ExoPlayer.Builder(context.applicationContext, renderersFactory)
             .setLoadControl(loadControl)
@@ -52,13 +57,12 @@ class DefaultExoPlayerProvider(
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
-        // Em builds debug, registra no logcat (tag "NtvPlayer") estados, underruns de áudio,
-        // frames descartados e erros de carga, para diagnosticar engasgos.
+        // Engasgos (nível W/I, tag NtvPlayer) em todos os builds. No debug também o EventLogger
+        // completo — mas o nível D dele não aparece no logcat do Fire OS, por isso o StutterLogger.
+        player.addAnalyticsListener(StutterLogger)
         val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         if (debuggable) {
             player.addAnalyticsListener(EventLogger("NtvPlayer"))
-        } else {
-            player.addAnalyticsListener(StutterLogger)
         }
 
         return player
@@ -66,9 +70,9 @@ class DefaultExoPlayerProvider(
 }
 
 /**
- * Registra só os engasgos reais (tag NtvPlayer, nível W) na release, onde o EventLogger completo
- * fica desligado: quadros descartados, áudio sem dados e buffering no meio da reprodução. Permite
- * correlacionar um engasgo com outros eventos do log (ex.: liberação de disco NtvDiskWindow).
+ * Registra os engasgos reais (tag NtvPlayer): quadros descartados, áudio sem dados, buffering no meio
+ * da reprodução e qual decodificador foi escolhido. Permite correlacionar um engasgo com outros
+ * eventos do log (ex.: liberação de disco NtvDiskWindow).
  */
 private object StutterLogger : AnalyticsListener {
     private const val TAG = "NtvPlayer"
@@ -84,6 +88,15 @@ private object StutterLogger : AnalyticsListener {
         elapsedSinceLastFeedMs: Long
     ) {
         Log.w(TAG, "áudio sem dados: ${elapsedSinceLastFeedMs}ms sem alimentar (pos ${eventTime.currentPlaybackPositionMs}ms)")
+    }
+
+    override fun onVideoDecoderInitialized(
+        eventTime: AnalyticsListener.EventTime,
+        decoderName: String,
+        initializedTimestampMs: Long,
+        initializationDurationMs: Long
+    ) {
+        Log.i(TAG, "decodificador de vídeo: $decoderName (${initializationDurationMs}ms)")
     }
 
     override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {

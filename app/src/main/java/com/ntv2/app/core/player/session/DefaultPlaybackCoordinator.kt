@@ -26,6 +26,8 @@ import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
 import com.ntv2.app.core.player.config.StreamProfiles
 import com.ntv2.app.core.player.exoplayer.ExoPlayerProvider
+import com.ntv2.app.core.player.exoplayer.SoftwareDecoderMemory
+import com.ntv2.app.core.player.exoplayer.VideoDecoderPolicy
 import com.ntv2.app.core.storage.LowStorageException
 import com.ntv2.app.core.storage.StorageBudget
 import kotlinx.coroutines.CoroutineScope
@@ -49,9 +51,12 @@ private const val FIRE_TV_RECOVERY_COOLDOWN_MS = 30_000L
 // Tocando sem problema por esse tempo: zera os contadores de recuperação. Antes o limite valia para
 // o filme inteiro — depois de algumas quedas de rede num filme de 2 h, a próxima já virava erro.
 private const val HEALTHY_RESET_MS = 60_000L
+private const val FRAME_STATS_WINDOW_S = 10
 // Erro de I/O (rede/arquivo) do ExoPlayer: reconecta e retoma da mesma posição, com espera crescente.
 private const val MAX_IO_RECOVERIES = 3
 private const val IO_RECOVERY_BACKOFF_MS = 2_000L
+// Erro do decodificador de vídeo (ex.: MediaTek do Fire TV com "DECODE ERROR FATAL"): recria e retoma.
+private const val MAX_DECODER_ERROR_RECOVERIES = 4
 
 class DefaultPlaybackCoordinator(
     private val playbackDataSource: TelegramPlaybackDataSource,
@@ -61,7 +66,10 @@ class DefaultPlaybackCoordinator(
     /** Buffer do ExoPlayer em RAM (entra no cálculo do que guardar atrás no disco). */
     private val ramBufferBytes: Long = 64L * 1024L * 1024L,
     /** Faz o TDLib descartar as conexões e reconectar (sockets mortos após queda de Wi‑Fi). */
-    private val refreshNetwork: () -> Unit = {}
+    private val refreshNetwork: () -> Unit = {},
+    private val videoDecoderPolicy: VideoDecoderPolicy = VideoDecoderPolicy(),
+    /** Vídeos que já precisaram de software: abrem direto com ele (sem travar de novo). */
+    private val softwareDecoderMemory: SoftwareDecoderMemory? = null
 ) : PlaybackCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -91,6 +99,9 @@ class DefaultPlaybackCoordinator(
     private var ioRecoveries = 0
     private var ioRecoveryJob: Job? = null
     private var currentMediaIdForCounters: String? = null
+    private var decoderErrorRecoveries = 0
+    // Falhas do decodificador neste vídeo (congelamentos + erros); não zera com o tempo.
+    private var decoderIncidents = 0
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -151,6 +162,20 @@ class DefaultPlaybackCoordinator(
             }
             val lowStorage = generateSequence<Throwable>(error) { it.cause }
                 .firstOrNull { it is LowStorageException }
+            // Decodificador de vídeo falhou (4xxx): recria na mesma posição; se já é recorrente
+            // neste vídeo, troca para o decodificador de software.
+            val isDecoderError = error.errorCode in
+                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED until PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED
+            if (isDecoderError && player != null && currentMedia != null &&
+                decoderErrorRecoveries < MAX_DECODER_ERROR_RECOVERIES
+            ) {
+                decoderErrorRecoveries++
+                val position = player.currentPosition
+                onDecoderIncident("erro ${error.errorCodeName} em ${position}ms")
+                snapshotState.update { it.copy(state = PlaybackState.Buffering, isPlaying = false) }
+                retryAt(position)
+                return
+            }
             // Erro de rede/arquivo (ex.: download parado): em vez de tela de erro, reconecta o TDLib
             // e retoma da mesma posição, algumas vezes, com espera crescente.
             val isIoError = error.errorCode in
@@ -208,6 +233,13 @@ class DefaultPlaybackCoordinator(
         if (currentMediaIdForCounters != media.mediaId) {
             currentMediaIdForCounters = media.mediaId
             ioRecoveries = 0
+            decoderErrorRecoveries = 0
+            decoderIncidents = 0
+            val remembered = softwareDecoderMemory?.needsSoftware(media.mediaId) == true
+            videoDecoderPolicy.preferSoftware = remembered
+            if (remembered) {
+                android.util.Log.i("NtvPlayer", "decodificador de software (lembrado) para ${media.mediaId}")
+            }
         }
         currentMedia = media
         val handle = playbackDataSource.open(media.fileId)
@@ -301,6 +333,13 @@ class DefaultPlaybackCoordinator(
             var lastPositionMs = 0L
             var frozenForMs = 0L
             var healthyForMs = 0L
+            // Resumo de quadros a cada FRAME_STATS_WINDOW_S segundos tocando (diagnóstico de engasgo).
+            var statsTicks = 0
+            var statsRendered = 0L
+            var statsDropped = 0L
+            var statsSkipped = 0L
+            var lastRendered = -1L
+            var lastSkipped = -1L
             while (true) {
                 kotlinx.coroutines.delay(1_000L)
                 val player = exoPlayer ?: continue
@@ -310,6 +349,8 @@ class DefaultPlaybackCoordinator(
                     lastDroppedFrames = -1L
                     frozenForMs = 0L
                     healthyForMs = 0L
+                    lastRendered = -1L
+                    lastSkipped = -1L
                     continue
                 }
                 counters.ensureUpdated()
@@ -319,6 +360,30 @@ class DefaultPlaybackCoordinator(
                 val droppedFrames = counters.droppedBufferCount.toLong()
                 val newlyDropped = if (lastDroppedFrames >= 0L) droppedFrames - lastDroppedFrames else 0L
                 lastDroppedFrames = droppedFrames
+                val rendered = counters.renderedOutputBufferCount.toLong()
+                val skipped = counters.skippedOutputBufferCount.toLong()
+                if (lastRendered >= 0L) {
+                    statsRendered += rendered - lastRendered
+                    statsSkipped += skipped - lastSkipped
+                    statsDropped += newlyDropped
+                }
+                lastRendered = rendered
+                lastSkipped = skipped
+                if (++statsTicks >= FRAME_STATS_WINDOW_S) {
+                    if (statsDropped > 0L || statsSkipped > 0L) {
+                        val total = (statsRendered + statsDropped + statsSkipped).coerceAtLeast(1L)
+                        android.util.Log.w(
+                            "NtvPlayer",
+                            "quadros em ${FRAME_STATS_WINDOW_S}s: exibidos=$statsRendered descartados=$statsDropped " +
+                                "pulados=$statsSkipped (${(statsDropped + statsSkipped) * 100 / total}% perdidos) " +
+                                "pos=${player.currentPosition / 1000}s"
+                        )
+                    }
+                    statsTicks = 0
+                    statsRendered = 0L
+                    statsDropped = 0L
+                    statsSkipped = 0L
+                }
                 val clockAdvanced = positionMs - lastPositionMs >= 700L
                 frozenForMs = if (lastFrames >= 0L && frames == lastFrames && clockAdvanced) frozenForMs + 1_000L else 0L
                 lastFrames = frames
@@ -326,9 +391,12 @@ class DefaultPlaybackCoordinator(
                 healthyForMs = if (frozenForMs == 0L && newlyDropped < FIRE_TV_DROPPED_FRAME_RECOVERY_THRESHOLD) {
                     healthyForMs + 1_000L
                 } else 0L
-                if (healthyForMs >= HEALTHY_RESET_MS && (freezeRecoveries > 0 || ioRecoveries > 0)) {
+                if (healthyForMs >= HEALTHY_RESET_MS &&
+                    (freezeRecoveries > 0 || ioRecoveries > 0 || decoderErrorRecoveries > 0)
+                ) {
                     freezeRecoveries = 0
                     ioRecoveries = 0
+                    decoderErrorRecoveries = 0
                 }
                 val affectedFireTvVp9 = Build.MANUFACTURER.equals("Amazon", ignoreCase = true) &&
                     Build.MODEL.equals("AFTKM", ignoreCase = true) &&
@@ -351,6 +419,7 @@ class DefaultPlaybackCoordinator(
                 }
                 if (frozenForMs >= VIDEO_FREEZE_RECOVER_MS && freezeRecoveries < MAX_FREEZE_RECOVERIES) {
                     freezeRecoveries++
+                    onDecoderIncident("congelamento em ${positionMs}ms")
                     android.util.Log.w(
                         "NtvPlayer",
                         "vídeo congelado há ${frozenForMs}ms em ${positionMs}ms — recriando decodificador " +
@@ -361,6 +430,24 @@ class DefaultPlaybackCoordinator(
                 }
             }
         }
+    }
+
+    /**
+     * Conta uma falha do decodificador. Já na 1ª (até 1080p) os próximos preparos usam software, e o
+     * vídeo fica lembrado para abrir com software nas próximas vezes.
+     */
+    private fun onDecoderIncident(reason: String) {
+        decoderIncidents++
+        val height = snapshotState.value.tracks.videoHeight
+        if (VideoDecoderPolicy.shouldSwitchToSoftware(videoDecoderPolicy.preferSoftware, height)) {
+            videoDecoderPolicy.preferSoftware = true
+            currentMedia?.mediaId?.let { id -> runCatching { softwareDecoderMemory?.remember(id) } }
+        }
+        android.util.Log.w(
+            "NtvPlayer",
+            "falha do decodificador ($reason) — $decoderIncidents neste vídeo; " +
+                (if (videoDecoderPolicy.preferSoftware) "usando decodificador de software" else "recriando")
+        )
     }
 
     private suspend fun persistCurrentProgress(media: PlaybackMedia) {

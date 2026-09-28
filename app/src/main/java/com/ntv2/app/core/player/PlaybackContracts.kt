@@ -43,9 +43,7 @@ data class MediaTracksInfo(
     val videoMimeType: String? = null,
     val audios: List<MediaTrackOption> = emptyList(),
     val subtitles: List<MediaTrackOption> = emptyList()
-) {
-    /** true se há uma legenda ativa no momento. */
-}
+)
 
 data class PlaybackSnapshot(
     val state: PlaybackState = PlaybackState.Idle,

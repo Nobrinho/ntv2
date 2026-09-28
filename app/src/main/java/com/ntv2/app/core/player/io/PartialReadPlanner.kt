@@ -5,11 +5,11 @@ import kotlin.math.min
 
 /**
  * Decisão pura de leitura do arquivo parcial, isolada de Android/media3-DataSpec para permitir
- * testes unitários JVM. É o núcleo que decide, dada a fronteira contígua disponível e a posição
- * de leitura, se dá para ler agora (e quanto), se chegou ao fim, ou se é preciso aguardar bytes.
+ * testes unitários JVM. Dado quantos bytes CONTÍGUOS já estão no disco a partir da posição de
+ * leitura, decide se dá para ler agora (e quanto), se chegou ao fim, ou se é preciso aguardar.
  *
- * Foi extraída daqui o bug que travava MKV: a leitura deve usar a fronteira CONTÍGUA
- * (downloadOffset + downloadedPrefixSize), não o total baixado (que pode ser esparso).
+ * Origem: o bug que travava MKV — a leitura deve usar os bytes contíguos a partir da posição
+ * (GetFileDownloadedPrefixSize), não o total baixado (que pode ser esparso).
  */
 internal object PartialReadPlanner {
 
@@ -23,27 +23,19 @@ internal object PartialReadPlanner {
     }
 
     /**
-     * @param contiguousReadableStart início da região contígua baixada (downloadOffset).
-     * @param contiguousReadableEnd fim da região contígua (downloadOffset + prefixo).
-     * @param readPosition posição atual de leitura.
+     * @param readableBytes bytes contíguos no disco a partir da posição de leitura.
      * @param bytesRemaining limite restante do DataSpec, ou C.LENGTH_UNSET se ilimitado.
      * @param requestedLength quanto o chamador quer ler.
      * @param isComplete se o download do arquivo foi concluído.
      */
     fun plan(
-        contiguousReadableStart: Long,
-        contiguousReadableEnd: Long,
-        readPosition: Long,
+        readableBytes: Long,
         bytesRemaining: Long,
         requestedLength: Int,
         isComplete: Boolean
     ): Plan {
-        // Só é seguro ler se a posição está DENTRO da região contígua baixada. Ler antes do início
-        // (offset à frente após um seek) retornaria lixo do disco → extrator falha (varint inválido).
-        val withinRegion = readPosition >= contiguousReadableStart && readPosition < contiguousReadableEnd
-        if (withinRegion) {
-            val canRead = contiguousReadableEnd - readPosition
-            val maxByAvailability = min(canRead, requestedLength.toLong())
+        if (readableBytes > 0L) {
+            val maxByAvailability = min(readableBytes, requestedLength.toLong())
             val maxToRead = if (bytesRemaining == C.LENGTH_UNSET.toLong()) {
                 maxByAvailability
             } else {

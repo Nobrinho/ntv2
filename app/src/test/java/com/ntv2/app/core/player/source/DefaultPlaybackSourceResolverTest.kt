@@ -23,18 +23,15 @@ class DefaultPlaybackSourceResolverTest {
         override suspend fun inspectFile(fileId: Int): PlaybackFileHandle? = handle
         override suspend fun open(fileId: Int): PlaybackFileHandle = handle!!
         override fun observe(fileId: Int): Flow<TdlibPlaybackFileState> = emptyFlow()
-        override suspend fun requestChunk(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) {
-            chunkRequests += Triple(fileId, offsetBytes, lengthBytes)
-        }
         override suspend fun close(fileId: Int) = Unit
         override suspend fun deleteFile(fileId: Int) = Unit
         override fun resolvePath(fileId: Int): String? = handle?.localPath
         override fun downloadedBytes(fileId: Int): Long = handle?.downloadedBytes ?: 0L
         override fun expectedBytes(fileId: Int): Long? = handle?.expectedBytes
         override fun isComplete(fileId: Int): Boolean = handle?.isDownloadComplete ?: false
-        override fun contiguousReadableStart(fileId: Int): Long = 0L
-        override fun contiguousReadableEnd(fileId: Int): Long = handle?.downloadedBytes ?: 0L
-        override fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) = Unit
+        override fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) {
+            chunkRequests += Triple(fileId, offsetBytes, lengthBytes)
+        }
         override suspend fun downloadedPrefixFrom(fileId: Int, offset: Long): Long = 0L
     }
 

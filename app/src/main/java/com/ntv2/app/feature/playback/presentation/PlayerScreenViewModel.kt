@@ -100,7 +100,6 @@ sealed interface PlayerScreenAction {
 
     data object Play : PlayerScreenAction
     data object Pause : PlayerScreenAction
-    data object Retry : PlayerScreenAction
     data class SeekBy(val deltaMs: Long) : PlayerScreenAction
     data class SeekTo(val positionMs: Long) : PlayerScreenAction
     data class SelectAudio(val id: String) : PlayerScreenAction
@@ -329,7 +328,6 @@ class PlayerScreenViewModel(
                 casting.value -> castManager?.pause()
                 !uiState.value.isPlaceholderMode -> playbackController.pause()
             }
-            PlayerScreenAction.Retry -> if (!uiState.value.isPlaceholderMode) playbackController.retry()
             is PlayerScreenAction.SeekBy -> {
                 if (casting.value) {
                     val current = castManager?.remote?.value?.positionMs ?: 0L
@@ -450,7 +448,7 @@ class PlayerScreenViewModel(
                             }
                             MediaAvailability.TdlibFileUnavailable,
                             MediaAvailability.LocalFileMissing -> _uiState.update {
-                                it.copy(isPlaceholderMode = true, statusMessage = messageForMissingSource(availability))
+                                it.copy(isPlaceholderMode = true, statusMessage = "preparando reprodução…")
                             }
                             else -> {
                                 fail(
@@ -668,18 +666,6 @@ class PlayerScreenViewModel(
                 lastAt = at
             }
             return speed
-        }
-    }
-
-    private fun messageForMissingSource(availability: MediaAvailability): String {
-        return when (availability) {
-            MediaAvailability.MissingRequestData -> "mídia inválida para reprodução"
-            // Estados transitórios do início (o TDLib ainda está criando/baixando o arquivo).
-            // Antes diziam "indisponível", o que confundia — o fluxo segue normal e o vídeo roda.
-            MediaAvailability.TdlibFileUnavailable -> "preparando reprodução…"
-            MediaAvailability.LocalFileMissing -> "preparando reprodução…"
-            is MediaAvailability.Downloading -> "baixando… (${availability.downloadedBytes / (1024 * 1024)} MB)"
-            is MediaAvailability.Ready -> "reprodução ainda não inicializada"
         }
     }
 }

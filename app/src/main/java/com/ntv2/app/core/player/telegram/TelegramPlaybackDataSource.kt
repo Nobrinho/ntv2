@@ -10,20 +10,8 @@ interface PartialFileAccessor {
     fun isComplete(fileId: Int): Boolean
 
     /**
-     * Início da região contígua disponível (downloadOffset; 0 se o download concluiu).
-     * Ler numa posição ANTES disso retornaria lixo — a região baixada começa aqui.
-     */
-    fun contiguousReadableStart(fileId: Int): Long
-
-    /**
-     * Fim da região contígua disponível (downloadOffset + downloadedPrefixSize).
-     * A leitura só é válida no intervalo [contiguousReadableStart, contiguousReadableEnd).
-     */
-    fun contiguousReadableEnd(fileId: Int): Long
-
-    /**
      * Solicita ao Telegram a faixa a partir de [offsetBytes]. lengthBytes=0 => até o fim.
-     * Fire-and-forget (a implementação despacha na própria scope de IO).
+     * Fire-and-forget: a implementação envia os pedidos de cada arquivo em ordem (vale o último).
      */
     fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int)
 
@@ -65,7 +53,6 @@ interface TelegramPlaybackDataSource : PartialFileAccessor {
     suspend fun inspectFile(fileId: Int): PlaybackFileHandle?
     suspend fun open(fileId: Int): PlaybackFileHandle
     fun observe(fileId: Int): Flow<TdlibPlaybackFileState>
-    suspend fun requestChunk(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int)
     suspend fun close(fileId: Int)
 
     /** Encerra e remove a cópia local do arquivo (libera armazenamento). */

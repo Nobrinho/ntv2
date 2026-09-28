@@ -14,7 +14,6 @@ import com.ntv2.app.core.player.io.GrowingFileDataSourceFactory
 import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.progress.RoomPlaybackProgressStore
 import com.ntv2.app.core.player.session.DefaultPlaybackCoordinator
-import com.ntv2.app.core.player.session.PlaybackResourceManager
 import com.ntv2.app.core.player.source.DefaultPlaybackSourceResolver
 import com.ntv2.app.core.player.source.PlaybackSourceResolver
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
@@ -183,10 +182,6 @@ class DefaultAppContainer(
         DefaultExoPlayerProvider(appContext, playbackTuning.ramBufferBytes)
     }
 
-    private val playbackResourceManager: PlaybackResourceManager by lazy {
-        PlaybackResourceManager(exoPlayerProvider)
-    }
-
     private val growingFileDataSourceFactory: GrowingFileDataSourceFactory by lazy {
         GrowingFileDataSourceFactory(
             partialFileAccessor = telegramPlaybackDataSource,
@@ -215,7 +210,7 @@ class DefaultAppContainer(
     override val playbackCoordinator: PlaybackCoordinator by lazy {
         DefaultPlaybackCoordinator(
             playbackDataSource = telegramPlaybackDataSource,
-            resourceManager = playbackResourceManager,
+            exoPlayerProvider = exoPlayerProvider,
             dataSourceFactory = growingFileDataSourceFactory,
             progressStore = playbackProgressStore,
             ramBufferBytes = playbackTuning.ramBufferBytes.toLong(),

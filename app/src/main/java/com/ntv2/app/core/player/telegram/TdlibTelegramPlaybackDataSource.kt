@@ -82,10 +82,6 @@ class TdlibTelegramPlaybackDataSource(
         }
     }
 
-    override suspend fun requestChunk(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) {
-        requestRange(fileId, offsetBytes, lengthBytes, priority)
-    }
-
     private fun stopRangeRequests(fileId: Int) {
         rangeQueues.remove(fileId)?.close()
         rangeWorkers.remove(fileId)?.cancel()
@@ -144,22 +140,6 @@ class TdlibTelegramPlaybackDataSource(
     override fun expectedBytes(fileId: Int): Long? = states[fileId]?.value?.expectedBytes
 
     override fun isComplete(fileId: Int): Boolean = states[fileId]?.value?.isDownloadComplete ?: false
-
-    override fun contiguousReadableStart(fileId: Int): Long {
-        val state = states[fileId]?.value ?: return 0L
-        // Concluído: o arquivo todo está no disco, região começa em 0.
-        return if (state.isDownloadComplete) 0L else state.downloadOffset
-    }
-
-    override fun contiguousReadableEnd(fileId: Int): Long {
-        val state = states[fileId]?.value ?: return 0L
-        val prefixEnd = state.downloadOffset + state.downloadedPrefixBytes
-        return if (state.isDownloadComplete) {
-            maxOf(state.expectedBytes, prefixEnd, state.downloadedBytes)
-        } else {
-            prefixEnd
-        }
-    }
 
     override fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) {
         val queue = rangeQueues.computeIfAbsent(fileId) { id ->

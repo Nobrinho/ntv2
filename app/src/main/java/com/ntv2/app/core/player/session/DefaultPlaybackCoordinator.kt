@@ -25,6 +25,7 @@ import com.ntv2.app.core.player.io.GrowingFileDataSourceFactory
 import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
 import com.ntv2.app.core.player.config.StreamProfiles
+import com.ntv2.app.core.player.exoplayer.ExoPlayerProvider
 import com.ntv2.app.core.storage.LowStorageException
 import com.ntv2.app.core.storage.StorageBudget
 import kotlinx.coroutines.CoroutineScope
@@ -54,7 +55,7 @@ private const val IO_RECOVERY_BACKOFF_MS = 2_000L
 
 class DefaultPlaybackCoordinator(
     private val playbackDataSource: TelegramPlaybackDataSource,
-    private val resourceManager: PlaybackResourceManager,
+    private val exoPlayerProvider: ExoPlayerProvider,
     private val dataSourceFactory: GrowingFileDataSourceFactory,
     private val progressStore: PlaybackProgressStore,
     /** Buffer do ExoPlayer em RAM (entra no cálculo do que guardar atrás no disco). */
@@ -222,7 +223,8 @@ class DefaultPlaybackCoordinator(
         // de download por arquivo — um segundo pedido em 0 puxava o download de volta ao começo
         // justo quando o player pede a posição de retomada.
 
-        val playerInstance = resourceManager.acquire()
+        // Um único ExoPlayer reaproveitado entre preparos (retry, troca de episódio).
+        val playerInstance = exoPlayer ?: exoPlayerProvider.create()
         exoPlayer = playerInstance
         playerInstance.clearMediaItems()
         playerInstance.removeListener(playerListener)
@@ -463,8 +465,8 @@ class DefaultPlaybackCoordinator(
     override fun release() {
         stopInternal(closeSession = true, deleteFile = true)
         exoPlayer?.removeListener(playerListener)
+        exoPlayer?.release()
         exoPlayer = null
-        resourceManager.release()
         snapshotState.value = PlaybackSnapshot()
     }
 

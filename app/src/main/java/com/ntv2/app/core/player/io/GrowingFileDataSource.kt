@@ -186,9 +186,7 @@ private class GrowingFileDataSource(
             ) ?: readable
             when (
                 val plan = PartialReadPlanner.plan(
-                    contiguousReadableStart = readPosition,
-                    contiguousReadableEnd = readPosition + prefix,
-                    readPosition = readPosition,
+                    readableBytes = prefix,
                     bytesRemaining = bytesRemaining,
                     requestedLength = length,
                     isComplete = partialFileAccessor.isComplete(fileId)
@@ -309,8 +307,7 @@ private class GrowingFileDataSource(
                 Log.i(
                     "NtvDownload",
                     "parado fileId=$fileId pos=${position / MB}MB base=${downloadBaseOffset / MB}MB " +
-                        "baixado=${downloaded / MB}MB offsetTdlib=${partialFileAccessor.contiguousReadableStart(fileId) / MB}MB " +
-                        "fimContiguo=${partialFileAccessor.contiguousReadableEnd(fileId) / MB}MB " +
+                        "baixado=${downloaded / MB}MB " +
                         "total=${(partialFileAccessor.expectedBytes(fileId) ?: 0L) / MB}MB " +
                         "completo=${partialFileAccessor.isComplete(fileId)} espacoOk=${hasEnoughFreeSpace()} " +
                         "rede=${isNetworkReady()} liberadoAte=${partialFileAccessor.evictedEnd(fileId) / MB}MB"

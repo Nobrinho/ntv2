@@ -85,7 +85,7 @@ class DefaultPlaybackSourceResolver(
         if (!handle.isDownloadComplete && currentBytes < minBytesForPlayback) {
             val missingBootstrap = (minBytesForPlayback - currentBytes).coerceAtLeast(0L)
             if (missingBootstrap > 0L) {
-                telegramPlaybackDataSource.requestChunk(
+                telegramPlaybackDataSource.requestRange(
                     fileId = request.fileId,
                     offsetBytes = currentBytes,
                     lengthBytes = missingBootstrap,

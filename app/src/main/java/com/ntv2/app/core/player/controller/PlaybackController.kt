@@ -33,13 +33,8 @@ sealed interface PlaybackPrepareResult {
         val requiredBytes: Long
     ) : PlaybackPrepareResult
     data class Failed(
-        val stage: PlaybackPrepareErrorStage,
         val message: String
     ) : PlaybackPrepareResult
-}
-
-enum class PlaybackPrepareErrorStage {
-    PrepareCoordinator
 }
 
 interface PlaybackController {
@@ -133,7 +128,6 @@ class DefaultPlaybackController(
             PlaybackPrepareResult.Started
         }.getOrElse { error ->
             PlaybackPrepareResult.Failed(
-                stage = PlaybackPrepareErrorStage.PrepareCoordinator,
                 message = error.message ?: "Falha ao inicializar reprodução"
             )
         }

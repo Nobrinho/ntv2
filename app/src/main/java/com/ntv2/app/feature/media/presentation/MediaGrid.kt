@@ -535,3 +535,129 @@ internal fun MediaCard(
         }
     }
 }
+
+/** Seletor de abas Filmes/Séries (segmented). Mostrado só quando o canal tem séries. */
+@Composable
+internal fun LibraryTabSelector(
+    selected: com.ntv2.app.feature.media.presentation.state.LibraryTab,
+    onSelect: (com.ntv2.app.feature.media.presentation.state.LibraryTab) -> Unit
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        LibraryTabChip(
+            label = "Filmes",
+            active = selected == com.ntv2.app.feature.media.presentation.state.LibraryTab.MOVIES,
+            onClick = { onSelect(com.ntv2.app.feature.media.presentation.state.LibraryTab.MOVIES) }
+        )
+        LibraryTabChip(
+            label = "Séries",
+            active = selected == com.ntv2.app.feature.media.presentation.state.LibraryTab.SERIES,
+            onClick = { onSelect(com.ntv2.app.feature.media.presentation.state.LibraryTab.SERIES) }
+        )
+    }
+}
+
+@Composable
+private fun LibraryTabChip(label: String, active: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(if (active) FOCUS_ACCENT else Color(0x22FFFFFF))
+            .then(if (focused && !active) Modifier.border(2.dp, Color.White, RoundedCornerShape(20.dp)) else Modifier)
+            .padding(horizontal = 18.dp, vertical = 8.dp)
+    ) {
+        Text(
+            label,
+            color = if (active) Color.Black else Color(0xFFDDDDDD),
+            style = MaterialTheme.typography.labelLarge
+        )
+    }
+}
+
+/** Grade de séries (pôster 2:3). Lista pequena, carregada de uma vez do índice (sem paginação). */
+@Composable
+internal fun LazySeriesGrid(
+    series: List<com.ntv2.app.feature.media.domain.SeriesSummary>,
+    showCovers: Boolean,
+    state: LazyStaggeredGridState,
+    focusRequesterFor: (String) -> FocusRequester,
+    onSeriesClick: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit,
+    onCardFocused: (String) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val columns = columnsForWidthDp(maxWidth.value)
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Fixed(columns),
+            state = state,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
+            verticalItemSpacing = GRID_GAP
+        ) {
+            items(items = series, key = { "series_${it.tmdbId}" }) { s ->
+                val id = "series_${s.tmdbId}"
+                SeriesGridCard(
+                    series = s,
+                    showCover = showCovers,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequesterFor(id))
+                        .onFocusChanged { if (it.isFocused) onCardFocused(id) },
+                    onClick = { onSeriesClick(s) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeriesGridCard(
+    series: com.ntv2.app.feature.media.domain.SeriesSummary,
+    showCover: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val cover = if (showCover) series.posterUrl else null
+    Box(
+        modifier = modifier
+            .zIndex(if (focused) 1f else 0f)
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(Color(0x0FFFFFFF))
+            .then(
+                if (focused) Modifier.border(3.dp, FOCUS_ACCENT, RoundedCornerShape(10.dp))
+                else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
+            )
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
+                    .background(Color(0xFF1C1C1C))
+            ) {
+                if (cover != null) {
+                    AsyncImage(
+                        model = cover,
+                        contentDescription = series.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+            Text(
+                series.title,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
+            )
+        }
+    }
+}

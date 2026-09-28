@@ -30,11 +30,31 @@ data class MovieMeta(
     val trailerUrl: String? = null,
     val tmdbId: String? = null,
     val tags: String? = null,
+    // Séries/episódios (formato v2). O campo legado [tmdbId] continua com o ID da SÉRIE.
+    val seriesTitle: String? = null,
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
+    val episodeTitle: String? = null,
+    val airDate: String? = null,
+    val seriesTmdbId: String? = null,
+    val episodeTmdbId: String? = null,
 ) {
     /** É um post no formato rico do nosso canal (tem título + ao menos um campo rico chave)? */
     val isRich: Boolean
         get() = title != null &&
             (posterUrl != null || backdropUrl != null || tmdbId != null || cast.isNotEmpty())
+
+    /**
+     * É um episódio de série? Verdadeiro quando `Tipo: Episódio`, ou quando há série + número de
+     * episódio, ou quando um código SxxExx/1x02 foi reconhecido no título/primeira linha.
+     */
+    val isEpisode: Boolean
+        get() {
+            val t = type?.let { stripAccentsInternal(it.trim().lowercase()) }
+            return t == "episodio" || t == "episode" ||
+                (seriesTitle != null && episodeNumber != null) ||
+                (seasonNumber != null && episodeNumber != null)
+        }
 
     /**
      * Dados COMPLETOS na própria legenda (mensagem única: legenda no vídeo). Diferente de [isRich],
@@ -82,13 +102,38 @@ object MovieMetadataParser {
     private val TMDB_KEYS = setOf("tmdb")
     private val TAGS_KEYS = setOf("tags")
     private val SYNOPSIS_KEYS = setOf("sinopse", "synopsis")
+    private val SERIES_KEYS = setOf("serie", "series")
+    private val SEASON_KEYS = setOf("temporada", "season")
+    private val EPISODE_KEYS = setOf("episodio", "episode")
+    private val EPISODE_TITLE_KEYS = setOf("titulo do episodio", "episode title")
+    private val AIRDATE_KEYS = setOf("exibicao", "air date", "aired")
+    private val TMDB_SERIES_KEYS = setOf("tmdb serie", "tmdb series")
+    private val TMDB_EPISODE_KEYS = setOf("tmdb episodio", "tmdb episode")
     private val OTHER_KEYS = setOf("copyright", "direitos")
 
     private val allLabelKeys =
         TITLE_KEYS + ORIGINAL_KEYS + TYPE_KEYS + DIRECTOR_KEYS + AUDIO_KEYS + QUALITY_KEYS +
             YEAR_KEYS + DURATION_KEYS + RATING_KEYS + AGE_KEYS + GENRE_KEYS + CATEGORY_KEYS +
             COLLECTION_KEYS + COUNTRY_KEYS + STUDIO_KEYS + CAST_KEYS + POSTER_KEYS + BACKDROP_KEYS +
-            TRAILER_KEYS + TMDB_KEYS + TAGS_KEYS + SYNOPSIS_KEYS + OTHER_KEYS
+            TRAILER_KEYS + TMDB_KEYS + TAGS_KEYS + SYNOPSIS_KEYS + SERIES_KEYS + SEASON_KEYS +
+            EPISODE_KEYS + EPISODE_TITLE_KEYS + AIRDATE_KEYS + TMDB_SERIES_KEYS + TMDB_EPISODE_KEYS +
+            OTHER_KEYS
+
+    // SxxExx / TxxExx / 1x02 / "Temporada 1 Episódio 2".
+    private val CODE_SXEX = Regex("(?i)[ST](\\d{1,2})E(\\d{1,3})")
+    private val CODE_NXN = Regex("(?i)(?<![\\dA-Za-z])(\\d{1,2})x(\\d{1,3})(?![\\dA-Za-z])")
+    private val CODE_VERBOSE = Regex("(?i)temporada\\s*(\\d{1,2}).*?epis[oó]dio\\s*(\\d{1,3})")
+
+    /** Extrai (temporada, episódio) de um texto livre, ou null se não houver código reconhecível. */
+    fun extractEpisodeCode(text: String?): Pair<Int, Int>? {
+        if (text.isNullOrBlank()) return null
+        (CODE_SXEX.find(text) ?: CODE_VERBOSE.find(text) ?: CODE_NXN.find(text))?.let { m ->
+            val s = m.groupValues[1].toIntOrNull()
+            val e = m.groupValues[2].toIntOrNull()
+            if (s != null && e != null) return s to e
+        }
+        return null
+    }
 
     private sealed interface Line {
         data class Labeled(val key: String, val value: String) : Line
@@ -128,6 +173,13 @@ object MovieMetadataParser {
             body.joinToString(" ").trim().ifBlank { null }
         }
 
+        val seasonLabel = get(SEASON_KEYS)?.let { Regex("\\d+").find(it)?.value?.toIntOrNull() }
+        val episodeLabel = get(EPISODE_KEYS)?.let { Regex("\\d+").find(it)?.value?.toIntOrNull() }
+        val code = listOfNotNull(title, freeLines.firstOrNull())
+            .firstNotNullOfOrNull { extractEpisodeCode(it) }
+        val seasonNumber = seasonLabel ?: code?.first
+        val episodeNumber = episodeLabel ?: code?.second
+
         return MovieMeta(
             title = title?.trim()?.ifBlank { null },
             synopsis = synopsis,
@@ -151,6 +203,13 @@ object MovieMetadataParser {
             trailerUrl = get(TRAILER_KEYS),
             tmdbId = get(TMDB_KEYS),
             tags = get(TAGS_KEYS),
+            seriesTitle = get(SERIES_KEYS),
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber,
+            episodeTitle = get(EPISODE_TITLE_KEYS),
+            airDate = get(AIRDATE_KEYS),
+            seriesTmdbId = get(TMDB_SERIES_KEYS),
+            episodeTmdbId = get(TMDB_EPISODE_KEYS),
         )
     }
 
@@ -202,6 +261,8 @@ object MovieMetadataParser {
         return stripAccents(letters)
     }
 
-    private fun stripAccents(s: String): String =
-        Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+    private fun stripAccents(s: String): String = stripAccentsInternal(s)
 }
+
+internal fun stripAccentsInternal(s: String): String =
+    Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")

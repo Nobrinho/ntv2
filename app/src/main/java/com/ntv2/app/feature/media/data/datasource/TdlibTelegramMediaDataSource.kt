@@ -3,6 +3,7 @@
 import com.ntv2.app.core.telegram.media.TdlibMediaGateway
 import com.ntv2.app.feature.media.domain.MediaItemSummary
 import com.ntv2.app.feature.media.domain.MediaPage
+import com.ntv2.app.feature.media.domain.MediaType
 
 class TdlibTelegramMediaDataSource(
     private val tdlibMediaGateway: TdlibMediaGateway
@@ -71,6 +72,13 @@ class TdlibTelegramMediaDataSource(
         tmdbId = tmdbId,
         category = category,
         collection = collection,
-        tags = tags
+        tags = tags,
+        mediaType = if (isEpisode) MediaType.EPISODE else MediaType.MOVIE,
+        seriesTmdbId = seriesTmdbId,
+        episodeTmdbId = episodeTmdbId,
+        seriesTitle = seriesTitle,
+        seasonNumber = seasonNumber,
+        episodeNumber = episodeNumber,
+        airDate = airDate
     )
 }

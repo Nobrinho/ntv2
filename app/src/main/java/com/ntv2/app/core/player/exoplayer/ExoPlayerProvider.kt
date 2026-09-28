@@ -1,9 +1,10 @@
-﻿@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 
 package com.ntv2.app.core.player.exoplayer
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import androidx.media3.common.C
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -17,19 +18,25 @@ interface ExoPlayerProvider {
 }
 
 class DefaultExoPlayerProvider(
-    private val context: Context
+    private val context: Context,
+    /** Teto do buffer em RAM (ver StreamProfiles.ramBufferBytes). */
+    private val ramBufferBytes: Int = 64 * 1024 * 1024
 ) : ExoPlayerProvider {
 
     override fun create(): ExoPlayer {
+        // Buffer em RAM limitado em BYTES (vale até 4K remux, ~10 MB/s): com prioridade ao tempo,
+        // 45 s de um 4K passavam de 400 MB e estouravam o heap do Fire TV. O colchão contra rede
+        // instável fica no disco (janela à frente do StreamProfile), não aqui. Após um rebuffer
+        // espera mais (6 s) para não entrar em ciclo tocar/travar com a rede no limite.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 15_000,
-                45_000,
+                30_000,
                 2_500,
-                5_000
+                6_000
             )
-            .setTargetBufferBytes(32 * 1024 * 1024)
-            .setPrioritizeTimeOverSizeThresholds(true)
+            .setTargetBufferBytes(ramBufferBytes)
+            .setPrioritizeTimeOverSizeThresholds(false)
             .build()
 
         // Habilita os decoders de extensão (FfmpegAudioRenderer do módulo :ffmpeg-decoder),
@@ -40,6 +47,9 @@ class DefaultExoPlayerProvider(
 
         val player = ExoPlayer.Builder(context.applicationContext, renderersFactory)
             .setLoadControl(loadControl)
+            // Mantém Wi‑Fi (WifiLock) e CPU acordados enquanto toca. Sem isso o Fire OS põe o Wi‑Fi
+            // em economia no meio do filme e os sockets do TDLib morrem em silêncio.
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
         // Em builds debug, registra no logcat (tag "NtvPlayer") estados, underruns de áudio,

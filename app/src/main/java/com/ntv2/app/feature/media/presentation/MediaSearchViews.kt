@@ -131,7 +131,9 @@ internal fun TvSearchOverlay(
     onSubmit: () -> Unit,
     onLoadMore: () -> Unit,
     onSelect: (MediaCardUi) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
+    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -386,6 +388,8 @@ internal fun TvSearchOverlay(
                 listState = listState,
                 onLoadMore = onLoadMore,
                 onSelect = onSelect,
+                series = series,
+                onSeriesSelect = onSeriesSelect,
                 modifier = Modifier
                     .weight(0.58f)
                     .fillMaxHeight()
@@ -430,7 +434,9 @@ internal fun TouchSearchOverlay(
     onClose: () -> Unit,
     onLoadMore: () -> Unit,
     onSubmit: () -> Unit,
-    onSelect: (MediaCardUi) -> Unit
+    onSelect: (MediaCardUi) -> Unit,
+    series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
+    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {}
 ) {
     val fieldFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -544,6 +550,8 @@ internal fun TouchSearchOverlay(
             listState = listState,
             onLoadMore = onLoadMore,
             onSelect = onSelect,
+            series = series,
+            onSeriesSelect = onSeriesSelect,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
@@ -567,10 +575,15 @@ internal fun SearchResultsList(
     onLoadMore: () -> Unit,
     onSelect: (MediaCardUi) -> Unit,
     modifier: Modifier = Modifier,
-    rowModifier: (index: Int, media: MediaCardUi) -> Modifier = { _, _ -> Modifier }
+    rowModifier: (index: Int, media: MediaCardUi) -> Modifier = { _, _ -> Modifier },
+    series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
+    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {}
 ) {
     val visibleResults = remember(query, searchInProgress, results) {
         if (query.isBlank() || searchInProgress) emptyList() else results
+    }
+    val visibleSeries = remember(query, searchInProgress, series) {
+        if (query.isBlank() || searchInProgress) emptyList() else series
     }
     // Paginação infinita: dispara ao aproximar do fim da lista.
     val shouldLoadMore by remember(visibleResults.size) {
@@ -589,6 +602,21 @@ internal fun SearchResultsList(
         state = listState,
         modifier = modifier
     ) {
+        if (visibleSeries.isNotEmpty()) {
+            item(key = "series_header") {
+                androidx.compose.material3.Text(
+                    "Séries",
+                    color = Color(0xFF8A8A8A),
+                    style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 24.dp, top = 12.dp, bottom = 4.dp)
+                )
+            }
+            visibleSeries.forEach { s ->
+                item(key = "series_${s.tmdbId}") {
+                    SeriesResultRow(series = s, onClick = { onSeriesSelect(s) })
+                }
+            }
+        }
         visibleResults.forEachIndexed { index, media ->
             item(key = media.mediaId) {
                 SearchResultRow(
@@ -648,7 +676,7 @@ internal fun SearchResultsList(
                     }
                 }
             }
-        } else if (visibleResults.isEmpty() && query.isNotBlank()) {
+        } else if (visibleResults.isEmpty() && visibleSeries.isEmpty() && query.isNotBlank()) {
             item {
                 Box(
                     modifier = Modifier
@@ -663,6 +691,57 @@ internal fun SearchResultsList(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun SeriesResultRow(
+    series: com.ntv2.app.feature.media.domain.SeriesSummary,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val episodeCount = series.seasons.sumOf { it.episodes.size }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(if (focused) Color(0x26FFFFFF) else Color.Transparent)
+            .then(if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
+            .padding(horizontal = 18.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            androidx.compose.material3.Text(
+                series.title,
+                color = Color.White,
+                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            androidx.compose.material3.Text(
+                "Série • ${series.seasons.size} temp. • $episodeCount ep.",
+                color = Color(0xFF8A8A8A),
+                style = androidx.compose.material3.MaterialTheme.typography.labelMedium
+            )
+        }
+        val thumb = series.posterUrl ?: series.backdropUrl
+        if (thumb != null) {
+            AsyncImage(
+                model = thumb,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .height(58.dp)
+                    .aspectRatio(2f / 3f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF222222))
+            )
         }
     }
 }

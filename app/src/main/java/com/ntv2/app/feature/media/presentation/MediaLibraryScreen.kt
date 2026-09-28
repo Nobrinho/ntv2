@@ -98,6 +98,19 @@ fun MediaLibraryScreen(
     var showMyStuff by remember { mutableStateOf(false) }
     // Card selecionado para a tela de Detalhes (overlay estilo Netflix/Prime).
     var detailsMedia by remember { mutableStateOf<MediaCardUi?>(null) }
+    // Série aberta na busca (overlay de temporadas/episódios).
+    // Série aberta: guardamos só o tmdbId (rememberSaveable sobrevive à ida ao player) e derivamos a
+    // SeriesSummary de state.series/searchSeries (o ViewModel persiste no backstack). Assim, ao
+    // voltar do player, a tela de detalhes da SÉRIE reabre (em vez de detalhes de filme).
+    var openSeriesTmdbId by rememberSaveable { mutableStateOf(-1L) }
+    val seriesDetails = remember(openSeriesTmdbId, state.series, state.searchSeries) {
+        if (openSeriesTmdbId < 0L) null
+        else (state.series + state.searchSeries).firstOrNull { it.tmdbId == openSeriesTmdbId }
+    }
+    // Origem do overlay de série: true = veio da busca (ao fechar, reabre a busca); false = grade.
+    var seriesFromSearch by remember { mutableStateOf(false) }
+    // Último card de série focado (para devolver o foco ao voltar do overlay na TV).
+    var lastFocusedSeriesId by remember { mutableStateOf<String?>(null) }
     // TV: resultado da busca que abriu os Detalhes. Ao fechar os Detalhes, a busca reabre com a
     // mesma consulta e o foco volta nesse resultado (redigitar pelo D-pad é caro).
     // Saveable: sobrevive à ida ao player (a Biblioteca sai da composição durante a reprodução).
@@ -110,6 +123,7 @@ fun MediaLibraryScreen(
     // identidade (robusto ao corte do topo pelo teto de itens).
     var lastIdBeforeLoad by remember { mutableStateOf<String?>(null) }
     val gridState = rememberLazyStaggeredGridState()
+    val seriesGridState = rememberLazyStaggeredGridState()
     // Canal cuja 1ª página já foi posicionada no topo. A grade guarda a rolagem entre canais; sem
     // isso, trocar de canal abria o novo na altura em que o anterior estava (e já disparava o
     // "carregar mais" do novo canal, parecendo continuar a página anterior).
@@ -151,6 +165,26 @@ fun MediaLibraryScreen(
         }
     }
 
+    // Devolve o foco a um card de SÉRIE (grade de séries). Sem cards, cai na barra de ações.
+    fun focusSeriesCard(seriesId: String?) {
+        scope.launch {
+            val series = state.series
+            val id = seriesId?.takeIf { wanted -> series.any { "series_${it.tmdbId}" == wanted } }
+                ?: series.firstOrNull()?.let { "series_${it.tmdbId}" }
+            val index = series.indexOfFirst { "series_${it.tmdbId}" == id }
+            if (id != null && index >= 0 &&
+                seriesGridState.layoutInfo.visibleItemsInfo.none { it.index == index }
+            ) {
+                runCatching { seriesGridState.scrollToItem(index) }
+            }
+            withFrameNanos { }
+            withFrameNanos { }
+            val ok = id?.let { cardFocusRequesters[it] }
+                ?.let { r -> runCatching { r.requestFocus() }.isSuccess } ?: false
+            if (!ok) runCatching { initialActionsFocus.requestFocus() }
+        }
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -181,6 +215,21 @@ fun MediaLibraryScreen(
             }
         }
     }
+    // Troca de aba (Filmes/Séries): move o foco para a nova grade (senão fica preso no chip na TV).
+    // Pula a 1ª composição para não disputar com o foco de entrada (busca/rail).
+    val tabInitialized = remember { mutableStateOf(false) }
+    LaunchedEffect(state.libraryTab) {
+        if (!tabInitialized.value) { tabInitialized.value = true; return@LaunchedEffect }
+        if (searching || detailsMedia != null || seriesDetails != null) return@LaunchedEffect
+        withFrameNanos { }
+        withFrameNanos { }
+        if (state.libraryTab == com.ntv2.app.feature.media.presentation.state.LibraryTab.SERIES) {
+            focusSeriesCard(lastFocusedSeriesId)
+        } else {
+            focusCard(lastFocusedCard[0])
+        }
+    }
+
     // Cancelou o "Fechar o aplicativo?": volta ao card (ou ao rail) onde o foco estava.
     LaunchedEffect(restoreSignal) {
         if (restoreSignal == 0 || searching || detailsMedia != null || channelPicker) return@LaunchedEffect
@@ -301,6 +350,11 @@ fun MediaLibraryScreen(
     LaunchedEffect(state.returnToDetailsMediaId) {
         val mediaId = state.returnToDetailsMediaId ?: return@LaunchedEffect
         if (detailsMedia != null) return@LaunchedEffect
+        // Episódio: a série continua aberta por baixo — não abrir detalhes de filme por cima.
+        if (seriesDetails != null) {
+            viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
+            return@LaunchedEffect
+        }
         val media = state.returnToDetailsMedia?.takeIf { it.mediaId == mediaId }
             ?: state.items.firstOrNull { it.mediaId == mediaId }
             ?: return@LaunchedEffect
@@ -400,11 +454,32 @@ fun MediaLibraryScreen(
                     )
                 }
 
+                // Seletor Filmes/Séries: só aparece quando o canal tem séries no índice.
+                if (state.series.isNotEmpty()) {
+                    LibraryTabSelector(
+                        selected = state.libraryTab,
+                        onSelect = { viewModel.onAction(MediaLibraryAction.SelectTab(it)) }
+                    )
+                }
+
                 val openDetails: (MediaCardUi) -> Unit = { media ->
                     viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
                     viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                     viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
                     detailsMedia = media
+                }
+                // Recomendação: card de série (mediaId "series_<tmdb>") abre o overlay da série;
+                // os demais abrem os detalhes de filme normalmente.
+                val openRecommendation: (MediaCardUi) -> Unit = { media ->
+                    val tmdb = media.mediaId.removePrefix("series_").toLongOrNull()
+                        ?.takeIf { media.mediaId.startsWith("series_") }
+                    val series = tmdb?.let { id -> state.series.firstOrNull { it.tmdbId == id } }
+                    if (series != null) {
+                        viewModel.onAction(MediaLibraryAction.OpenSeries(series))
+                        seriesFromSearch = false
+                        lastFocusedSeriesId = "series_${series.tmdbId}"
+                        openSeriesTmdbId = series.tmdbId
+                    } else openDetails(media)
                 }
                 // As trilhas de personalização entram como CABEÇALHO da grade (rolam junto com os
                 // cards), para o D-pad descer da trilha para a grade e a grade nunca ser empurrada
@@ -440,7 +515,7 @@ fun MediaLibraryScreen(
                                     items = state.recommendations,
                                     showCovers = state.showCovers,
                                     useTvLayout = useTvLayout,
-                                    onCardClick = openDetails
+                                    onCardClick = openRecommendation
                                 )
                             }
                         }
@@ -448,7 +523,24 @@ fun MediaLibraryScreen(
                 }
 
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                when {
+                if (state.libraryTab == com.ntv2.app.feature.media.presentation.state.LibraryTab.SERIES) {
+                    LazySeriesGrid(
+                        series = state.series,
+                        showCovers = state.showCovers,
+                        state = seriesGridState,
+                        focusRequesterFor = { id -> cardFocusRequesters.getOrPut(id) { FocusRequester() } },
+                        onCardFocused = { id -> lastFocusedSeriesId = id },
+                        onSeriesClick = { s ->
+                            viewModel.onAction(MediaLibraryAction.OpenSeries(s))
+                            seriesFromSearch = false
+                            lastFocusedSeriesId = "series_${s.tmdbId}"
+                            openSeriesTmdbId = s.tmdbId
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(if (useTvLayout) Modifier else Modifier.padding(bottom = 76.dp))
+                    )
+                } else when {
                     state.isLoading -> MediaGridSkeleton(
                         showCovers = state.showCovers,
                         modifier = Modifier.fillMaxSize()
@@ -586,6 +678,7 @@ fun MediaLibraryScreen(
                 isFavorite = state.favoriteIds.contains(media.mediaId),
                 onToggleFavorite = { viewModel.onAction(MediaLibraryAction.ToggleFavorite(media)) },
                 recommendations = remember(media.mediaId, state.items.size) { viewModel.recommendationsFor(media.mediaId) },
+                recommendationSections = remember(media.mediaId, state.items.size) { viewModel.recommendationsByGenre(media.mediaId) },
                 onRecommendationClick = { rec ->
                     viewModel.onAction(MediaLibraryAction.DetailsOpened(rec))
                     detailsMedia = rec
@@ -674,6 +767,8 @@ fun MediaLibraryScreen(
                         detailsMedia = media
                         searching = false
                     },
+                    series = if (state.searchQuery.isBlank() || searchInProgress) emptyList() else state.searchSeries,
+                    onSeriesSelect = { s -> seriesFromSearch = true; openSeriesTmdbId = s.tmdbId; searching = false },
                     onKey = { c ->
                         viewModel.onAction(MediaLibraryAction.SearchChanged(state.searchQuery + c))
                     },
@@ -713,9 +808,28 @@ fun MediaLibraryScreen(
                         searchReturnMediaId = media.mediaId
                         detailsMedia = media
                         searching = false
-                    }
+                    },
+                    series = if (state.searchQuery.isBlank() || searchInProgress) emptyList() else state.searchSeries,
+                    onSeriesSelect = { s -> seriesFromSearch = true; openSeriesTmdbId = s.tmdbId; searching = false }
                 )
             }
+        }
+
+        seriesDetails?.let { series ->
+            SeriesDetailsOverlay(
+                series = series,
+                episodeProgress = state.episodeProgress,
+                showCovers = state.showCovers,
+                onPlayEpisode = { ep, next ->
+                    viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                    viewModel.onAction(MediaLibraryAction.OpenEpisode(ep, next))
+                },
+                onClose = {
+                    openSeriesTmdbId = -1L
+                    viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
+                    if (seriesFromSearch) searching = true else focusSeriesCard(lastFocusedSeriesId)
+                }
+            )
         }
     }
 }

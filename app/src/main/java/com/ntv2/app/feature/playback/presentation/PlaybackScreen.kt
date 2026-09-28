@@ -112,6 +112,7 @@ fun PlaybackScreen(
     thumbnailPath: String?,
     viewModel: PlayerScreenViewModel,
     onBack: () -> Unit,
+    onPlayNext: (com.ntv2.app.feature.media.domain.UpNextEpisode) -> Unit = {},
     // Configurações: "Animações" (luz pulsante + fade) e a variante da iluminação da capa.
     animationsEnabled: Boolean = true,
     nativeBlurGlow: Boolean = true
@@ -242,19 +243,6 @@ fun PlaybackScreen(
     // Ticker de posição (o ExoPlayer só pode ser lido na Main; o snapshot não atualiza a cada segundo).
     var positionMs by remember { mutableStateOf(0L) }
     var durationMs by remember(durationSeconds) { mutableStateOf(durationSeconds * 1000L) }
-    LaunchedEffect(state.isPlaceholderMode) {
-        while (true) {
-            val current = viewModel.uiState.value
-            if (current.castingTo != null) {
-                // Transmitindo: a posição vem do Chromecast (o player local está parado).
-                positionMs = current.snapshot.currentPositionMs
-            } else viewModel.player?.let { p ->
-                positionMs = p.currentPosition.coerceAtLeast(0L)
-                if (p.duration > 0L) durationMs = p.duration
-            }
-            delay(500)
-        }
-    }
 
     // Barra de controles estilo TV (abas + linha de tempo + ícones). Aparece ao interagir e some
     // sozinha após alguns segundos durante a reprodução; permanece visível quando pausado.
@@ -335,6 +323,26 @@ fun PlaybackScreen(
         }
     }
 
+    // Painel "Estado da rede" aberto sobre o player.
+    var showNetworkPanel by remember { mutableStateOf(false) }
+    LaunchedEffect(showNetworkPanel) { viewModel.onNetworkPanelVisible(showNetworkPanel) }
+
+    // O ticker só roda quando a posição aparece (controles, painel de rede ou transmitindo). Antes
+    // rodava sempre e recompunha a tela inteira 2x/s durante o filme — pesava no Fire TV.
+    val positionShown = controlsVisible || showNetworkPanel || state.castingTo != null
+    LaunchedEffect(state.isPlaceholderMode, positionShown) {
+        while (positionShown) {
+            val current = viewModel.uiState.value
+            if (current.castingTo != null) {
+                // Transmitindo: a posição vem do Chromecast (o player local está parado).
+                positionMs = current.snapshot.currentPositionMs
+            } else viewModel.player?.let { p ->
+                positionMs = p.currentPosition.coerceAtLeast(0L)
+                if (p.duration > 0L) durationMs = p.duration
+            }
+            delay(500)
+        }
+    }
     // Seletor de faixa (legenda) aberto sobre o player.
     var trackPicker by remember { mutableStateOf<TrackPicker?>(null) }
     LaunchedEffect(inPip) {
@@ -486,7 +494,8 @@ fun PlaybackScreen(
 
     // Vídeo terminou: fecha o player e volta aos Detalhes.
     val ended = (!state.isPlaceholderMode && state.snapshot.state == PlaybackState.Ended) || state.castEnded
-    LaunchedEffect(ended) { if (ended) onBack() }
+    // Ao terminar: se há próximo episódio, a UpNextOverlay assume (autoplay/escolha); senão, volta.
+    LaunchedEffect(ended, state.upNext) { if (ended && state.upNext == null) onBack() }
 
     Box(
         modifier = Modifier
@@ -610,7 +619,9 @@ fun PlaybackScreen(
                         },
                         onPip = if (pipSupported && state.castingTo == null) ({ PlayerPip.enter(activity) }) else null,
                         onCast = if (state.castAvailable && !adaptive.isTv) ({ activity?.let { viewModel.openCastPicker(it) } }) else null,
-                        castActive = state.castingTo != null
+                        castActive = state.castingTo != null,
+                        onOpenNetwork = { showNetworkPanel = true; controlsNonce++ },
+                        connectionReady = state.connectionReady
                     )
                 }
                 if (inPip) {
@@ -666,6 +677,21 @@ fun PlaybackScreen(
             )
         }
 
+        if (showNetworkPanel) {
+            NetworkStatusOverlay(
+                speedBytesPerSec = state.networkSpeedBytesPerSec,
+                downloadedBytes = state.snapshot.downloadedBytes,
+                expectedBytes = state.snapshot.expectedBytes,
+                positionMs = displayPositionMs,
+                bufferedMs = state.snapshot.bufferedPositionMs,
+                playbackState = state.snapshot.state,
+                connectionReady = state.connectionReady,
+                fileName = state.fileName,
+                fileId = fileId,
+                onDismiss = { showNetworkPanel = false; controlsNonce++ }
+            )
+        }
+
         trackPicker?.let { picker ->
             val tracks = state.snapshot.tracks
             when (picker) {
@@ -696,6 +722,85 @@ fun PlaybackScreen(
                         controlsNonce++
                     }
                 )
+            }
+        }
+
+        // Próximo episódio (série): aparece ao terminar o vídeo, com autoplay em contagem regressiva.
+        state.upNext?.let { next ->
+            UpNextOverlay(
+                next = next,
+                autoplaySeconds = UP_NEXT_AUTOPLAY_SECONDS,
+                onPlayNext = onPlayNext,
+                onCancel = { onBack() }
+            )
+        }
+    }
+}
+
+private const val UP_NEXT_AUTOPLAY_SECONDS = 8
+
+@Composable
+private fun UpNextOverlay(
+    next: com.ntv2.app.feature.media.domain.UpNextEpisode,
+    autoplaySeconds: Int,
+    onPlayNext: (com.ntv2.app.feature.media.domain.UpNextEpisode) -> Unit,
+    onCancel: () -> Unit
+) {
+    var remaining by remember(next.mediaId) { mutableStateOf(autoplaySeconds) }
+    val playFocus = remember { FocusRequester() }
+    LaunchedEffect(next.mediaId) {
+        playFocus.requestFocus()
+        while (remaining > 0) {
+            delay(1_000L)
+            remaining--
+        }
+        onPlayNext(next)
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xE6000000)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Próximo episódio",
+                color = Color(0xFFB0B0B0),
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                next.title,
+                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Box(
+                modifier = Modifier
+                    .padding(top = 20.dp)
+                    .focusRequester(playFocus)
+                    .focusable()
+                    .clickable { onPlayNext(next) }
+                    .background(Color(0xFF2BEE34), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 28.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    "Assistir agora ($remaining)",
+                    color = Color.Black,
+                    style = MaterialTheme.typography.titleSmall
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .padding(top = 10.dp)
+                    .focusable()
+                    .clickable { onCancel() }
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+            ) {
+                Text("Cancelar", color = Color(0xFFCFCFCF), style = MaterialTheme.typography.bodyMedium)
             }
         }
     }

@@ -1,4 +1,4 @@
-﻿package com.ntv2.app.di
+package com.ntv2.app.di
 
 import android.content.Context
 import androidx.room.Room
@@ -93,6 +93,7 @@ interface AppContainer {
     val mediaRepository: MediaRepository
     val settingsRepository: SettingsRepository
     val mediaDetailsCache: MediaDetailsCache
+    val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue
     val searchIndexRepository: SearchIndexRepository
     val updateRepository: UpdateRepository
     val updateDownloadManager: ApkDownloadManager
@@ -179,7 +180,7 @@ class DefaultAppContainer(
     }
 
     private val exoPlayerProvider: ExoPlayerProvider by lazy {
-        DefaultExoPlayerProvider(appContext)
+        DefaultExoPlayerProvider(appContext, playbackTuning.ramBufferBytes)
     }
 
     private val playbackResourceManager: PlaybackResourceManager by lazy {
@@ -192,6 +193,7 @@ class DefaultAppContainer(
             stallTimeoutMs = playbackTuning.ioStallTimeoutMs,
             readAheadBytes = playbackTuning.aheadWindowBytes,
             onLowStorage = { storageJanitor.onLowStorageDuringPlayback() },
+            isNetworkReady = { tdlibPlaybackGateway.networkReady.value },
             // Libera do disco o trecho já assistido: um filme ocupa ~250 MB em vez do tamanho todo.
             diskWindow = DiskWindowPolicy(
                 headPinBytes = playbackTuning.diskHeadPinBytes,
@@ -215,7 +217,9 @@ class DefaultAppContainer(
             playbackDataSource = telegramPlaybackDataSource,
             resourceManager = playbackResourceManager,
             dataSourceFactory = growingFileDataSourceFactory,
-            progressStore = playbackProgressStore
+            progressStore = playbackProgressStore,
+            ramBufferBytes = playbackTuning.ramBufferBytes.toLong(),
+            refreshNetwork = { tdlibPlaybackGateway.refreshNetwork() }
         )
     }
 
@@ -241,7 +245,8 @@ class DefaultAppContainer(
             coordinator = playbackCoordinator,
             sourceResolver = playbackSourceResolver,
             progressStore = playbackProgressStore,
-            storageGuard = storageJanitor
+            storageGuard = storageJanitor,
+            networkRefresher = { tdlibPlaybackGateway.refreshNetwork() }
         )
     }
 
@@ -280,6 +285,10 @@ class DefaultAppContainer(
     }
 
     override val mediaDetailsCache: MediaDetailsCache by lazy { MediaDetailsCache() }
+
+    override val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue by lazy {
+        com.ntv2.app.feature.media.domain.UpNextQueue()
+    }
 
     override val searchIndexRepository: SearchIndexRepository by lazy {
         SearchIndexRepository(indexUrl = SEARCH_INDEX_URL)

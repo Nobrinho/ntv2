@@ -1,0 +1,152 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
+package com.ntv2.app.feature.playback.presentation
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.media3.common.util.UnstableApi
+import androidx.tv.material3.Icon
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
+import com.ntv2.app.core.player.PlaybackState
+
+/**
+ * Painel "Estado da rede" (aberto pelo ícone da barra de controles). Como o app faz streaming via
+ * Telegram (TDLib), e não P2P, no lugar de "Pares" mostra o estado real da conexão e o buffer à
+ * frente. Todos os dados já existem no snapshot do player + o sinal de conexão do TDLib.
+ */
+@Composable
+internal fun NetworkStatusOverlay(
+    speedBytesPerSec: Long,
+    downloadedBytes: Long,
+    expectedBytes: Long?,
+    positionMs: Long,
+    bufferedMs: Long,
+    playbackState: PlaybackState,
+    connectionReady: Boolean,
+    fileName: String?,
+    fileId: Int,
+    onDismiss: () -> Unit
+) {
+    BackHandler(enabled = true) { onDismiss() }
+
+    val connectionColor = if (connectionReady) Color(0xFF2BEE34) else Color(0xFFFFB020)
+    val connectionLabel = if (connectionReady) "Conectado" else "Reconectando…"
+    val stateLabel = when (playbackState) {
+        PlaybackState.Ready -> "Reproduzindo"
+        PlaybackState.Buffering, PlaybackState.Preparing -> "Armazenando buffer"
+        PlaybackState.Paused -> "Pausado"
+        else -> "—"
+    }
+    val bufferAheadMs = (bufferedMs - positionMs).coerceAtLeast(0L)
+    val percent = expectedBytes?.takeIf { it > 0L }?.let { (downloadedBytes.toDouble() / it * 100.0) }
+    val loadedText = buildString {
+        append(formatBytes(downloadedBytes))
+        if (expectedBytes != null && expectedBytes > 0L) {
+            append(" / ")
+            append(formatBytes(expectedBytes))
+            if (percent != null) append(java.util.Locale("pt", "BR").let { String.format(it, "  (%.2f%%)", percent) })
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x80000000))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.6f)
+                .widthIn(max = 320.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xF20E1526))
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                .clickable(onClick = {})
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            // Cabeçalho: ícone pequeno + título, inline (sem o círculo grande).
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(
+                    Icons.Filled.Public,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    "Estado da rede",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            InfoLine("Velocidade", formatSpeed(speedBytesPerSec))
+            InfoLine("Carregado", loadedText)
+            // Conexão numa linha só: bolinha + estado · reprodução · buffer.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(connectionColor))
+                Text(
+                    "  $connectionLabel · $stateLabel · buffer ${formatTime(bufferAheadMs)}",
+                    color = Color(0xFFB8C0CC),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Text(
+                fileName ?: "arquivo #$fileId",
+                color = Color(0x66FFFFFF),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color(0xFF8A94A6), style = MaterialTheme.typography.bodySmall)
+        Text(
+            value,
+            color = Color.White,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+/** "624 KB/s", "1,4 MB/s". Reusa o formatador de bytes do player. */
+internal fun formatSpeed(bytesPerSec: Long): String = "${formatBytes(bytesPerSec)}/s"

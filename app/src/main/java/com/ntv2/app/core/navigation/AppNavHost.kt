@@ -248,7 +248,8 @@ fun AppNavHost(
                     gridStep = mediaGridStep,
                     searchIndexRepository = appContainer.searchIndexRepository,
                     videoPrefetcher = appContainer.videoPrefetcher,
-                    mediaReporter = com.ntv2.app.feature.media.data.report.MediaReporter(appContainer.tdlibMediaGateway)
+                    mediaReporter = com.ntv2.app.feature.media.data.report.MediaReporter(appContainer.tdlibMediaGateway),
+                    upNextQueue = appContainer.upNextQueue
                 )
             )
             MediaLibraryScreen(
@@ -389,7 +390,8 @@ fun AppNavHost(
                     appContainer.tdlibPlaybackGateway.networkReady,
                     castManager = appContainer.castManager,
                     streamServer = appContainer.localStreamServer,
-                    progressStore = appContainer.playbackProgressStore
+                    progressStore = appContainer.playbackProgressStore,
+                    upNextQueue = appContainer.upNextQueue
                 )
             )
             val playerAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)
@@ -405,7 +407,21 @@ fun AppNavHost(
                 fileName = Uri.decode(backStackEntry.arguments?.getString("fileName").orEmpty()),
                 thumbnailPath = Uri.decode(backStackEntry.arguments?.getString("thumbnail").orEmpty()),
                 viewModel = playerViewModel,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onPlayNext = { next ->
+                    // Substitui o player atual pelo do próximo episódio (não empilha players).
+                    navController.navigate(
+                        RoutePath.playbackPlaceholder(
+                            mediaId = Uri.encode(next.mediaId),
+                            fileId = next.fileId,
+                            title = Uri.encode(next.title),
+                            channel = Uri.encode(next.channelName),
+                            duration = next.durationSeconds,
+                            fileName = Uri.encode(next.fileName ?: ""),
+                            thumbnail = Uri.encode(next.thumbnailPath ?: "")
+                        )
+                    ) { popUpTo(RoutePath.PLAYBACK_PLACEHOLDER) { inclusive = true } }
+                }
             )
         }
     }

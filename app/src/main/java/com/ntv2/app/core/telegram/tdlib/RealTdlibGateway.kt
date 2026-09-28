@@ -663,6 +663,21 @@ class RealTdlibGateway(
                             ?.let { cleanDisplayName(it).ifBlank { it } } ?: "Video ${msg.id}"
                     }
 
+                    // Meta de episódio (formato v2, rótulos Série/Temporada/Episódio ou código
+                    // SxxExx). Preferimos a legenda do vídeo; senão o pôster; senão o par legado.
+                    val epMeta = when {
+                        videoMeta.isEpisode -> videoMeta
+                        posterMeta?.isEpisode == true -> posterMeta
+                        isSeriesEpisode -> videoMeta.copy(
+                            seriesTitle = posterMeta?.title,
+                            seasonNumber = videoMeta.seasonNumber
+                                ?: MovieMetadataParser.extractEpisodeCode(displayTitle)?.first,
+                            episodeNumber = videoMeta.episodeNumber
+                                ?: MovieMetadataParser.extractEpisodeCode(displayTitle)?.second
+                        ).takeIf { it.seasonNumber != null && it.episodeNumber != null }
+                        else -> null
+                    }
+
                     val synopsis = if (isSeriesEpisode) {
                         videoMeta.synopsis ?: posterMeta?.synopsis
                     } else {
@@ -726,7 +741,17 @@ class RealTdlibGateway(
                         tmdbId = posterMeta?.tmdbId ?: videoMeta.tmdbId,
                         category = posterMeta?.category,
                         collection = posterMeta?.collection,
-                        tags = posterMeta?.tags
+                        tags = posterMeta?.tags,
+                        // Episódio: metadados na própria legenda do vídeo, ou herdados do pôster
+                        // pareado. [tmdbId] legado guarda o id da SÉRIE, usado como fallback.
+                        isEpisode = epMeta != null,
+                        seriesTmdbId = (epMeta?.seriesTmdbId ?: epMeta?.tmdbId
+                            ?: posterMeta?.tmdbId ?: videoMeta.tmdbId)?.toLongOrNull(),
+                        episodeTmdbId = epMeta?.episodeTmdbId?.toLongOrNull(),
+                        seriesTitle = epMeta?.seriesTitle ?: (if (isSeriesEpisode) posterMeta?.title else null),
+                        seasonNumber = epMeta?.seasonNumber,
+                        episodeNumber = epMeta?.episodeNumber,
+                        airDate = epMeta?.airDate
                     )
                 }
             }.awaitAll()

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -22,16 +23,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.core.ui.tmdbAtWidth
 import com.ntv2.app.core.ui.imageTiming
@@ -50,6 +54,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -88,6 +95,8 @@ internal fun MovieDetailsOverlay(
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     recommendations: List<MediaCardUi> = emptyList(),
+    // TV: recomendações por categoria (uma fileira por gênero), full-width abaixo do herói.
+    recommendationSections: List<Pair<String, List<MediaCardUi>>> = emptyList(),
     onRecommendationClick: (MediaCardUi) -> Unit = {}
 ) {
     BackHandler(enabled = true) { onDismiss() }
@@ -110,14 +119,25 @@ internal fun MovieDetailsOverlay(
                 "elenco=${details?.cast?.count { it.photoUrl != null } ?: 0} fotos"
         )
     }
-    LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
+    // Rolagem única da coluna de conteúdo: começa sempre no TOPO. Focar o botão "Continuar" (que
+    // fica abaixo da sinopse/elenco) arrastava a rolagem para o meio ao abrir; após posicionar o
+    // foco, trazemos a rolagem de volta ao topo.
+    val contentScroll = rememberScrollState()
+    LaunchedEffect(Unit) {
+        runCatching { playFocus.requestFocus() }
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching { contentScroll.scrollTo(0) }
+    }
 
     // trapFocus: a grade continua composta por trás — o foco não pode escapar para ela.
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF050505)).trapFocus()) {
         val portrait = maxHeight > maxWidth
         val compactLandscape = !portrait && maxHeight < 520.dp
+        // Capturado aqui porque dentro do Column o receiver implícito passa a ser o ColumnScope.
+        val screenHeight = maxHeight
         if (portrait) {
-            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(contentScroll)) {
                 Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
                     if (backdrop != null) {
                         AsyncImage(
@@ -151,38 +171,62 @@ internal fun MovieDetailsOverlay(
                 )
             }
         } else {
-            if (backdrop != null) {
-                AsyncImage(
-                    model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
-                    onState = { backdropTiming(it); if (it.isDone()) backdropLoaded = true },
-                    modifier = Modifier.fillMaxSize()
-                        .slideInFromRight(backdropLoaded, animationsEnabled)
-                )
+            // TV: herói (backdrop + infos à esquerda) ocupando a tela, e ABAIXO as recomendações em
+            // várias fileiras — uma por categoria/gênero — usando a largura toda (o espaço à direita).
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(contentScroll)) {
+                Box(modifier = Modifier.fillMaxWidth().heightIn(min = screenHeight)) {
+                    if (backdrop != null) {
+                        AsyncImage(
+                            model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
+                            onState = { backdropTiming(it); if (it.isDone()) backdropLoaded = true },
+                            modifier = Modifier.matchParentSize()
+                                .slideInFromRight(backdropLoaded, animationsEnabled)
+                        )
+                    }
+                    Box(modifier = Modifier.matchParentSize().background(
+                        Brush.horizontalGradient(0f to Color(0xF2050505), 0.45f to Color(0xB3050505), 0.8f to Color(0x00050505))
+                    ))
+                    Box(modifier = Modifier.matchParentSize().background(
+                        Brush.verticalGradient(0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505))
+                    ))
+                    DetailsInfo(
+                        media, details, showCastPhotos, lowRamPlaybackWarnings, animationsEnabled,
+                        playFocus, onPlay, onDismiss,
+                        actionsFirst = compactLandscape,
+                        modifier = Modifier.fillMaxWidth(0.62f).align(Alignment.TopStart)
+                            .padding(start = 48.dp, end = 24.dp, top = 48.dp, bottom = 40.dp),
+                        playLoading = playLoading,
+                        playFailed = playFailed,
+                        onRestart = onRestart,
+                        showBackButton = isTv,
+                        onReportClick = { reporting = true },
+                        isFavorite = isFavorite,
+                        onToggleFavorite = onToggleFavorite,
+                        // As recomendações vão nas fileiras full-width abaixo (não inline na coluna).
+                        showInlineRecommendations = false,
+                        onRecommendationClick = onRecommendationClick
+                    )
+                }
+                if (recommendationSections.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF050505))
+                            .padding(start = 48.dp, end = 32.dp, top = 6.dp, bottom = 44.dp),
+                        verticalArrangement = Arrangement.spacedBy(22.dp)
+                    ) {
+                        recommendationSections.forEach { (label, cards) ->
+                            PosterTrackRow(
+                                label = label,
+                                items = cards,
+                                showCovers = true,
+                                useTvLayout = true,
+                                onCardClick = onRecommendationClick
+                            )
+                        }
+                    }
+                }
             }
-            Box(modifier = Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(0f to Color(0xF2050505), 0.45f to Color(0xB3050505), 0.8f to Color(0x00050505))
-            ))
-            Box(modifier = Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505))
-            ))
-            DetailsInfo(
-                media, details, showCastPhotos, lowRamPlaybackWarnings, animationsEnabled,
-                playFocus, onPlay, onDismiss,
-                actionsFirst = compactLandscape,
-                modifier = Modifier.fillMaxWidth(0.62f).align(Alignment.CenterStart)
-                    // Rolável sempre: ao focar os botões, a coluna rola até eles (nunca ficam cortados).
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 48.dp, end = 24.dp, top = 40.dp, bottom = 40.dp),
-                playLoading = playLoading,
-                playFailed = playFailed,
-                onRestart = onRestart,
-                showBackButton = isTv,
-                onReportClick = { reporting = true },
-                isFavorite = isFavorite,
-                onToggleFavorite = onToggleFavorite,
-                recommendations = recommendations,
-                onRecommendationClick = onRecommendationClick
-            )
         }
         // Celular: fechar pelo X no canto superior esquerdo (mesmo padrão do player), em vez do
         // botão "Voltar" na linha de ações — que não cabia ao lado de Continuar e Recomeçar.
@@ -247,7 +291,8 @@ internal fun DetailsInfo(
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     recommendations: List<MediaCardUi> = emptyList(),
-    onRecommendationClick: (MediaCardUi) -> Unit = {}
+    onRecommendationClick: (MediaCardUi) -> Unit = {},
+    showInlineRecommendations: Boolean = true
 ) {
     val title = details?.title ?: media.title
     val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
@@ -257,16 +302,7 @@ internal fun DetailsInfo(
         details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
             Text(it, color = Color(0xFFC9C9C9), style = MaterialTheme.typography.titleMedium)
         }
-        val meta = buildList {
-            details?.year?.let { add(it.toString()) }
-            if (durationSecs > 0) add(durationLabel(durationSecs))
-            details?.rating?.let { add("★ ${"%.1f".format(it)}") }
-            details?.ageRating?.takeIf { it.isNotBlank() }?.let { add(it) }
-            details?.quality?.takeIf { it.isNotBlank() }?.let { add(it) }
-        }
-        if (meta.isNotEmpty()) {
-            Text(meta.joinToString("   •   "), color = Color(0xFFE6E6E6), style = MaterialTheme.typography.titleSmall)
-        }
+        DetailMetaRow(details, durationSecs)
         if (showPlaybackWarning) {
             Text(
                 text = "Este aparelho pode tocar apenas o som em vídeos 1080p. Prefira versão 720p quando disponível.",
@@ -285,12 +321,10 @@ internal fun DetailsInfo(
                 showBackButton = showBackButton,
                 fillWidth = fillActions,
                 isFavorite = isFavorite,
-                onToggleFavorite = onToggleFavorite
+                onToggleFavorite = onToggleFavorite,
+                onReportClick = onReportClick
             )
-            ReportLink(onReportClick)
-        }
-        details?.genres?.takeIf { it.isNotBlank() }?.let {
-            Text(it, color = Color(0xFFBDBDBD), style = MaterialTheme.typography.bodyMedium)
+            if (isFavorite) InListLabel()
         }
         details?.synopsis?.takeIf { it.isNotBlank() }?.let { SynopsisText(it) }
         details?.director?.takeIf { it.isNotBlank() }?.let {
@@ -343,12 +377,13 @@ internal fun DetailsInfo(
                 showBackButton = showBackButton,
                 fillWidth = fillActions,
                 isFavorite = isFavorite,
-                onToggleFavorite = onToggleFavorite
+                onToggleFavorite = onToggleFavorite,
+                onReportClick = onReportClick
             )
-            ReportLink(onReportClick)
+            if (isFavorite) InListLabel()
         }
 
-        if (recommendations.isNotEmpty()) {
+        if (showInlineRecommendations && recommendations.isNotEmpty()) {
             RecommendationsRow(
                 seedTitle = title,
                 items = recommendations,
@@ -366,11 +401,11 @@ internal fun RecommendationsRow(
     onClick: (MediaCardUi) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            "Porque você viu $seedTitle",
-            color = Color.White,
-            style = MaterialTheme.typography.titleMedium
-        )
+        val heading = buildAnnotatedString {
+            append("Porque você viu ")
+            withStyle(SpanStyle(color = BRAND_GREEN)) { append(seedTitle) }
+        }
+        Text(heading, color = Color.White, style = MaterialTheme.typography.titleMedium)
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -477,7 +512,8 @@ internal fun DetailsActionRow(
     // Celular em pé: os botões dividem a largura toda (nunca cortam na lateral).
     fillWidth: Boolean = false,
     isFavorite: Boolean = false,
-    onToggleFavorite: () -> Unit = {}
+    onToggleFavorite: () -> Unit = {},
+    onReportClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier.focusGroup().then(if (fillWidth) Modifier.fillMaxWidth() else Modifier),
@@ -491,7 +527,7 @@ internal fun DetailsActionRow(
                 playLoading -> "Abrindo…"
                 playFailed -> "Falhou — tentar de novo"
                 showPlaybackWarning -> "Tentar assistir"
-                media.progress > 0f -> "Continuar"
+                media.progress > 0f -> continueLabel(media)
                 else -> "Assistir"
             },
             primary = true,
@@ -504,11 +540,96 @@ internal fun DetailsActionRow(
         if (media.progress > 0f && !playLoading) {
             DetailButton(icon = Icons.Filled.Replay, label = "Recomeçar", primary = false, onClick = onRestart, modifier = share)
         }
-        // Coração: adiciona/remove da "Minha lista". Só ícone (não divide a largura no celular).
+        // Coração e reportar: quadrados só-ícone ao lado das ações (como no protótipo).
         FavoriteToggleButton(isFavorite = isFavorite, onClick = onToggleFavorite)
+        DetailIconButton(icon = Icons.Filled.Flag, description = "Reportar problema", onClick = onReportClick)
         if (showBackButton) {
             DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss, modifier = share)
         }
+    }
+}
+
+/** "Continuar • 1h27" — o tempo já assistido, como no protótipo. */
+private fun continueLabel(media: MediaCardUi): String {
+    if (media.durationSeconds <= 0) return "Continuar"
+    val watched = (media.durationSeconds * media.progress).toInt()
+    if (watched <= 0) return "Continuar"
+    return "Continuar • ${durationLabel(watched)}"
+}
+
+/** Metadados no estilo do protótipo: nota verde com estrela + chips com borda (idade/qualidade/gênero). */
+@Composable
+private fun DetailMetaRow(details: MovieDetails?, durationSecs: Int) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        details?.rating?.let { rating ->
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Star, contentDescription = null, tint = BRAND_GREEN, modifier = Modifier.size(15.dp))
+                Text("%.1f".format(rating), color = BRAND_GREEN, style = MaterialTheme.typography.titleSmall)
+            }
+        }
+        details?.year?.let { MetaText(it.toString()) }
+        if (durationSecs > 0) MetaText(durationLabel(durationSecs))
+        details?.ageRating?.takeIf { it.isNotBlank() }?.let { MetaChip(it) }
+        details?.quality?.takeIf { it.isNotBlank() }?.let { MetaChip(it) }
+        details?.genres?.takeIf { it.isNotBlank() }?.let { MetaChip(it) }
+    }
+}
+
+@Composable
+private fun MetaText(text: String) {
+    Text(text, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.titleSmall)
+}
+
+@Composable
+private fun MetaChip(text: String) {
+    Text(
+        text,
+        color = Color(0xFFCFCFCF),
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier
+            .border(1.dp, Color(0xFF33343A), RoundedCornerShape(20.dp))
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+    )
+}
+
+/** Linha "Na sua lista" com check verde, exibida sob as ações quando favoritado. */
+@Composable
+internal fun InListLabel() {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.Check, contentDescription = null, tint = BRAND_GREEN, modifier = Modifier.size(15.dp))
+        Text("Na sua lista", color = BRAND_GREEN, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/** Botão quadrado só-ícone da linha de ações (reportar), no mesmo estilo do favoritar. */
+@Composable
+internal fun DetailIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(Color(0x1FFFFFFF))
+            .then(
+                if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp))
+                else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = description, tint = if (focused) Color.White else Color(0xFFB0B0B0), modifier = Modifier.size(22.dp))
     }
 }
 

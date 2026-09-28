@@ -1,4 +1,4 @@
-﻿package com.ntv2.app.core.player.telegram
+package com.ntv2.app.core.player.telegram
 
 import com.ntv2.app.core.player.io.DiskEvictor
 import com.ntv2.app.core.player.io.HolePuncher
@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +31,14 @@ class TdlibTelegramPlaybackDataSource(
 
     private val openErrors = java.util.concurrent.ConcurrentHashMap<Int, String>()
     private val evictedEnds = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+
+    // Pedidos de faixa ao TDLib, UM por vez e em ordem, por arquivo. O TDLib guarda uma só faixa de
+    // download por arquivo (vale o último DownloadFile); antes cada pedido era um launch paralelo e
+    // um pedido antigo, menor, podia chegar por último e encolher a janela. Conflated: só o pedido
+    // mais recente importa.
+    private class RangeRequest(val offset: Long, val length: Long, val priority: Int)
+    private val rangeQueues = java.util.concurrent.ConcurrentHashMap<Int, Channel<RangeRequest>>()
+    private val rangeWorkers = java.util.concurrent.ConcurrentHashMap<Int, Job>()
 
     override suspend fun inspectFile(fileId: Int): PlaybackFileHandle? {
         return runCatching { playbackGateway.openFile(fileId) }
@@ -74,16 +83,24 @@ class TdlibTelegramPlaybackDataSource(
     }
 
     override suspend fun requestChunk(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) {
-        playbackGateway.requestChunk(fileId, offsetBytes, lengthBytes, priority)
+        requestRange(fileId, offsetBytes, lengthBytes, priority)
+    }
+
+    private fun stopRangeRequests(fileId: Int) {
+        rangeQueues.remove(fileId)?.close()
+        rangeWorkers.remove(fileId)?.cancel()
     }
 
     override suspend fun close(fileId: Int) {
+        // Antes do cancel no TDLib: um pedido na fila não pode reativar o download depois.
+        stopRangeRequests(fileId)
         observeJobs.remove(fileId)?.cancel()
         playbackGateway.cancelFile(fileId)
         states.remove(fileId)
     }
 
     override suspend fun deleteFile(fileId: Int) {
+        stopRangeRequests(fileId)
         evictor.cancel(fileId)
         observeJobs.remove(fileId)?.cancel()
         playbackGateway.deleteFile(fileId)
@@ -145,9 +162,18 @@ class TdlibTelegramPlaybackDataSource(
     }
 
     override fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) {
-        scope.launch {
-            playbackGateway.requestChunk(fileId, offsetBytes, lengthBytes, priority)
+        val queue = rangeQueues.computeIfAbsent(fileId) { id ->
+            Channel<RangeRequest>(Channel.CONFLATED).also { channel ->
+                rangeWorkers[id] = scope.launch {
+                    for (request in channel) {
+                        runCatching {
+                            playbackGateway.requestChunk(id, request.offset, request.length, request.priority)
+                        }
+                    }
+                }
+            }
         }
+        queue.trySend(RangeRequest(offsetBytes, lengthBytes, priority))
     }
 
     override suspend fun downloadedPrefixFrom(fileId: Int, offset: Long): Long =

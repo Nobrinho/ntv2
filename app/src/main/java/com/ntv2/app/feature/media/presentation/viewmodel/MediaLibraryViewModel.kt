@@ -44,6 +44,12 @@ sealed interface MediaLibraryAction {
     data object ClearOpenVideoState : MediaLibraryAction
     data class VideoFocused(val mediaId: String) : MediaLibraryAction
     data class OpenVideo(val media: MediaCardUi) : MediaLibraryAction
+    /** Reproduz um episódio a partir do overlay de série (converte o summary em card e abre).
+     *  [next] = próximo episódio da mesma série, para o autoplay ao terminar o atual. */
+    data class OpenEpisode(
+        val summary: MediaItemSummary,
+        val next: MediaItemSummary? = null
+    ) : MediaLibraryAction
     /** Toca do início: apaga o progresso salvo antes de abrir o player. */
     data class RestartVideo(val media: MediaCardUi) : MediaLibraryAction
     data class LoadMoreChannel(val channelId: Long) : MediaLibraryAction
@@ -51,6 +57,10 @@ sealed interface MediaLibraryAction {
     /** Subiu perto do início com o topo descartado: busca a página de mensagens mais novas. */
     data object LoadPrevious : MediaLibraryAction
     data class SelectActiveChannel(val channelId: Long) : MediaLibraryAction
+    /** Alterna entre a grade de Filmes e a de Séries (canal ativo). */
+    data class SelectTab(val tab: com.ntv2.app.feature.media.presentation.state.LibraryTab) : MediaLibraryAction
+    /** Abriu uma série (grade): carrega o progresso salvo dos episódios para o overlay. */
+    data class OpenSeries(val series: com.ntv2.app.feature.media.domain.SeriesSummary) : MediaLibraryAction
     data object ConsumeNavigation : MediaLibraryAction
     data object ConsumeReturnToDetails : MediaLibraryAction
     data object ScreenResumed : MediaLibraryAction
@@ -93,7 +103,9 @@ class MediaLibraryViewModel(
     private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null,
     // Teto de cards mantidos por canal (menor só nos testes, para exercitar o descarte/volta).
     private val maxRetainedItems: Int = MAX_RETAINED_ITEMS,
-    private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null
+    private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null,
+    // Fila "próximo episódio" para o autoplay no player (null em testes/sem séries).
+    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null
 ) : ViewModel() {
 
     // Gosto do usuário para recomendações (gêneros crus de favoritos/histórico) + ids a excluir.
@@ -206,11 +218,27 @@ class MediaLibraryViewModel(
             is MediaLibraryAction.VideoFocused -> {
                 _uiState.update { it.copy(lastFocusedMediaId = action.mediaId) }
             }
+            is MediaLibraryAction.SelectTab -> {
+                _uiState.update { it.copy(libraryTab = action.tab) }
+            }
+            is MediaLibraryAction.OpenSeries -> {
+                val ids = action.series.seasons.flatMap { s -> s.episodes.map { it.mediaId } }
+                viewModelScope.launch {
+                    val saved = withContext(ioDispatcher) { progressStore.savedPositions(ids) }
+                    val progress = ids.associateWith { if ((saved[it] ?: 0L) > 0L) 0.01f else 0f }
+                    _uiState.update { it.copy(episodeProgress = it.episodeProgress + progress) }
+                }
+            }
 
             is MediaLibraryAction.OpenVideo -> {
                 // O player assume o arquivo: o pré-download não é mais cancelado.
                 prefetching.remove(action.media.mediaId)
                 openVideo(action.media)
+            }
+            is MediaLibraryAction.OpenEpisode -> {
+                val saved = _uiState.value.episodeProgress[action.summary.mediaId] ?: 0f
+                openVideo(action.summary.toCard(0L).copy(progress = saved))
+                registerUpNext(action.summary.mediaId, action.next)
             }
             is MediaLibraryAction.RestartVideo -> {
                 prefetching.remove(action.media.mediaId)
@@ -369,7 +397,10 @@ class MediaLibraryViewModel(
                     isSearchPending = false,
                     isSearchLoading = false,
                     errorMessage = null,
-                    emptyState = null
+                    emptyState = null,
+                    // Troca de canal reinicia a aba e limpa as séries do canal anterior.
+                    libraryTab = com.ntv2.app.feature.media.presentation.state.LibraryTab.MOVIES,
+                    series = emptyList()
                 )
             }
             val query = ""
@@ -401,7 +432,7 @@ class MediaLibraryViewModel(
                 attempt++
                 if (attempt < 4) delay(1_200L)
             }
-            channelItems[channel.id] = dedupByTmdb(page?.items.orEmpty())
+            channelItems[channel.id] = dedupByKey(page?.items.orEmpty())
             channelCursors[channel.id] = page?.nextCursor ?: 0L
             headTrimmed -= channel.id
             // Transição atômica: desliga o skeleton JUNTO com os itens/emptyState já calculados,
@@ -420,6 +451,20 @@ class MediaLibraryViewModel(
                 )
             }
             recomputeRecommendations()
+            loadSeriesForChannel(channel.id, channel.title)
+        }
+    }
+
+    /** Carrega as séries do canal a partir do índice v2 (se cobrir o canal). Silencioso: sem índice
+     *  ou sem séries, [MediaLibraryUiState.series] fica vazio e a aba Séries não aparece. */
+    private fun loadSeriesForChannel(channelId: Long, channelTitle: String) {
+        val idx = searchIndexRepository ?: return
+        viewModelScope.launch {
+            if (!runCatching { idx.covers(channelId) }.getOrDefault(false)) return@launch
+            val series = runCatching { idx.allSeries(channelId) }.getOrDefault(emptyList())
+                .map { it.toSeriesSummary(channelId, channelTitle) }
+            if (_uiState.value.activeChannelId != channelId) return@launch
+            _uiState.update { it.copy(series = series) }
         }
     }
 
@@ -509,6 +554,36 @@ class MediaLibraryViewModel(
         }
     }
 
+    /** Resolve o vídeo do próximo episódio no TDLib e o registra na fila de autoplay, sob a chave
+     *  do episódio atual. Sem próximo (fim da série) ou sem fila, não faz nada. */
+    private fun registerUpNext(currentMediaId: String, next: MediaItemSummary?) {
+        val queue = upNextQueue ?: return
+        if (next == null) {
+            queue.clear(currentMediaId)
+            return
+        }
+        val messageId = next.mediaId.substringAfterLast('_').toLongOrNull() ?: return
+        viewModelScope.launch {
+            val resolved = resolvedVideos[next.mediaId] ?: withContext(ioDispatcher) {
+                runCatching { mediaRepository.getVideoByMessage(next.channelId, next.channelTitle, messageId) }.getOrNull()
+            } ?: return@launch
+            if (resolved.fileId == 0) return@launch
+            resolvedVideos[next.mediaId] = resolved
+            queue.put(
+                currentMediaId,
+                com.ntv2.app.feature.media.domain.UpNextEpisode(
+                    mediaId = next.mediaId,
+                    fileId = resolved.fileId,
+                    title = next.title,
+                    channelName = next.channelTitle,
+                    durationSeconds = resolved.durationSeconds,
+                    fileName = resolved.fileName,
+                    thumbnailPath = next.posterPath ?: next.backdropPath
+                )
+            )
+        }
+    }
+
     private fun com.ntv2.app.feature.media.data.index.IndexMovie.toSummary(
         channelId: Long,
         channelTitle: String
@@ -533,6 +608,58 @@ class MediaLibraryViewModel(
         tmdbId = tmdbId.toString()
     )
 
+    /** Episódio do índice v2 → unidade reproduzível. Herda pôster/fundo/gêneros da série quando
+     *  o episódio não os traz. [mediaId] = channelId_videoMessageId (chave local do progresso). */
+    private fun com.ntv2.app.feature.media.data.index.IndexEpisode.toSummary(
+        channelId: Long,
+        channelTitle: String,
+        series: com.ntv2.app.feature.media.data.index.IndexSeries
+    ): MediaItemSummary = MediaItemSummary(
+        mediaId = "${channelId}_$videoMessageId",
+        channelId = channelId,
+        channelTitle = channelTitle,
+        title = title ?: "$code — ${series.title}",
+        caption = null,
+        fileName = null,
+        durationSeconds = (durationMin ?: 0) * 60,
+        thumbnailPath = null,
+        fileId = 0,
+        coverAspectRatio = 0f,
+        posterPath = posterUrl ?: series.posterUrl,
+        synopsis = overview,
+        genres = series.genres.joinToString(", ").ifBlank { null },
+        backdropPath = backdropUrl ?: series.backdropUrl,
+        quality = quality,
+        audio = audio,
+        tmdbId = series.tmdbId.toString(),
+        mediaType = com.ntv2.app.feature.media.domain.MediaType.EPISODE,
+        seriesTmdbId = series.tmdbId,
+        episodeTmdbId = episodeTmdbId,
+        seriesTitle = series.title,
+        seasonNumber = seasonNumber,
+        episodeNumber = episodeNumber,
+        airDate = airDate
+    )
+
+    /** Série do índice v2 → agrupador não reproduzível (para o card e o overlay de temporadas). */
+    private fun com.ntv2.app.feature.media.data.index.IndexSeries.toSeriesSummary(
+        channelId: Long,
+        channelTitle: String
+    ): com.ntv2.app.feature.media.domain.SeriesSummary =
+        com.ntv2.app.feature.media.domain.SeriesSummary(
+            tmdbId = tmdbId,
+            title = title,
+            posterUrl = posterUrl,
+            backdropUrl = backdropUrl,
+            genres = genres,
+            seasons = seasons.map { season ->
+                com.ntv2.app.feature.media.domain.SeasonSummary(
+                    number = season.number,
+                    episodes = season.episodes.map { it.toSummary(channelId, channelTitle, this) }
+                )
+            }
+        )
+
     private fun scheduleSearch(query: String) {
         searchDebounceJob?.cancel()
         searchDebounceJob = viewModelScope.launch {
@@ -555,23 +682,36 @@ class MediaLibraryViewModel(
                     isSearchLoading = true,
                     isSearchLoadingMore = false,
                     searchHasMore = false,
-                    searchResults = emptyList()
+                    searchResults = emptyList(),
+                    searchSeries = emptyList()
                 )
             }
             // Índice local (canal rico): busca instantânea por título, sem TDLib.
             val idx = searchIndexRepository
             if (idx != null && runCatching { idx.covers(activeId) }.getOrDefault(false)) {
                 val movies = runCatching { idx.search(activeId, query) }.getOrDefault(emptyList())
+                val seriesHits = runCatching { idx.searchSeries(activeId, query) }.getOrDefault(emptyList())
                 if (_uiState.value.searchQuery.trim() != query) return@launch
-                val summaries = dedupByTmdb(movies.map { it.toSummary(activeId, title) })
-                val saved = withContext(ioDispatcher) { progressStore.savedPositions(summaries.map { it.mediaId }) }
+                val summaries = dedupByKey(movies.map { it.toSummary(activeId, title) })
+                val series = seriesHits.map { it.toSeriesSummary(activeId, title) }
+                val episodeIds = series.flatMap { s -> s.seasons.flatMap { it.episodes.map { e -> e.mediaId } } }
+                val saved = withContext(ioDispatcher) {
+                    progressStore.savedPositions(summaries.map { it.mediaId } + episodeIds)
+                }
+                val epProgress = episodeIds.associateWith { id ->
+                    // saved traz posição em ms; sem duração aqui, tratamos >0 como "iniciado" (fração
+                    // real é recomputada no card). Para o indicador da linha basta marcar em andamento.
+                    if ((saved[id] ?: 0L) > 0L) 0.01f else 0f
+                }
                 _uiState.update { current ->
                     if (current.searchQuery.trim() != query) current
                     else current.copy(
                         isSearchLoading = false,
                         isSearchLoadingMore = false,
                         searchHasMore = false,
-                        searchResults = summaries.map { it.toCard(saved[it.mediaId] ?: 0L) }
+                        searchResults = summaries.map { it.toCard(saved[it.mediaId] ?: 0L) },
+                        searchSeries = series,
+                        episodeProgress = epProgress
                     )
                 }
                 return@launch
@@ -589,7 +729,7 @@ class MediaLibraryViewModel(
                     searchItems += page.items
                     searchCursor = page.nextCursor
                     pages++
-                } while (dedupByTmdb(searchItems).isEmpty() && searchCursor != 0L && pages < MAX_SEARCH_AUTO_PAGES)
+                } while (dedupByKey(searchItems).isEmpty() && searchCursor != 0L && pages < MAX_SEARCH_AUTO_PAGES)
                 publishSearchResults(query, searchCursor != 0L)
             } catch (e: Throwable) {
                 _uiState.update { current ->
@@ -628,7 +768,7 @@ class MediaLibraryViewModel(
 
     /** Deduplica os itens acumulados da busca, resolve progresso e publica em searchResults. */
     private suspend fun publishSearchResults(query: String, hasMore: Boolean) {
-        val items = dedupByTmdb(searchItems)
+        val items = dedupByKey(searchItems)
         val savedPositions = withContext(ioDispatcher) {
             progressStore.savedPositions(items.map { it.mediaId })
         }
@@ -664,7 +804,7 @@ class MediaLibraryViewModel(
             }.onSuccess { page ->
                 val existing = channelItems[channelId].orEmpty()
                 val seen = existing.mapTo(HashSet()) { it.mediaId }
-                val merged = dedupByTmdb(existing + page.items.filter { seen.add(it.mediaId) })
+                val merged = dedupByKey(existing + page.items.filter { seen.add(it.mediaId) })
                 // Teto de memória: grade é não-lazy, então limitamos os itens mantidos, descartando
                 // os mais antigos (do topo) e preservando os recém-carregados (do fim).
                 if (merged.size > maxRetainedItems) {
@@ -721,7 +861,7 @@ class MediaLibraryViewModel(
                 val newer = page.items.filter { seen.add(it.mediaId) }
                 // Nada mais novo: chegou ao início real do canal.
                 if (newer.isEmpty()) headTrimmed -= channelId
-                val merged = dedupByTmdb(newer + existing)
+                val merged = dedupByKey(newer + existing)
                 if (merged.size > maxRetainedItems) {
                     val kept = merged.take(maxRetainedItems)
                     channelItems[channelId] = kept
@@ -808,17 +948,45 @@ class MediaLibraryViewModel(
             if (_uiState.value.recommendations.isNotEmpty()) _uiState.update { it.copy(recommendations = emptyList()) }
             return
         }
-        val summaries = channelOrder.flatMap { channelItems[it].orEmpty() }
-        if (summaries.isEmpty()) {
+        // Filmes (episódios NÃO entram soltos) + séries (uma por card, pôster único, como na grade).
+        val movies = channelOrder.flatMap { channelItems[it].orEmpty() }
+            .filter { it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
+        val series = _uiState.value.series
+        if (movies.isEmpty() && series.isEmpty()) {
             if (_uiState.value.recommendations.isNotEmpty()) _uiState.update { it.copy(recommendations = emptyList()) }
             return
         }
-        val candidates = summaries.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
-        val ids = RecommendationEngine.recommend(taste, candidates, exclude = favoriteIdsSet + watchedIds, limit = 20)
-        val byId = summaries.associateBy { it.mediaId }
-        val cards = ids.mapNotNull { byId[it]?.toCard(0L) }
+        val movieCandidates = movies.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
+        val seriesCandidates = series.map {
+            RecommendationEngine.Candidate("series_${it.tmdbId}", it.genres.map { g -> g.trim().lowercase() }.toSet())
+        }
+        val ids = RecommendationEngine.recommend(
+            taste, movieCandidates + seriesCandidates, exclude = favoriteIdsSet + watchedIds, limit = 20
+        )
+        val movieById = movies.associateBy { it.mediaId }
+        val seriesById = series.associateBy { "series_${it.tmdbId}" }
+        val cards = ids.mapNotNull { id ->
+            seriesById[id]?.toRecommendationCard() ?: movieById[id]?.toCard(0L)
+        }
         _uiState.update { it.copy(recommendations = cards) }
     }
+
+    /** Série como card de recomendação: pôster único (2:3), não reproduzível. O clique é roteado
+     *  para o overlay da série pela tela (mediaId com prefixo "series_"). */
+    private fun com.ntv2.app.feature.media.domain.SeriesSummary.toRecommendationCard(): MediaCardUi =
+        MediaCardUi(
+            mediaId = "series_$tmdbId",
+            channelId = _uiState.value.activeChannelId ?: 0L,
+            channelName = _uiState.value.activeChannelName,
+            title = title,
+            caption = null,
+            fileName = null,
+            durationSeconds = 0,
+            thumbnailPath = null,
+            posterPath = posterUrl,
+            coverAspectRatio = 0f,
+            fileId = 0
+        )
 
     /** Observa a Minha lista: ids (para o coração) e a trilha de cards. */
     private fun observeFavorites() {
@@ -942,7 +1110,11 @@ class MediaLibraryViewModel(
             val savedPositions = progressStore.savedPositions(visibleIds)
             channelOrder.mapNotNull { id ->
                 val items = channelItems[id] ?: return@mapNotNull null
-                val filtered = items.filter { it.durationSeconds >= minSeconds }
+                // Episódios de série não entram na grade de Filmes: vivem na aba Séries.
+                val filtered = items.filter {
+                    it.durationSeconds >= minSeconds &&
+                        it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE
+                }
                 if (filtered.isEmpty()) return@mapNotNull null
                 ChannelMediaSectionUi(
                     channelId = id,
@@ -964,12 +1136,38 @@ class MediaLibraryViewModel(
     /** Detalhes ricos para a tela de Detalhes (lidos do cache por mediaId). */
     fun detailsFor(mediaId: String): MovieDetails? = mediaDetailsCache.get(mediaId)
 
+    /**
+     * Recomendações agrupadas por CATEGORIA (gênero do título), uma fileira por gênero — para a TV
+     * usar a largura toda com várias trilhas ("Ação", "Crime", …). Cada trilha exclui o próprio título.
+     */
+    fun recommendationsByGenre(mediaId: String, perRow: Int = 14, maxRows: Int = 6): List<Pair<String, List<MediaCardUi>>> {
+        val raw = mediaDetailsCache.get(mediaId)?.genres ?: return emptyList()
+        val labels = raw.split(',', '/', '|').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (labels.isEmpty()) return emptyList()
+        val summaries = channelOrder.flatMap { channelItems[it].orEmpty() }
+        if (summaries.isEmpty()) return emptyList()
+        val result = ArrayList<Pair<String, List<MediaCardUi>>>()
+        for (label in labels.take(maxRows)) {
+            val g = label.lowercase()
+            val cards = summaries.asSequence()
+                .filter { it.mediaId != mediaId }
+                .filter { it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
+                .filter { RecommendationEngine.parseGenres(it.genres).contains(g) }
+                .take(perRow)
+                .map { it.toCard(0L) }
+                .toList()
+            if (cards.isNotEmpty()) result.add(label to cards)
+        }
+        return result
+    }
+
     /** "Porque você viu X": recomendações pelos gêneros DESTE título, dentro do catálogo do canal. */
     fun recommendationsFor(mediaId: String, limit: Int = 12): List<MediaCardUi> {
         val seedGenres = RecommendationEngine.parseGenres(mediaDetailsCache.get(mediaId)?.genres)
         if (seedGenres.isEmpty()) return emptyList()
         val taste = seedGenres.associateWith { 1 }
         val summaries = channelOrder.flatMap { channelItems[it].orEmpty() }
+            .filter { it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
         if (summaries.isEmpty()) return emptyList()
         val candidates = summaries.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
         val ids = RecommendationEngine.recommend(taste, candidates, exclude = setOf(mediaId), limit = limit)
@@ -977,11 +1175,12 @@ class MediaLibraryViewModel(
         return ids.mapNotNull { byId[it]?.toCard(0L) }
     }
 
-    /** Remove filmes repetidos pelo mesmo TMDB id (canal rico), mantendo o primeiro. Itens sem id
-     *  (ex.: canais Polemic) passam sem alteração. */
-    private fun dedupByTmdb(items: List<MediaItemSummary>): List<MediaItemSummary> {
+    /** Remove itens repetidos pela chave estável ([MediaItemSummary.dedupKey]): filmes por
+     *  `movie:{tmdb}`, episódios por `tv:{serie}:s{t}:e{e}`. Assim episódios da mesma série (que
+     *  compartilham o TMDB da série) NÃO colapsam. Itens sem chave (ex.: Polemic) passam intactos. */
+    private fun dedupByKey(items: List<MediaItemSummary>): List<MediaItemSummary> {
         val seen = HashSet<String>()
-        return items.filter { it.tmdbId.isNullOrBlank() || seen.add(it.tmdbId!!) }
+        return items.filter { val k = it.dedupKey; k == null || seen.add(k) }
     }
 
     private fun clearChannelData() {
@@ -1057,7 +1256,8 @@ class MediaLibraryViewModelFactory(
     private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
     private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null,
     private val maxRetainedItems: Int = MAX_RETAINED_ITEMS,
-    private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null
+    private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null,
+    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1073,7 +1273,8 @@ class MediaLibraryViewModelFactory(
                 searchIndexRepository = searchIndexRepository,
                 videoPrefetcher = videoPrefetcher,
                 mediaReporter = mediaReporter,
-                maxRetainedItems = maxRetainedItems
+                maxRetainedItems = maxRetainedItems,
+                upNextQueue = upNextQueue
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

@@ -1,4 +1,4 @@
-﻿@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 
 package com.ntv2.app.core.player.session
 
@@ -24,7 +24,9 @@ import com.ntv2.app.core.player.PlaybackState
 import com.ntv2.app.core.player.io.GrowingFileDataSourceFactory
 import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
+import com.ntv2.app.core.player.config.StreamProfiles
 import com.ntv2.app.core.storage.LowStorageException
+import com.ntv2.app.core.storage.StorageBudget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,18 +38,29 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
+private const val MB = 1024L * 1024L
 // Vídeo congelado: tocando (áudio/relógio avançando) sem nenhum quadro novo por esse tempo.
 private const val VIDEO_FREEZE_RECOVER_MS = 3_000L
 // Limite de recuperações por mídia (evita laço se o arquivo realmente não decodifica).
 private const val MAX_FREEZE_RECOVERIES = 5
 private const val FIRE_TV_DROPPED_FRAME_RECOVERY_THRESHOLD = 24
 private const val FIRE_TV_RECOVERY_COOLDOWN_MS = 30_000L
+// Tocando sem problema por esse tempo: zera os contadores de recuperação. Antes o limite valia para
+// o filme inteiro — depois de algumas quedas de rede num filme de 2 h, a próxima já virava erro.
+private const val HEALTHY_RESET_MS = 60_000L
+// Erro de I/O (rede/arquivo) do ExoPlayer: reconecta e retoma da mesma posição, com espera crescente.
+private const val MAX_IO_RECOVERIES = 3
+private const val IO_RECOVERY_BACKOFF_MS = 2_000L
 
 class DefaultPlaybackCoordinator(
     private val playbackDataSource: TelegramPlaybackDataSource,
     private val resourceManager: PlaybackResourceManager,
     private val dataSourceFactory: GrowingFileDataSourceFactory,
-    private val progressStore: PlaybackProgressStore
+    private val progressStore: PlaybackProgressStore,
+    /** Buffer do ExoPlayer em RAM (entra no cálculo do que guardar atrás no disco). */
+    private val ramBufferBytes: Long = 64L * 1024L * 1024L,
+    /** Faz o TDLib descartar as conexões e reconectar (sockets mortos após queda de Wi‑Fi). */
+    private val refreshNetwork: () -> Unit = {}
 ) : PlaybackCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -74,6 +87,9 @@ class DefaultPlaybackCoordinator(
     private var pendingAudioSwitch: Boolean = false
     private var positionBeforeAudioSwitch: Long = 0L
     private var lastDecoderRecoveryAt = 0L
+    private var ioRecoveries = 0
+    private var ioRecoveryJob: Job? = null
+    private var currentMediaIdForCounters: String? = null
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -100,6 +116,11 @@ class DefaultPlaybackCoordinator(
                 // Assistido até o fim: limpa o progresso para não retomar no finzinho.
                 currentMedia?.let { media -> scope.launch { progressStore.clear(media.mediaId) } }
             }
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            // Sem isso isPlaying só mudava junto do estado (keepScreenOn/watchdog liam valor velho).
+            snapshotState.update { it.copy(isPlaying = isPlaying) }
         }
 
         override fun onTracksChanged(tracks: Tracks) {
@@ -129,6 +150,30 @@ class DefaultPlaybackCoordinator(
             }
             val lowStorage = generateSequence<Throwable>(error) { it.cause }
                 .firstOrNull { it is LowStorageException }
+            // Erro de rede/arquivo (ex.: download parado): em vez de tela de erro, reconecta o TDLib
+            // e retoma da mesma posição, algumas vezes, com espera crescente.
+            val isIoError = error.errorCode in
+                PlaybackException.ERROR_CODE_IO_UNSPECIFIED until PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+            if (lowStorage == null && isIoError && player != null && currentMedia != null &&
+                ioRecoveries < MAX_IO_RECOVERIES
+            ) {
+                ioRecoveries++
+                val position = player.currentPosition
+                val backoffMs = IO_RECOVERY_BACKOFF_MS * ioRecoveries
+                android.util.Log.w(
+                    "NtvPlayer",
+                    "erro de I/O ${error.errorCodeName} em ${position}ms — reconectando e retomando em " +
+                        "${backoffMs}ms ($ioRecoveries/$MAX_IO_RECOVERIES)"
+                )
+                refreshNetwork()
+                snapshotState.update { it.copy(state = PlaybackState.Buffering, isPlaying = false) }
+                ioRecoveryJob?.cancel()
+                ioRecoveryJob = scope.launch(Dispatchers.Main) {
+                    kotlinx.coroutines.delay(backoffMs)
+                    retryAt(position)
+                }
+                return
+            }
             snapshotState.update {
                 it.copy(
                     state = PlaybackState.Error(
@@ -159,8 +204,13 @@ class DefaultPlaybackCoordinator(
             )
         }
 
+        if (currentMediaIdForCounters != media.mediaId) {
+            currentMediaIdForCounters = media.mediaId
+            ioRecoveries = 0
+        }
         currentMedia = media
         val handle = playbackDataSource.open(media.fileId)
+        applyStreamProfile(media, handle.expectedBytes, handle.localPath)
         snapshotState.update {
             it.copy(
                 downloadedBytes = handle.downloadedBytes,
@@ -196,6 +246,29 @@ class DefaultPlaybackCoordinator(
         startFreezeWatch(media)
     }
 
+    /** Dimensiona janela à frente / atrás no disco pelo bitrate deste vídeo (até 4K). */
+    private fun applyStreamProfile(media: PlaybackMedia, expectedBytes: Long, localPath: String) {
+        val (free, total) = runCatching {
+            val dir = java.io.File(localPath).parentFile ?: return@runCatching null to 0L
+            val stat = android.os.StatFs(dir.path)
+            stat.availableBytes to stat.totalBytes
+        }.getOrDefault(null to 0L)
+        val profile = StreamProfiles.forMedia(
+            expectedBytes = expectedBytes,
+            durationMs = media.durationMs,
+            ramBufferBytes = ramBufferBytes,
+            freeBytes = free,
+            downloadFloor = StorageBudget.downloadFloor(total)
+        )
+        dataSourceFactory.setProfile(media.fileId, profile)
+        android.util.Log.i(
+            "NtvPlayer",
+            "perfil fileId=${media.fileId} ~${profile.bytesPerSecond * 8 / 1_000_000}Mbps " +
+                "adiante=${profile.aheadWindowBytes / MB}MB atrás=${profile.keepBehindBytes / MB}MB " +
+                "janelaDisco=${profile.diskWindowEnabled}"
+        )
+    }
+
     private fun startProgressSaving(media: PlaybackMedia) {
         progressJob?.cancel()
         // Roda na Main (ExoPlayer só pode ser lido na sua thread) e salva periodicamente,
@@ -225,6 +298,7 @@ class DefaultPlaybackCoordinator(
             var lastDroppedFrames = -1L
             var lastPositionMs = 0L
             var frozenForMs = 0L
+            var healthyForMs = 0L
             while (true) {
                 kotlinx.coroutines.delay(1_000L)
                 val player = exoPlayer ?: continue
@@ -233,6 +307,7 @@ class DefaultPlaybackCoordinator(
                     lastFrames = -1L
                     lastDroppedFrames = -1L
                     frozenForMs = 0L
+                    healthyForMs = 0L
                     continue
                 }
                 counters.ensureUpdated()
@@ -246,6 +321,13 @@ class DefaultPlaybackCoordinator(
                 frozenForMs = if (lastFrames >= 0L && frames == lastFrames && clockAdvanced) frozenForMs + 1_000L else 0L
                 lastFrames = frames
                 lastPositionMs = positionMs
+                healthyForMs = if (frozenForMs == 0L && newlyDropped < FIRE_TV_DROPPED_FRAME_RECOVERY_THRESHOLD) {
+                    healthyForMs + 1_000L
+                } else 0L
+                if (healthyForMs >= HEALTHY_RESET_MS && (freezeRecoveries > 0 || ioRecoveries > 0)) {
+                    freezeRecoveries = 0
+                    ioRecoveries = 0
+                }
                 val affectedFireTvVp9 = Build.MANUFACTURER.equals("Amazon", ignoreCase = true) &&
                     Build.MODEL.equals("AFTKM", ignoreCase = true) &&
                     snapshotState.value.tracks.videoMimeType == MimeTypes.VIDEO_VP9
@@ -481,6 +563,8 @@ class DefaultPlaybackCoordinator(
     }
 
     private fun stopInternal(closeSession: Boolean, deleteFile: Boolean = false) {
+        ioRecoveryJob?.cancel()
+        ioRecoveryJob = null
         observeJob?.cancel()
         observeJob = null
         progressJob?.cancel()

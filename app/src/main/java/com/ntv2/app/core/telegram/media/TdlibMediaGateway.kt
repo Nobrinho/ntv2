@@ -36,7 +36,15 @@ data class TelegramVideoMessage(
     val tmdbId: String? = null,
     val category: String? = null,
     val collection: String? = null,
-    val tags: String? = null
+    val tags: String? = null,
+    // Séries/episódios. [isEpisode] mapeia para MediaType.EPISODE no datasource (evita dep. circular).
+    val isEpisode: Boolean = false,
+    val seriesTmdbId: Long? = null,
+    val episodeTmdbId: Long? = null,
+    val seriesTitle: String? = null,
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
+    val airDate: String? = null
 )
 
 data class TelegramVideoPage(

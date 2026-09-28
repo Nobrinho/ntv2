@@ -36,6 +36,9 @@ data class ChannelMediaSectionUi(
     val hasPrevious: Boolean = false
 )
 
+/** Aba de tipo de conteúdo da biblioteca (canal ativo). */
+enum class LibraryTab { MOVIES, SERIES }
+
 sealed interface MediaLibraryEmptyState {
     data object NoChannelsSelected : MediaLibraryEmptyState
     data object NoVideosFound : MediaLibraryEmptyState
@@ -65,6 +68,10 @@ data class MediaLibraryUiState(
     val sections: List<ChannelMediaSectionUi> = emptyList(),
     /** Grade plana do canal ativo (novo layout). */
     val items: List<MediaCardUi> = emptyList(),
+    /** Aba de conteúdo ativa (Filmes/Séries). */
+    val libraryTab: LibraryTab = LibraryTab.MOVIES,
+    /** Séries do canal ativo (índice v2); vazio = sem séries → esconde a aba Séries. */
+    val series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
     /** Trilha "Continuar assistindo" (histórico não concluído, mais recente primeiro). */
     val continueWatching: List<MediaCardUi> = emptyList(),
     /** Trilha "Minha lista" (favoritos, mais recente primeiro). */
@@ -77,6 +84,10 @@ data class MediaLibraryUiState(
     val recommendations: List<MediaCardUi> = emptyList(),
     /** Resultados próprios da busca; não substituem a grade principal. */
     val searchResults: List<MediaCardUi> = emptyList(),
+    /** Séries encontradas na busca (índice v2); abrem o overlay de temporadas/episódios. */
+    val searchSeries: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
+    /** Progresso (0..1) por mediaId de episódio das séries da busca, para os indicadores das linhas. */
+    val episodeProgress: Map<String, Float> = emptyMap(),
     val hasMore: Boolean = false,
     val hasPrevious: Boolean = false,
     /** Incrementa a cada conclusão de "carregar mais" (sucesso ou falha) — sinal p/ a UI reagir

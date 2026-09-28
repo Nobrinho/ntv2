@@ -26,7 +26,59 @@ data class IndexMovie(
     val searchKey: String = normalizeForIndex(listOfNotNull(title, originalTitle).joinToString(" "))
 }
 
-private data class LoadedIndex(val channelId: Long, val movies: List<IndexMovie>)
+/** Um episódio do índice (schema v2). Unidade reproduzível: resolve o vídeo por [videoMessageId]. */
+data class IndexEpisode(
+    val episodeTmdbId: Long?,
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val title: String?,
+    val overview: String?,
+    val airDate: String?,
+    val durationMin: Int?,
+    val posterUrl: String?,
+    val backdropUrl: String?,
+    val quality: String?,
+    val audio: String?,
+    val videoMessageId: Long
+) {
+    /** Código canônico "S01E02" (dois dígitos). */
+    val code: String = "S%02dE%02d".format(seasonNumber, episodeNumber)
+}
+
+/** Uma temporada: número + episódios em ordem. */
+data class IndexSeason(val number: Int, val episodes: List<IndexEpisode>)
+
+/** Uma série do índice (schema v2), agrupando temporadas/episódios. */
+data class IndexSeries(
+    val tmdbId: Long,
+    val title: String,
+    val originalTitle: String?,
+    val posterUrl: String?,
+    val backdropUrl: String?,
+    val overview: String?,
+    val genres: List<String>,
+    val seasons: List<IndexSeason>
+) {
+    /** Chave de busca: título da série + títulos dos episódios + códigos SxxExx. */
+    val searchKey: String = normalizeForIndex(
+        buildString {
+            append(title)
+            originalTitle?.let { append(' ').append(it) }
+            seasons.forEach { s ->
+                s.episodes.forEach { e ->
+                    append(' ').append(e.code)
+                    e.title?.let { append(' ').append(it) }
+                }
+            }
+        }
+    )
+}
+
+private data class LoadedIndex(
+    val channelId: Long,
+    val movies: List<IndexMovie>,
+    val series: List<IndexSeries> = emptyList()
+)
 
 /**
  * Baixa (1x por sessão) o índice de filmes publicado pelo bot (GitHub Pages) e permite busca
@@ -97,13 +149,92 @@ class SearchIndexRepository(
                 videoMessageId = videoMsg
             )
         }
-        return LoadedIndex(channelId, movies)
+        return LoadedIndex(channelId, movies, parseSeries(root))
+    }
+
+    private fun parseSeries(root: JSONObject): List<IndexSeries> {
+        val arr = root.optJSONArray("series") ?: return emptyList()
+        val out = ArrayList<IndexSeries>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val genresArr = o.optJSONArray("genres")
+            val genres = if (genresArr != null) (0 until genresArr.length()).map { genresArr.optString(it) } else emptyList()
+            out += IndexSeries(
+                tmdbId = o.optLong("tmdb_id"),
+                title = o.optString("title").ifBlank { "Série" },
+                originalTitle = o.optString("original_title").ifBlank { null },
+                posterUrl = o.optString("poster_url").ifBlank { null },
+                backdropUrl = o.optString("backdrop_url").ifBlank { null },
+                overview = o.cleanString("overview"),
+                genres = genres,
+                seasons = parseSeasons(o.optJSONArray("seasons"))
+            )
+        }
+        return out
+    }
+
+    private fun parseSeasons(arr: org.json.JSONArray?): List<IndexSeason> {
+        if (arr == null) return emptyList()
+        val out = ArrayList<IndexSeason>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val number = o.optInt("number", o.optInt("season_number", 0))
+            out += IndexSeason(
+                number = number,
+                episodes = parseEpisodes(o.optJSONArray("episodes"), number)
+            )
+        }
+        return out.sortedBy { it.number }
+    }
+
+    private fun parseEpisodes(arr: org.json.JSONArray?, seasonNumber: Int): List<IndexEpisode> {
+        if (arr == null) return emptyList()
+        val out = ArrayList<IndexEpisode>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val mids = o.optJSONArray("message_ids")
+            val videoMsg = o.optLong("video_message_id", 0L).takeIf { it != 0L }
+                ?: (mids?.let { if (it.length() > 0) it.optLong(it.length() - 1) else 0L } ?: 0L)
+            out += IndexEpisode(
+                episodeTmdbId = o.optLong("episode_tmdb_id", 0L).takeIf { it != 0L },
+                seasonNumber = o.optInt("season_number", seasonNumber),
+                episodeNumber = o.optInt("episode_number", o.optInt("number", 0)),
+                title = o.cleanString("title"),
+                overview = o.cleanString("overview"),
+                airDate = o.cleanString("air_date"),
+                durationMin = o.optInt("runtime", o.optInt("duration", 0)).takeIf { it != 0 },
+                posterUrl = o.optString("poster_url").ifBlank { null },
+                backdropUrl = o.optString("backdrop_url").ifBlank { null },
+                quality = o.optString("quality").ifBlank { null },
+                audio = o.optString("audio").ifBlank { null },
+                videoMessageId = videoMsg
+            )
+        }
+        return out.sortedBy { it.episodeNumber }
     }
 
     /** True se o índice cobre esse canal (carrega se preciso). */
     suspend fun covers(channelId: Long): Boolean {
         val idx = ensureLoaded() ?: return false
-        return idx.channelId == channelId && idx.movies.isNotEmpty()
+        return idx.channelId == channelId && (idx.movies.isNotEmpty() || idx.series.isNotEmpty())
+    }
+
+    /** Todas as séries do canal (para montar os cards da biblioteca). Vazio se não cobrir o canal. */
+    suspend fun allSeries(channelId: Long): List<IndexSeries> {
+        val idx = ensureLoaded() ?: return emptyList()
+        return if (idx.channelId == channelId) idx.series else emptyList()
+    }
+
+    /** Busca local por séries: casa título da série, título de episódio ou código SxxExx. */
+    suspend fun searchSeries(channelId: Long, query: String, limit: Int = 60): List<IndexSeries> {
+        val idx = ensureLoaded() ?: return emptyList()
+        if (idx.channelId != channelId) return emptyList()
+        val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
+        if (tokens.isEmpty()) return emptyList()
+        return idx.series.asSequence()
+            .filter { s -> tokens.all { s.searchKey.contains(it) } }
+            .take(limit)
+            .toList()
     }
 
     /** Busca local por título/título original (sem acento/caixa). Vazio se não cobrir o canal. */
@@ -118,6 +249,10 @@ class SearchIndexRepository(
             .toList()
     }
 }
+
+/** optString tratando vazio e o literal "null"/"None" (comum em índices) como ausente. */
+private fun JSONObject.cleanString(key: String): String? =
+    optString(key).trim().ifBlank { null }?.takeUnless { it.equals("null", true) || it.equals("None", true) }
 
 internal fun normalizeForIndex(s: String): String =
     Normalizer.normalize(s, Normalizer.Form.NFD)

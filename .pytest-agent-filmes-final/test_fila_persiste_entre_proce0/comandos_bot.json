@@ -1,0 +1,274 @@
+{
+  "jobs": [
+    {
+      "id": "2bc111f0b3aa",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "25a10487f492",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "3296673b3f5a",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "6f43b19bdf28",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "5b8ffbfda238",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "2ee7590d2403",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "3202768e8aa6",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "7a7b95cf5f3c",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "ae2e69450c7a",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "7fa010aa60d2",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "67ee200b0403",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "3e8f41fa55ac",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "c103428639b9",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "d9e1a52d9789",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "110ec6d1744c",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "99f4aeda5f2e",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "ad712f5490ec",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "2e76d9cb46a7",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "13504cb35ca1",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "d8f9673e08b9",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "0355d62f25bc",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "f05db55083fe",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "791eb68b740a",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "400b7f7b82de",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "ae895069dbf0",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "6b0a12f817d4",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "232d88488ac9",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "addad5377737",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "36ccb582a6f9",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    },
+    {
+      "id": "8e0930eb990c",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:03",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    }
+  ]
+}

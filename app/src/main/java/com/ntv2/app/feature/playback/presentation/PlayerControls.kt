@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
@@ -192,7 +193,9 @@ internal fun StreamingControlsOverlay(
     onFullscreen: () -> Unit,
     onPip: (() -> Unit)? = null,
     onCast: (() -> Unit)? = null,
-    castActive: Boolean = false
+    castActive: Boolean = false,
+    onOpenNetwork: (() -> Unit)? = null,
+    connectionReady: Boolean = true
 ) {
     if (compact) {
         PortraitControlsOverlay(
@@ -220,7 +223,9 @@ internal fun StreamingControlsOverlay(
             onFullscreen = onFullscreen,
             onPip = onPip,
             onCast = onCast,
-            castActive = castActive
+            castActive = castActive,
+            onOpenNetwork = onOpenNetwork,
+            connectionReady = connectionReady
         )
         return
     }
@@ -251,7 +256,9 @@ internal fun StreamingControlsOverlay(
         onFullscreen = onFullscreen,
         onPip = onPip,
         onCast = onCast,
-        castActive = castActive
+        castActive = castActive,
+        onOpenNetwork = onOpenNetwork,
+        connectionReady = connectionReady
     )
 }
 
@@ -282,13 +289,16 @@ internal fun LandscapeControlsOverlay(
     onFullscreen: () -> Unit,
     onPip: (() -> Unit)? = null,
     onCast: (() -> Unit)? = null,
-    castActive: Boolean = false
+    castActive: Boolean = false,
+    onOpenNetwork: (() -> Unit)? = null,
+    connectionReady: Boolean = true
 ) {
     // Amarração de foco para o dpad da TV: barra superior <-> controles centrais <-> scrubber,
-    // e a linha da barra superior (Fechar -> Legenda -> Opções).
+    // e a linha da barra superior (Fechar -> Rede -> Legenda -> Opções).
     val topBarFocus = settingsFocus
     val centerFocus = remember { FocusRequester() }
     val closeFocus = remember { FocusRequester() }
+    val netFocus = remember { FocusRequester() }
     val ccFocus = remember { FocusRequester() }
     val ccEnabled = tracks.subtitles.isNotEmpty()
     val settingsEnabled = tracks.audios.size > 1 || tracks.subtitles.isNotEmpty()
@@ -360,7 +370,7 @@ internal fun LandscapeControlsOverlay(
                         onBack,
                         modifier = Modifier
                             .focusRequester(closeFocus)
-                            .hLink(right = if (ccEnabled) ccFocus else if (settingsEnabled) topBarFocus else null)
+                            .hLink(right = if (onOpenNetwork != null) netFocus else if (ccEnabled) ccFocus else if (settingsEnabled) topBarFocus else null)
                     )
                     // PiP não se aplica à TV.
                     if (!isTv) {
@@ -381,6 +391,17 @@ internal fun LandscapeControlsOverlay(
                     if (!isTv) {
                         if (onCast != null) PortraitTopIcon(Icons.Filled.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
                     }
+                    if (onOpenNetwork != null) {
+                        PortraitTopIcon(
+                            Icons.Filled.Public,
+                            "Estado da rede",
+                            { onOpenNetwork(); onInteract() },
+                            active = connectionReady,
+                            modifier = Modifier
+                                .focusRequester(netFocus)
+                                .hLink(left = closeFocus, right = if (ccEnabled) ccFocus else if (settingsEnabled) topBarFocus else null)
+                        )
+                    }
                     PortraitTopIcon(
                         Icons.Filled.ClosedCaption,
                         "Ligar ou desligar legenda",
@@ -389,7 +410,7 @@ internal fun LandscapeControlsOverlay(
                         active = tracks.subtitles.any { it.isSelected },
                         modifier = Modifier
                             .focusRequester(ccFocus)
-                            .hLink(left = closeFocus, right = if (settingsEnabled) topBarFocus else null)
+                            .hLink(left = if (onOpenNetwork != null) netFocus else closeFocus, right = if (settingsEnabled) topBarFocus else null)
                     )
                     // Velocidade (1x) removida temporariamente: função ainda não implementada.
                     PortraitTopIcon(
@@ -399,7 +420,7 @@ internal fun LandscapeControlsOverlay(
                         enabled = settingsEnabled,
                         modifier = Modifier
                             .focusRequester(topBarFocus)
-                            .hLink(left = if (ccEnabled) ccFocus else closeFocus)
+                            .hLink(left = if (ccEnabled) ccFocus else if (onOpenNetwork != null) netFocus else closeFocus)
                     )
                 }
             }
@@ -494,7 +515,9 @@ internal fun PortraitControlsOverlay(
     onFullscreen: () -> Unit,
     onPip: (() -> Unit)? = null,
     onCast: (() -> Unit)? = null,
-    castActive: Boolean = false
+    castActive: Boolean = false,
+    onOpenNetwork: (() -> Unit)? = null,
+    connectionReady: Boolean = true
 ) {
     Box(
         modifier = modifier
@@ -532,6 +555,12 @@ internal fun PortraitControlsOverlay(
                 PortraitTopIcon(Icons.Filled.Close, "Fechar", onBack)
                 if (onPip != null) PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onPip)
                 if (onCast != null) PortraitTopIcon(Icons.Filled.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
+                if (onOpenNetwork != null) PortraitTopIcon(
+                    Icons.Filled.Public,
+                    "Estado da rede",
+                    { onOpenNetwork(); onInteract() },
+                    active = connectionReady
+                )
                     PortraitTopIcon(
                         Icons.Filled.ClosedCaption,
                         "Legenda",

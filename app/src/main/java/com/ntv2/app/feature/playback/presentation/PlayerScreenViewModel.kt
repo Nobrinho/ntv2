@@ -1,4 +1,4 @@
-﻿package com.ntv2.app.feature.playback.presentation
+package com.ntv2.app.feature.playback.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -47,7 +47,13 @@ data class PlayerScreenUiState(
     /** O vídeo terminou no Chromecast. */
     val castEnded: Boolean = false,
     /** Aviso sobre a transmissão (ex.: sem Wi-Fi, formato não suportado). */
-    val castMessage: String? = null
+    val castMessage: String? = null,
+    /** Próximo episódio (série) já resolvido; preenchido ao terminar o atual, para autoplay. */
+    val upNext: com.ntv2.app.feature.media.domain.UpNextEpisode? = null,
+    /** Velocidade de rede (bytes/s) exibida no painel "Estado da rede". */
+    val networkSpeedBytesPerSec: Long = 0L,
+    /** false quando o TDLib está (re)conectando — o painel de rede mostra "Reconectando". */
+    val connectionReady: Boolean = true
 )
 
 data class DownloadProgress(
@@ -68,6 +74,11 @@ private const val STALL_RESTART_MS = 12_000L
 // Depois de esgotar as reinicializações, esse tempo parado vira erro.
 private const val STALL_FAIL_MS = 20_000L
 private const val MAX_RESTARTS = 2
+// Parado há esse tempo: antes de reiniciar, pede ao TDLib para refazer as conexões (no Fire TV os
+// sockets morrem em silêncio com o Wi‑Fi em economia e o TDLib segue "conectado").
+private const val STALL_NETWORK_REFRESH_MS = 6_000L
+// Tocando sem travar por esse tempo: zera as reinicializações (o limite não vale pelo filme inteiro).
+private const val HEALTHY_RESET_MS = 60_000L
 // Nenhum byte recebido ainda: o 1º arquivo de um canal pode estar num servidor (DC) do Telegram ao
 // qual o app ainda não se conectou nesta sessão — o handshake demora, sobretudo no Fire TV. Cancelar
 // o download nesse meio‑tempo recomeçava o handshake e o vídeo nunca iniciava; espera mais.
@@ -109,7 +120,8 @@ class PlayerScreenViewModel(
     private val networkReady: StateFlow<Boolean> = MutableStateFlow(true),
     private val castManager: com.ntv2.app.core.cast.CastManager? = null,
     private val streamServer: com.ntv2.app.core.cast.LocalStreamServer? = null,
-    private val progressStore: com.ntv2.app.core.player.progress.PlaybackProgressStore? = null
+    private val progressStore: com.ntv2.app.core.player.progress.PlaybackProgressStore? = null,
+    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlayerScreenUiState())
@@ -121,6 +133,13 @@ class PlayerScreenViewModel(
     private var watchdogJob: Job? = null
     private var lastRequest: PlaybackPrepareRequest? = null
     private var preparingFileId: Int = 0
+    @Volatile
+    private var networkPanelVisible: Boolean = false
+
+    /** Painel "Estado da rede" aberto/fechado: só então a velocidade é publicada a cada segundo. */
+    fun onNetworkPanelVisible(visible: Boolean) {
+        networkPanelVisible = visible
+    }
 
     // Transmitindo: o player local fica parado e o estado exibido vem do Chromecast.
     private val casting = MutableStateFlow(false)
@@ -141,7 +160,34 @@ class PlayerScreenViewModel(
                     isPlaying = r.isPlaying,
                     currentPositionMs = r.positionMs
                 )
-            }.collect { snapshot -> _uiState.update { it.copy(snapshot = snapshot) } }
+            }.collect { snapshot ->
+                // Ao terminar o vídeo, consulta a fila "próximo episódio" (série) para autoplay.
+                val next = if (snapshot.state == PlaybackState.Ended && !casting.value) {
+                    lastRequest?.mediaId?.let { upNextQueue?.nextAfter(it) }
+                } else null
+                _uiState.update { it.copy(snapshot = snapshot, upNext = next) }
+            }
+        }
+        // Amostra contínua para o painel "Estado da rede": velocidade de download (suavizada) e o
+        // estado da conexão com o Telegram. Roda enquanto o player existe; custo desprezível.
+        viewModelScope.launch {
+            val speed = SpeedMeter()
+            while (true) {
+                val snap = playbackController.snapshot.value
+                val bps = speed.sample(snap.downloadedBytes, now())
+                val ready = networkReady.value
+                // A velocidade só é exibida no painel de rede: fora dele não recompõe a tela a cada
+                // segundo (pesava no Fire TV durante a reprodução).
+                if (networkPanelVisible || uiState.value.connectionReady != ready) {
+                    _uiState.update {
+                        it.copy(
+                            networkSpeedBytesPerSec = if (networkPanelVisible) bps else it.networkSpeedBytesPerSec,
+                            connectionReady = ready
+                        )
+                    }
+                }
+                delay(1_000L)
+            }
         }
         castManager?.let { manager ->
             // Sem Google Play Services (Fire TV) o start não faz nada e o status fica "Unsupported".
@@ -384,7 +430,8 @@ class PlayerScreenViewModel(
                         val t = now()
                         when (availability) {
                             is MediaAvailability.Downloading -> {
-                                if (availability.downloadedBytes > lastBytes) {
+                                // Qualquer mudança conta (o total cai para 0 quando a cópia é recriada).
+                                if (availability.downloadedBytes != lastBytes) {
                                     lastBytes = availability.downloadedBytes
                                     lastProgressAt = t
                                 }
@@ -426,6 +473,7 @@ class PlayerScreenViewModel(
                         val stalledFor = t - lastProgressAt
                         if (stalledFor >= restartAfter && restarts < MAX_RESTARTS) {
                             restarts++
+                            playbackController.refreshNetwork()
                             playbackController.restartDownload(request.fileId)
                             lastProgressAt = t
                             _uiState.update {
@@ -500,6 +548,8 @@ class PlayerScreenViewModel(
             var lastProgressAt = startedAt
             var restarts = 0
             var everPlayed = false
+            var networkRefreshed = false
+            var healthySince = startedAt
             val speed = SpeedMeter()
             while (true) {
                 delay(1_000L)
@@ -528,14 +578,21 @@ class PlayerScreenViewModel(
                 if (!waiting || complete) {
                     lastProgressAt = t
                     lastBytes = snap.downloadedBytes
+                    networkRefreshed = false
+                    if (restarts > 0 && t - healthySince >= HEALTHY_RESET_MS) restarts = 0
                     if (uiState.value.downloadProgress != null || uiState.value.loadingHint != null) {
                         _uiState.update { it.copy(downloadProgress = null, loadingHint = null) }
                     }
                     continue
                 }
-                if (snap.downloadedBytes > lastBytes || !networkReady.value) {
+                healthySince = t
+                // Qualquer mudança conta como progresso: ao recriar a cópia local (janela de disco) o
+                // total baixado volta a 0 — com ">" o download andando parecia parado até passar do
+                // valor antigo, e o vídeo terminava em "O Telegram parou de enviar".
+                if (snap.downloadedBytes != lastBytes || !networkReady.value) {
                     lastBytes = snap.downloadedBytes
                     lastProgressAt = t
+                    networkRefreshed = false
                 }
                 val hint = if (!everPlayed && t - startedAt >= SLOW_START_HINT_MS) {
                     "Este vídeo precisa baixar mais dados antes de começar (índice no fim do arquivo)."
@@ -551,9 +608,14 @@ class PlayerScreenViewModel(
                     )
                 }
                 val stalledFor = t - lastProgressAt
+                if (stalledFor >= STALL_NETWORK_REFRESH_MS && !networkRefreshed) {
+                    networkRefreshed = true
+                    playbackController.refreshNetwork()
+                }
                 if (stalledFor >= STALL_RESTART_MS && restarts < MAX_RESTARTS) {
                     restarts++
                     lastProgressAt = t
+                    networkRefreshed = false
                     playbackController.retry()
                 } else if (stalledFor >= STALL_FAIL_MS && restarts >= MAX_RESTARTS) {
                     fail(
@@ -628,12 +690,13 @@ class PlayerScreenViewModelFactory(
     private val networkReady: StateFlow<Boolean> = MutableStateFlow(true),
     private val castManager: com.ntv2.app.core.cast.CastManager? = null,
     private val streamServer: com.ntv2.app.core.cast.LocalStreamServer? = null,
-    private val progressStore: com.ntv2.app.core.player.progress.PlaybackProgressStore? = null
+    private val progressStore: com.ntv2.app.core.player.progress.PlaybackProgressStore? = null,
+    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(PlayerScreenViewModel::class.java)) {
-            return PlayerScreenViewModel(playbackController, mediaDetailsCache, networkReady, castManager, streamServer, progressStore) as T
+            return PlayerScreenViewModel(playbackController, mediaDetailsCache, networkReady, castManager, streamServer, progressStore, upNextQueue) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

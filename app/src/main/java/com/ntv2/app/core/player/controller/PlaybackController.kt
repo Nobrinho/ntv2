@@ -65,13 +65,17 @@ interface PlaybackController {
 
     /** Download travado: cancela e pede de novo ao TDLib (retoma de onde parou). */
     suspend fun restartDownload(fileId: Int)
+
+    /** Faz o TDLib descartar as conexões e reconectar (sockets mortos após queda/economia de Wi‑Fi). */
+    fun refreshNetwork()
 }
 
 class DefaultPlaybackController(
     private val coordinator: PlaybackCoordinator,
     private val sourceResolver: PlaybackSourceResolver,
     private val progressStore: PlaybackProgressStore,
-    private val storageGuard: PlaybackStorageGuard? = null
+    private val storageGuard: PlaybackStorageGuard? = null,
+    private val networkRefresher: () -> Unit = {}
 ) : PlaybackController {
 
     override val player: Player? get() = coordinator.player
@@ -163,4 +167,6 @@ class DefaultPlaybackController(
     override fun resumeLocalAt(positionMs: Long) = coordinator.retryAt(positionMs)
 
     override suspend fun restartDownload(fileId: Int) = coordinator.restartDownload(fileId)
+
+    override fun refreshNetwork() = networkRefresher()
 }

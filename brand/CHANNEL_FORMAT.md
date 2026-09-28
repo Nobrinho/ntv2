@@ -14,6 +14,10 @@ Há dois formatos, e os dois continuam funcionando:
   **duas mensagens**: uma **mensagem de texto** com os metadados (limite 4096) e, **logo abaixo,
   o vídeo**. O app pareia o texto com o vídeo seguinte (por adjacência).
 
+O bot também reconhece episódios quando o nome ou a primeira linha contém `S01E02`, `T01E02`,
+`1x02` ou `Temporada 1 Episódio 2`. Para esses arquivos, consulta a série e o episódio no TMDB e
+publica o contrato abaixo. Cada episódio é uma publicação independente.
+
 ---
 
 ## Formato rico — modelo para copiar
@@ -56,6 +60,36 @@ da URL em `Pôster:` — não precisa anexar foto.
 ---
 
 ## Campos
+
+### Episódio de série — gerado automaticamente pelo bot
+
+```
+Título: Fallout — S02E03 — O Alvo
+Tipo: Episódio
+Série: Fallout
+Temporada: 2
+Episódio: 3
+Título do episódio: O Alvo
+Ano: 2026
+Exibição: 2026-01-07
+Duração: 58
+Nota: 8.2
+Gêneros: Drama, Ficção científica
+Categoria: Séries
+Coleção: Fallout
+Áudio: Dual
+Qualidade: 1080p
+Pôster: https://image.tmdb.org/t/p/w780/serie.jpg
+Fundo: https://image.tmdb.org/t/p/w1280/episodio.jpg
+TMDB Série: 106379
+TMDB Episódio: 6201451
+TMDB: 106379
+Sinopse: ...
+```
+
+`TMDB:` repete o ID da série para manter clientes antigos funcionando. `TMDB Episódio:` identifica
+o capítulo de forma global. A chave de publicação/deduplicação é
+`tv:{tmdbSerie}:s{temporada}e{episodio}`, portanto episódios da mesma série não se sobrescrevem.
 
 ### Usados HOJE na tela de detalhes
 | Rótulo | Sinônimos aceitos | Formato / valores | Onde aparece |

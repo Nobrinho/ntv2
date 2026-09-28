@@ -1,0 +1,444 @@
+{
+  "jobs": [
+    {
+      "id": "17515f8cd1f7",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 0
+      },
+      "retorno": null
+    },
+    {
+      "id": "f9b37fb6ed4c",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 1
+      },
+      "retorno": null
+    },
+    {
+      "id": "23f05e447c8c",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 9
+      },
+      "retorno": null
+    },
+    {
+      "id": "93b7ff3c437d",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 10
+      },
+      "retorno": null
+    },
+    {
+      "id": "cff5ad1e3ab6",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 2
+      },
+      "retorno": null
+    },
+    {
+      "id": "e18eaa5d1232",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 6
+      },
+      "retorno": null
+    },
+    {
+      "id": "ea3cd29bfd96",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 13
+      },
+      "retorno": null
+    },
+    {
+      "id": "35d58ed9658a",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 14
+      },
+      "retorno": null
+    },
+    {
+      "id": "7c2488dfa7f7",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 4
+      },
+      "retorno": null
+    },
+    {
+      "id": "5fa6cf56788a",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 8
+      },
+      "retorno": null
+    },
+    {
+      "id": "4f78a8995293",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 17
+      },
+      "retorno": null
+    },
+    {
+      "id": "71153dc4c48d",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 18
+      },
+      "retorno": null
+    },
+    {
+      "id": "86595f164bf3",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 3
+      },
+      "retorno": null
+    },
+    {
+      "id": "d779b99165af",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 12
+      },
+      "retorno": null
+    },
+    {
+      "id": "2b0f2331fd51",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 16
+      },
+      "retorno": null
+    },
+    {
+      "id": "18902b1a75bb",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 21
+      },
+      "retorno": null
+    },
+    {
+      "id": "75e2106768a4",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 22
+      },
+      "retorno": null
+    },
+    {
+      "id": "fe8e50d6056a",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 23
+      },
+      "retorno": null
+    },
+    {
+      "id": "062386c554d4",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 24
+      },
+      "retorno": null
+    },
+    {
+      "id": "c7fbf3f9d026",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 25
+      },
+      "retorno": null
+    },
+    {
+      "id": "6a0f48b976fe",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 26
+      },
+      "retorno": null
+    },
+    {
+      "id": "b3255ef4aa23",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 27
+      },
+      "retorno": null
+    },
+    {
+      "id": "4af7422059e3",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 28
+      },
+      "retorno": null
+    },
+    {
+      "id": "85e38058bab9",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 29
+      },
+      "retorno": null
+    },
+    {
+      "id": "b4002a6d12c6",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 30
+      },
+      "retorno": null
+    },
+    {
+      "id": "b8d3397cc09a",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 31
+      },
+      "retorno": null
+    },
+    {
+      "id": "7ec69739e3ff",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 32
+      },
+      "retorno": null
+    },
+    {
+      "id": "878b366157e4",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 34
+      },
+      "retorno": null
+    },
+    {
+      "id": "5177e3a4b38a",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 35
+      },
+      "retorno": null
+    },
+    {
+      "id": "61a0b6a6a69b",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 36
+      },
+      "retorno": null
+    },
+    {
+      "id": "90518c6089f8",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 37
+      },
+      "retorno": null
+    },
+    {
+      "id": "59741cf0ef1b",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 5
+      },
+      "retorno": null
+    },
+    {
+      "id": "99ee71632e5e",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 38
+      },
+      "retorno": null
+    },
+    {
+      "id": "ceec40e49d14",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 15
+      },
+      "retorno": null
+    },
+    {
+      "id": "4e9d6e21d859",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 20
+      },
+      "retorno": null
+    },
+    {
+      "id": "2f34cb198c4d",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 11
+      },
+      "retorno": null
+    },
+    {
+      "id": "72683f3db662",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 39
+      },
+      "retorno": null
+    },
+    {
+      "id": "5f44025e5536",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 33
+      },
+      "retorno": null
+    },
+    {
+      "id": "676a7a4d70a7",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 7
+      },
+      "retorno": null
+    },
+    {
+      "id": "7882933c9459",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:19:22",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {
+        "numero": 19
+      },
+      "retorno": null
+    }
+  ]
+}

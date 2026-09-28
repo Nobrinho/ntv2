@@ -1,0 +1,13 @@
+{
+  "jobs": [
+    {
+      "id": "461c11eb42a9",
+      "tipo": "regerar_indice",
+      "criado_em": "2026-09-26T19:21:02",
+      "origem": "painel",
+      "criado_por": null,
+      "params": {},
+      "retorno": null
+    }
+  ]
+}

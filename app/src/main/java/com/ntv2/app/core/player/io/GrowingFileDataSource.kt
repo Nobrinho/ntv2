@@ -1,4 +1,4 @@
-﻿@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 
 package com.ntv2.app.core.player.io
 
@@ -10,6 +10,7 @@ import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import com.ntv2.app.core.player.config.StreamProfile
 import com.ntv2.app.core.player.telegram.PartialFileAccessor
 import com.ntv2.app.core.storage.LowStorageException
 import com.ntv2.app.core.storage.StorageBudget
@@ -18,6 +19,7 @@ import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.util.concurrent.ConcurrentHashMap
 
 class GrowingFileDataSourceFactory(
     private val partialFileAccessor: PartialFileAccessor,
@@ -26,11 +28,26 @@ class GrowingFileDataSourceFactory(
     /** Chamado quando o download adiante é suspenso por falta de espaço (dispara limpeza de caches). */
     private val onLowStorage: () -> Unit = {},
     /** Janela deslizante no disco; null desativa (o arquivo cresce até o tamanho do vídeo). */
-    private val diskWindow: DiskWindowPolicy? = null
+    private val diskWindow: DiskWindowPolicy? = null,
+    /** false enquanto o TDLib reconecta: esse tempo não conta como download travado. */
+    private val isNetworkReady: () -> Boolean = { true }
 ) : DataSource.Factory {
+
+    // Dimensionamento por vídeo (bitrate), definido pelo coordinator ao preparar.
+    private val profiles = ConcurrentHashMap<Int, StreamProfile>()
+
+    fun setProfile(fileId: Int, profile: StreamProfile) {
+        profiles[fileId] = profile
+    }
+
+    fun clearProfile(fileId: Int) {
+        profiles.remove(fileId)
+    }
+
     override fun createDataSource(): DataSource {
         return GrowingFileDataSource(
-            partialFileAccessor, stallTimeoutMs, readAheadBytes, onLowStorage, diskWindow
+            partialFileAccessor, stallTimeoutMs, readAheadBytes, onLowStorage, diskWindow,
+            isNetworkReady, profiles::get
         )
     }
 }
@@ -42,13 +59,19 @@ private const val EVICT_CHECK_STEP_BYTES = 8L * 1024L * 1024L
 private const val TAG = "NtvDiskWindow"
 private const val MB = 1024L * 1024L
 private const val STALL_LOG_AFTER_MS = 6_000L
+// Validade da checagem de espaço livre (StatFs é chamada de sistema; antes rodava a cada read()).
+private const val FREE_SPACE_CACHE_MS = 2_000L
+// Rede fora do ar por mais que isso: desiste mesmo assim (a tela mostra o erro com "Tentar de novo").
+private const val MAX_NETWORK_WAIT_MS = 120_000L
 
 private class GrowingFileDataSource(
     private val partialFileAccessor: PartialFileAccessor,
     private val stallTimeoutMs: Long,
-    private val readAheadBytes: Long,
+    private val defaultReadAheadBytes: Long,
     private val onLowStorage: () -> Unit,
-    private val diskWindow: DiskWindowPolicy?
+    private val defaultDiskWindow: DiskWindowPolicy?,
+    private val isNetworkReady: () -> Boolean,
+    private val profileFor: (Int) -> StreamProfile?
 ) : BaseDataSource(false) {
 
     private var dataSpec: DataSpec? = null
@@ -56,6 +79,9 @@ private class GrowingFileDataSource(
     private var fileId: Int = -1
     private var readPosition: Long = 0L
     private var bytesRemaining: Long = C.LENGTH_UNSET.toLong()
+    // Valores efetivos deste open (perfil do vídeo, ou os padrões).
+    private var readAheadBytes: Long = defaultReadAheadBytes
+    private var diskWindow: DiskWindowPolicy? = defaultDiskWindow
     // Base do download deste open (posição do dataSpec). O download é sempre estendido de forma
     // CONTÍGUA a partir daqui (só aumentando o tamanho) — nunca movendo o offset à frente, o que
     // criaria um buraco entre a fronteira baixada e a nova posição e travaria a leitura.
@@ -68,6 +94,12 @@ private class GrowingFileDataSource(
     private var cachePrefix: Long = 0L
     // Posição da última avaliação da janela deslizante.
     private var lastEvictCheck: Long = 0L
+    // Cache da checagem de espaço livre.
+    private var freeSpaceOk: Boolean = true
+    private var freeSpaceCheckedAt: Long = -FREE_SPACE_CACHE_MS
+    // Leitura curta: o TDLib diz que há bytes, mas o arquivo no disco ainda é menor (logo após
+    // recriar a cópia). Antes isso virava "fim do vídeo".
+    private var shortReadSince: Long = 0L
 
     override fun open(dataSpec: DataSpec): Long {
         this.dataSpec = dataSpec
@@ -77,6 +109,7 @@ private class GrowingFileDataSource(
         if (fileId < 0) {
             throw IOException("URI inválida para playback: ${dataSpec.uri}")
         }
+        applyProfile(profileFor(fileId))
 
         readPosition = dataSpec.position
         bytesRemaining = if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
@@ -105,11 +138,26 @@ private class GrowingFileDataSource(
         lastEvictCheck = readPosition
         cacheBase = -1L
         cachePrefix = 0L
+        shortReadSince = 0L
         val requestLen = if (bytesRemaining == C.LENGTH_UNSET.toLong()) readAheadBytes else bytesRemaining
         partialFileAccessor.requestRange(fileId, readPosition, requestLen, priority = 32)
         lastRequestedEnd = readPosition + requestLen
 
         return bytesRemaining
+    }
+
+    private fun applyProfile(profile: StreamProfile?) {
+        if (profile == null) {
+            readAheadBytes = defaultReadAheadBytes
+            diskWindow = defaultDiskWindow
+            return
+        }
+        readAheadBytes = profile.aheadWindowBytes
+        diskWindow = if (profile.diskWindowEnabled) {
+            defaultDiskWindow?.copy(keepBehindBytes = profile.keepBehindBytes)
+        } else {
+            null
+        }
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -130,11 +178,12 @@ private class GrowingFileDataSource(
             // Legibilidade por POSIÇÃO: pergunta ao TDLib quantos bytes contíguos há a partir de
             // readPosition (reconhece frente E fim já no disco). Antes usávamos o prefixo relativo
             // ao offset único, que "esquecia" a frente após buscar o índice no fim (MKV) → travava.
+            val readable = readablePrefixFrom(readPosition)
             val prefix = diskWindow?.clampReadable(
                 readPosition,
-                readablePrefixFrom(readPosition),
+                readable,
                 partialFileAccessor.evictedEnd(fileId)
-            ) ?: readablePrefixFrom(readPosition)
+            ) ?: readable
             when (
                 val plan = PartialReadPlanner.plan(
                     contiguousReadableStart = readPosition,
@@ -148,8 +197,11 @@ private class GrowingFileDataSource(
                 is PartialReadPlanner.Plan.Read -> {
                     val read = raf.read(buffer, offset, plan.maxBytes)
                     if (read <= 0) {
-                        return C.RESULT_END_OF_INPUT
+                        if (partialFileAccessor.isComplete(fileId)) return C.RESULT_END_OF_INPUT
+                        waitShortRead()
+                        continue
                     }
+                    shortReadSince = 0L
                     readPosition += read
                     if (bytesRemaining != C.LENGTH_UNSET.toLong()) {
                         bytesRemaining -= read
@@ -170,7 +222,7 @@ private class GrowingFileDataSource(
                     if (!covered) {
                         // Parou porque o guarda de disco suspendeu o download: erro específico, para a
                         // tela explicar o motivo em vez de um "Timeout" genérico.
-                        if (!hasEnoughFreeSpace()) {
+                        if (!hasEnoughFreeSpace(force = true)) {
                             throw LowStorageException("Pouco espaço livre no aparelho para continuar o vídeo")
                         }
                         throw IOException("Timeout aguardando bytes do arquivo parcial")
@@ -178,6 +230,18 @@ private class GrowingFileDataSource(
                 }
             }
         }
+    }
+
+    /** O TDLib reportou bytes que o arquivo físico ainda não tem: consulta de novo em instantes. */
+    private fun waitShortRead() {
+        val now = SystemClock.elapsedRealtime()
+        if (shortReadSince == 0L) shortReadSince = now
+        if (now - shortReadSince > stallTimeoutMs) {
+            throw IOException("Arquivo local menor que o baixado (fileId=$fileId pos=${readPosition / MB}MB)")
+        }
+        cacheBase = -1L
+        cachePrefix = 0L
+        Thread.sleep(COVERAGE_POLL_MS)
     }
 
     /**
@@ -197,13 +261,14 @@ private class GrowingFileDataSource(
     /**
      * Aguarda até que [position] esteja coberta pela região contígua baixada, OU o download
      * conclua. Retorna false apenas se o download ficar TRAVADO (nenhum byte novo) por mais que
-     * [stallTimeoutMs]. Usa progresso real de download (downloadedBytes) para não abortar um
-     * seek lento mas em andamento — ex.: buscar o índice do MKV lá no fim do arquivo, que demora
-     * o TDLib "pular" pela rede e antes causava retry/flip-flop e minutos de buffering.
+     * [stallTimeoutMs] com a rede pronta. Usa progresso real de download (downloadedBytes, qualquer
+     * mudança — cai para 0 quando a cópia local é recriada) para não abortar um seek lento mas em
+     * andamento — ex.: buscar o índice do MKV lá no fim do arquivo.
      */
     private suspend fun awaitCoverageOrStall(position: Long): Boolean {
         var lastDownloaded = partialFileAccessor.downloadedBytes(fileId)
         var lastProgressAt = SystemClock.elapsedRealtime()
+        var networkDownSince = 0L
         var lastNudgeAt = 0L
         var stallLogged = false
         while (true) {
@@ -223,15 +288,23 @@ private class GrowingFileDataSource(
 
             delay(COVERAGE_POLL_MS)
 
+            val t = SystemClock.elapsedRealtime()
             val downloaded = partialFileAccessor.downloadedBytes(fileId)
-            if (downloaded > lastDownloaded) {
+            if (downloaded != lastDownloaded) {
                 lastDownloaded = downloaded
-                lastProgressAt = SystemClock.elapsedRealtime()
+                lastProgressAt = t
                 stallLogged = false
+            }
+            // TDLib reconectando: não conta como travado (até um limite).
+            if (!isNetworkReady()) {
+                if (networkDownSince == 0L) networkDownSince = t
+                if (t - networkDownSince < MAX_NETWORK_WAIT_MS) lastProgressAt = t
+            } else {
+                networkDownSince = 0L
             }
             // Diagnóstico: download parado há um tempo — registra o que o TDLib reporta (o TDLib
             // não loga nada), para descobrir por que o trecho pedido não chega.
-            if (!stallLogged && SystemClock.elapsedRealtime() - lastProgressAt > STALL_LOG_AFTER_MS) {
+            if (!stallLogged && t - lastProgressAt > STALL_LOG_AFTER_MS) {
                 stallLogged = true
                 Log.i(
                     "NtvDownload",
@@ -240,10 +313,10 @@ private class GrowingFileDataSource(
                         "fimContiguo=${partialFileAccessor.contiguousReadableEnd(fileId) / MB}MB " +
                         "total=${(partialFileAccessor.expectedBytes(fileId) ?: 0L) / MB}MB " +
                         "completo=${partialFileAccessor.isComplete(fileId)} espacoOk=${hasEnoughFreeSpace()} " +
-                        "liberadoAte=${partialFileAccessor.evictedEnd(fileId) / MB}MB"
+                        "rede=${isNetworkReady()} liberadoAte=${partialFileAccessor.evictedEnd(fileId) / MB}MB"
                 )
             }
-            if (SystemClock.elapsedRealtime() - lastProgressAt > stallTimeoutMs) return false
+            if (t - lastProgressAt > stallTimeoutMs) return false
         }
     }
 
@@ -254,38 +327,42 @@ private class GrowingFileDataSource(
      */
     private fun maybeRequestAhead() {
         if (bytesRemaining != C.LENGTH_UNSET.toLong()) return
+        val remainingAhead = lastRequestedEnd - readPosition
+        // Checagem barata primeiro: só pensa em estender quando a janela está pela metade.
+        if (remainingAhead > readAheadBytes / 2L) return
         if (partialFileAccessor.isComplete(fileId)) return
         // Guarda de disco: não estende o download se o espaço livre estiver baixo. Sem isso, um
         // filme grande enche o disco e o TDLib faz abort() (ENOSPC no binlog) → app fecha. Aqui
         // a reprodução degrada (para de baixar adiante) em vez de derrubar o app.
         if (!hasEnoughFreeSpace()) return
-        val remainingAhead = lastRequestedEnd - readPosition
-        if (remainingAhead <= readAheadBytes / 2L) {
-            val desiredEnd = readPosition + readAheadBytes
-            // Estende o download CONTÍGUO a partir da base (aumenta o tamanho), sem mover o offset
-            // à frente — assim não abre buracos que travariam a leitura.
-            partialFileAccessor.requestRange(
-                fileId,
-                downloadBaseOffset,
-                desiredEnd - downloadBaseOffset,
-                priority = 32
-            )
-            lastRequestedEnd = desiredEnd
-        }
+        val desiredEnd = readPosition + readAheadBytes
+        // Estende o download CONTÍGUO a partir da base (aumenta o tamanho), sem mover o offset
+        // à frente — assim não abre buracos que travariam a leitura.
+        partialFileAccessor.requestRange(
+            fileId,
+            downloadBaseOffset,
+            desiredEnd - downloadBaseOffset,
+            priority = 32
+        )
+        lastRequestedEnd = desiredEnd
     }
 
     /**
      * Espaço livre suficiente para continuar baixando. O piso fica ACIMA do limiar em que o sistema
-     * avisa "armazenamento baixo" (ver [StorageBudget]); antes eram 300 MB fixos, abaixo do limiar,
-     * e o Fire OS acabava mostrando o aviso no meio do filme.
+     * avisa "armazenamento baixo" (ver [StorageBudget]). Resultado guardado por
+     * [FREE_SPACE_CACHE_MS]; [onLowStorage] só dispara na transição para "pouco espaço".
      */
-    private fun hasEnoughFreeSpace(): Boolean {
+    private fun hasEnoughFreeSpace(force: Boolean = false): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - freeSpaceCheckedAt < FREE_SPACE_CACHE_MS) return freeSpaceOk
         val parent = partialFileAccessor.resolvePath(fileId)?.let { File(it).parentFile } ?: return true
         val enough = runCatching {
             val stat = StatFs(parent.path)
             StorageBudget.canDownload(stat.availableBytes, stat.totalBytes)
         }.getOrDefault(true)
-        if (!enough) onLowStorage()
+        if (!enough && freeSpaceOk) onLowStorage()
+        freeSpaceOk = enough
+        freeSpaceCheckedAt = now
         return enough
     }
 
@@ -359,6 +436,8 @@ private class GrowingFileDataSource(
             bytesRemaining = C.LENGTH_UNSET.toLong()
             downloadBaseOffset = 0L
             lastRequestedEnd = 0L
+            freeSpaceCheckedAt = -FREE_SPACE_CACHE_MS
+            freeSpaceOk = true
         }
     }
 

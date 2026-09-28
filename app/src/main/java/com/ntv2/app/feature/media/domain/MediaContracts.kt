@@ -1,6 +1,9 @@
 ﻿package com.ntv2.app.feature.media.domain
 
 
+/** Tipo da mídia reproduzível. Episódios são unidades reproduzíveis agrupadas por série. */
+enum class MediaType { MOVIE, EPISODE }
+
 data class MediaItemSummary(
     val mediaId: String,
     val channelId: Long,
@@ -34,8 +37,45 @@ data class MediaItemSummary(
     val tmdbId: String? = null,
     val category: String? = null,
     val collection: String? = null,
-    val tags: String? = null
-)
+    val tags: String? = null,
+    // Séries/episódios. Para MOVIE, ficam nulos. Progresso/histórico continuam por [mediaId].
+    val mediaType: MediaType = MediaType.MOVIE,
+    val seriesTmdbId: Long? = null,
+    val episodeTmdbId: Long? = null,
+    val seriesTitle: String? = null,
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
+    val airDate: String? = null
+) {
+    /**
+     * Chave estável de deduplicação/biblioteca:
+     *  - filme:    `movie:{tmdbId}`
+     *  - episódio: `tv:{seriesTmdbId}:s{seasonNumber}:e{episodeNumber}`
+     * Null quando faltam os ids necessários (ex.: canais simples sem TMDB).
+     */
+    val dedupKey: String?
+        get() = when (mediaType) {
+            MediaType.EPISODE ->
+                if (seriesTmdbId != null && seasonNumber != null && episodeNumber != null)
+                    "tv:$seriesTmdbId:s$seasonNumber:e$episodeNumber" else null
+            MediaType.MOVIE -> tmdbId?.takeIf { it.isNotBlank() }?.let { "movie:$it" }
+        }
+}
+
+/** Agrupador não reproduzível: uma série com suas temporadas. */
+data class SeriesSummary(
+    val tmdbId: Long,
+    val title: String,
+    val posterUrl: String?,
+    val backdropUrl: String?,
+    val genres: List<String>,
+    val seasons: List<SeasonSummary>
+) {
+    /** Chave de biblioteca da série (favoritar o card da série). */
+    val libraryKey: String get() = "tv:$tmdbId"
+}
+
+data class SeasonSummary(val number: Int, val episodes: List<MediaItemSummary>)
 
 data class MediaPage(
     val items: List<MediaItemSummary>,

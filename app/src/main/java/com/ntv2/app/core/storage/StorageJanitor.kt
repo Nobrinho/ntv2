@@ -20,6 +20,9 @@ interface PlaybackStorageGuard {
 
     /** O player parou de baixar por falta de espaço: libera caches (não toca no vídeo ativo). */
     fun onLowStorageDuringPlayback()
+
+    /** Espaço atual da partição dos vídeos (null = desconhecido). */
+    fun currentStorage(): StorageSnapshot? = null
 }
 
 /**
@@ -83,6 +86,8 @@ class StorageJanitor(
         emergencyTrim()
         return deviceStorage.snapshot()
     }
+
+    override fun currentStorage(): StorageSnapshot? = deviceStorage.snapshot()
 
     override fun onLowStorageDuringPlayback() {
         val now = SystemClock.elapsedRealtime()

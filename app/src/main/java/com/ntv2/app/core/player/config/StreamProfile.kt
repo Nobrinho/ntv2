@@ -70,7 +70,11 @@ object StreamProfiles {
         )
     }
 
-    /** Buffer do ExoPlayer em RAM: 1/4 do heap, entre 32 e 96 MB (Fire TV Stick: heap ~256 MB → 64 MB). */
+    /**
+     * Buffer do ExoPlayer em RAM: 1/6 do heap, entre 32 e 64 MB (Fire TV Stick: heap ~256 MB → ~42 MB).
+     * Medido no AFTKM: RAM toda ocupada e o sistema trocando para swap (kswapd 30–70% de CPU) durante
+     * a reprodução — menos RAM do player alivia. O colchão contra rede fica no disco (aheadWindow).
+     */
     fun ramBufferBytes(maxHeapBytes: Long): Int =
-        (maxHeapBytes / 4L).coerceIn(32L * MB, 96L * MB).toInt()
+        (maxHeapBytes / 6L).coerceIn(32L * MB, 64L * MB).toInt()
 }

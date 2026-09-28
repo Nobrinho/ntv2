@@ -218,7 +218,7 @@ class DefaultAppContainer(
             ramBufferBytes = playbackTuning.ramBufferBytes.toLong(),
             refreshNetwork = { tdlibPlaybackGateway.refreshNetwork() },
             videoDecoderPolicy = videoDecoderPolicy,
-            softwareDecoderMemory = com.ntv2.app.core.player.exoplayer.SharedPrefsSoftwareDecoderMemory(appContext)
+            decoderTroubleMemory = com.ntv2.app.core.player.exoplayer.SharedPrefsDecoderTroubleMemory(appContext)
         )
     }
 

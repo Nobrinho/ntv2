@@ -26,7 +26,8 @@ import com.ntv2.app.core.player.progress.PlaybackProgressStore
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
 import com.ntv2.app.core.player.config.StreamProfiles
 import com.ntv2.app.core.player.exoplayer.ExoPlayerProvider
-import com.ntv2.app.core.player.exoplayer.SoftwareDecoderMemory
+import com.ntv2.app.core.player.exoplayer.DecoderTroubleMemory
+import com.ntv2.app.core.player.exoplayer.DecoderWindows
 import com.ntv2.app.core.player.exoplayer.VideoDecoderPolicy
 import com.ntv2.app.core.storage.LowStorageException
 import com.ntv2.app.core.storage.StorageBudget
@@ -56,7 +57,9 @@ private const val FRAME_STATS_WINDOW_S = 10
 private const val MAX_IO_RECOVERIES = 3
 private const val IO_RECOVERY_BACKOFF_MS = 2_000L
 // Erro do decodificador de vídeo (ex.: MediaTek do Fire TV com "DECODE ERROR FATAL"): recria e retoma.
-private const val MAX_DECODER_ERROR_RECOVERIES = 4
+private const val MAX_DECODER_ERROR_RECOVERIES = 6
+// Falha também no decodificador de software = trecho corrompido: pula esse tanto (× nº de falhas).
+private const val DECODER_ERROR_SKIP_MS = 2_000L
 
 class DefaultPlaybackCoordinator(
     private val playbackDataSource: TelegramPlaybackDataSource,
@@ -68,8 +71,8 @@ class DefaultPlaybackCoordinator(
     /** Faz o TDLib descartar as conexões e reconectar (sockets mortos após queda de Wi‑Fi). */
     private val refreshNetwork: () -> Unit = {},
     private val videoDecoderPolicy: VideoDecoderPolicy = VideoDecoderPolicy(),
-    /** Vídeos que já precisaram de software: abrem direto com ele (sem travar de novo). */
-    private val softwareDecoderMemory: SoftwareDecoderMemory? = null
+    /** Onde o hardware falhou em cada vídeo: software só em volta desses pontos (ver DecoderWindows). */
+    private val decoderTroubleMemory: DecoderTroubleMemory? = null
 ) : PlaybackCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -102,6 +105,8 @@ class DefaultPlaybackCoordinator(
     private var decoderErrorRecoveries = 0
     // Falhas do decodificador neste vídeo (congelamentos + erros); não zera com o tempo.
     private var decoderIncidents = 0
+    // Posições (ms) em que o hardware falhou neste vídeo (memória + desta sessão).
+    private var badPositions: List<Long> = emptyList()
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -171,9 +176,22 @@ class DefaultPlaybackCoordinator(
             ) {
                 decoderErrorRecoveries++
                 val position = player.currentPosition
-                onDecoderIncident("erro ${error.errorCodeName} em ${position}ms")
+                // Já no software e falhou de novo: o trecho do arquivo está corrompido (nenhum
+                // decodificador passa). Pula um pouco à frente em vez de tentar o mesmo ponto — cada
+                // tentativa é uma parada. Pulo crescente enquanto as falhas se repetem.
+                val alreadySoftware = videoDecoderPolicy.preferSoftware
+                val skipMs = if (alreadySoftware) DECODER_ERROR_SKIP_MS * decoderErrorRecoveries else 0L
+                val resumeAt = (position + skipMs).let { target ->
+                    val duration = player.duration
+                    if (duration > 0L) target.coerceAtMost(duration - 1_000L) else target
+                }
+                onDecoderIncident(
+                    position,
+                    "erro ${error.errorCodeName} em ${position}ms" +
+                        if (skipMs > 0L) "; trecho corrompido, pulando ${skipMs / 1000}s" else ""
+                )
                 snapshotState.update { it.copy(state = PlaybackState.Buffering, isPlaying = false) }
-                retryAt(position)
+                restartDecoderAt(resumeAt)
                 return
             }
             // Erro de rede/arquivo (ex.: download parado): em vez de tela de erro, reconecta o TDLib
@@ -235,12 +253,16 @@ class DefaultPlaybackCoordinator(
             ioRecoveries = 0
             decoderErrorRecoveries = 0
             decoderIncidents = 0
-            val remembered = softwareDecoderMemory?.needsSoftware(media.mediaId) == true
-            videoDecoderPolicy.preferSoftware = remembered
-            if (remembered) {
-                android.util.Log.i("NtvPlayer", "decodificador de software (lembrado) para ${media.mediaId}")
+            badPositions = runCatching { decoderTroubleMemory?.badPositions(media.mediaId) }.getOrNull().orEmpty()
+            if (badPositions.isNotEmpty()) {
+                android.util.Log.i(
+                    "NtvPlayer",
+                    "pontos de falha do hardware lembrados: ${badPositions.joinToString { "${it / 1000}s" }}"
+                )
             }
         }
+        // Começa no software só se a posição inicial cair numa janela em volta de um ponto de falha.
+        videoDecoderPolicy.preferSoftware = DecoderWindows.softwareUntil(media.startPositionMs, badPositions) != null
         currentMedia = media
         val handle = playbackDataSource.open(media.fileId)
         applyStreamProfile(media, handle.expectedBytes, handle.localPath)
@@ -391,6 +413,25 @@ class DefaultPlaybackCoordinator(
                 healthyForMs = if (frozenForMs == 0L && newlyDropped < FIRE_TV_DROPPED_FRAME_RECOVERY_THRESHOLD) {
                     healthyForMs + 1_000L
                 } else 0L
+                // Janelas de software: troca antes de chegar a um ponto onde o hardware falhou e volta
+                // ao hardware depois de passar (ou ao sair da janela por um avanço/retrocesso).
+                if (VideoDecoderPolicy.softwareCapable(snapshotState.value.tracks.videoHeight)) {
+                    val softwareUntil = DecoderWindows.softwareUntil(positionMs, badPositions)
+                    if ((softwareUntil != null) != videoDecoderPolicy.preferSoftware) {
+                        videoDecoderPolicy.preferSoftware = softwareUntil != null
+                        android.util.Log.i(
+                            "NtvPlayer",
+                            if (softwareUntil != null) {
+                                "entrando em trecho de falha em ${positionMs / 1000}s — decodificador de software " +
+                                    "até ${softwareUntil / 1000}s"
+                            } else {
+                                "trecho de falha passou em ${positionMs / 1000}s — voltando ao hardware"
+                            }
+                        )
+                        restartDecoderAt(positionMs)
+                        continue
+                    }
+                }
                 if (healthyForMs >= HEALTHY_RESET_MS &&
                     (freezeRecoveries > 0 || ioRecoveries > 0 || decoderErrorRecoveries > 0)
                 ) {
@@ -419,35 +460,50 @@ class DefaultPlaybackCoordinator(
                 }
                 if (frozenForMs >= VIDEO_FREEZE_RECOVER_MS && freezeRecoveries < MAX_FREEZE_RECOVERIES) {
                     freezeRecoveries++
-                    onDecoderIncident("congelamento em ${positionMs}ms")
+                    onDecoderIncident(positionMs, "congelamento em ${positionMs}ms")
                     android.util.Log.w(
                         "NtvPlayer",
                         "vídeo congelado há ${frozenForMs}ms em ${positionMs}ms — recriando decodificador " +
                             "($freezeRecoveries/$MAX_FREEZE_RECOVERIES)"
                     )
-                    retry()
-                    return@launch
+                    restartDecoderAt(positionMs)
+                    continue
                 }
             }
         }
     }
 
     /**
-     * Conta uma falha do decodificador. Já na 1ª (até 1080p) os próximos preparos usam software, e o
-     * vídeo fica lembrado para abrir com software nas próximas vezes.
+     * Conta uma falha do decodificador. Falha do HARDWARE (até 1080p): guarda a posição (nesta sessão e
+     * na memória do vídeo) e liga o software para a janela em volta dela; nas próximas vezes o app já
+     * troca antes de chegar lá. Falha já no software: só conta (o chamador pula o trecho).
      */
-    private fun onDecoderIncident(reason: String) {
+    private fun onDecoderIncident(positionMs: Long, reason: String) {
         decoderIncidents++
         val height = snapshotState.value.tracks.videoHeight
-        if (VideoDecoderPolicy.shouldSwitchToSoftware(videoDecoderPolicy.preferSoftware, height)) {
-            videoDecoderPolicy.preferSoftware = true
-            currentMedia?.mediaId?.let { id -> runCatching { softwareDecoderMemory?.remember(id) } }
+        if (!videoDecoderPolicy.preferSoftware && VideoDecoderPolicy.softwareCapable(height)) {
+            badPositions = DecoderWindows.addPoint(badPositions, positionMs)
+            currentMedia?.mediaId?.let { id -> runCatching { decoderTroubleMemory?.remember(id, positionMs) } }
+            videoDecoderPolicy.preferSoftware = DecoderWindows.softwareUntil(positionMs, badPositions) != null
         }
         android.util.Log.w(
             "NtvPlayer",
             "falha do decodificador ($reason) — $decoderIncidents neste vídeo; " +
-                (if (videoDecoderPolicy.preferSoftware) "usando decodificador de software" else "recriando")
+                (if (videoDecoderPolicy.preferSoftware) "decodificador de software neste trecho" else "recriando")
         )
+    }
+
+    /**
+     * Recria o decodificador em [positionMs] sem reabrir a sessão do arquivo: stop/prepare solta e
+     * reinicializa os decodificadores (o seletor escolhe hardware ou software de novo), mas o download
+     * no TDLib segue — mais leve que [retryAt], que fecha e reabre tudo. Na Main.
+     */
+    private fun restartDecoderAt(positionMs: Long) {
+        val player = exoPlayer ?: return
+        player.stop()
+        player.prepare()
+        player.seekTo(positionMs.coerceAtLeast(0L))
+        player.playWhenReady = true
     }
 
     private suspend fun persistCurrentProgress(media: PlaybackMedia) {

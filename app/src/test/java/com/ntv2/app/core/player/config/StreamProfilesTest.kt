@@ -44,9 +44,9 @@ class StreamProfilesTest {
     }
 
     @Test
-    fun `ram buffer is a quarter of the heap within bounds`() {
-        assertEquals((64L * mb).toInt(), StreamProfiles.ramBufferBytes(256L * mb))
+    fun `ram buffer is a sixth of the heap within bounds`() {
+        assertEquals((256L * mb / 6L).toInt(), StreamProfiles.ramBufferBytes(256L * mb))
         assertEquals((32L * mb).toInt(), StreamProfiles.ramBufferBytes(64L * mb))
-        assertEquals((96L * mb).toInt(), StreamProfiles.ramBufferBytes(1024L * mb))
+        assertEquals((64L * mb).toInt(), StreamProfiles.ramBufferBytes(1024L * mb))
     }
 }

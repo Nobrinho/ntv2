@@ -10,6 +10,7 @@ import com.ntv2.app.core.player.controller.PlaybackController
 import com.ntv2.app.core.player.controller.PlaybackPrepareRequest
 import com.ntv2.app.core.player.controller.PlaybackPrepareResult
 import com.ntv2.app.core.player.source.MediaAvailability
+import com.ntv2.app.core.storage.StorageBudget
 import com.ntv2.app.feature.media.domain.MediaDetailsCache
 import com.ntv2.app.feature.media.domain.MovieDetails
 import kotlinx.coroutines.Job
@@ -606,6 +607,25 @@ class PlayerScreenViewModel(
                     )
                 }
                 val stalledFor = t - lastProgressAt
+                // Parado por falta de espaço (o player deixa de baixar de propósito): não é rede.
+                // Reiniciar não adianta e a tela dizia "O Telegram parou de enviar" — o usuário não
+                // sabia que era preciso liberar espaço. Dá tempo à limpeza automática e, se não
+                // resolver, mostra o erro de armazenamento.
+                if (stalledFor >= STALL_NETWORK_REFRESH_MS) {
+                    val storage = playbackController.storageBlockingDownload()
+                    if (storage != null) {
+                        if (stalledFor >= STALL_FAIL_MS) {
+                            fail(
+                                lowStorageError(
+                                    freeBytes = storage.freeBytes,
+                                    requiredBytes = StorageBudget.downloadFloor(storage.totalBytes)
+                                )
+                            )
+                            return@launch
+                        }
+                        continue
+                    }
+                }
                 if (stalledFor >= STALL_NETWORK_REFRESH_MS && !networkRefreshed) {
                     networkRefreshed = true
                     playbackController.refreshNetwork()

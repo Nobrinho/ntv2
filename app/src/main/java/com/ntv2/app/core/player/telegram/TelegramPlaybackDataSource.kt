@@ -29,8 +29,8 @@ interface PartialFileAccessor {
     fun evictedEnd(fileId: Int): Long = 0L
 
     /**
-     * Libera do disco [start, end) em segundo plano. A implementação só avança [evictedEnd]
-     * depois que o sistema de arquivos confirmar a liberação.
+     * Libera do disco [start, end) em segundo plano. A implementação avança [evictedEnd] ANTES de
+     * liberar cada bloco, para o player nunca ler um trecho no meio da liberação.
      */
     fun scheduleEviction(fileId: Int, start: Long, end: Long) = Unit
 

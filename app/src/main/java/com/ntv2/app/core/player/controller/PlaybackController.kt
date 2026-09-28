@@ -12,6 +12,7 @@ import com.ntv2.app.core.player.source.PlaybackSourceRequest
 import com.ntv2.app.core.player.source.PlaybackSourceResolver
 import com.ntv2.app.core.storage.PlaybackStorageGuard
 import com.ntv2.app.core.storage.StorageBudget
+import com.ntv2.app.core.storage.StorageSnapshot
 import kotlinx.coroutines.flow.StateFlow
 
 data class PlaybackPrepareRequest(
@@ -63,6 +64,12 @@ interface PlaybackController {
 
     /** Faz o TDLib descartar as conexões e reconectar (sockets mortos após queda/economia de Wi‑Fi). */
     fun refreshNetwork()
+
+    /**
+     * Espaço atual se estiver ABAIXO do piso de download (o player parou de baixar de propósito);
+     * null se há espaço ou se não dá para saber. Distingue "sem espaço" de "rede parada".
+     */
+    fun storageBlockingDownload(): StorageSnapshot? = null
 }
 
 class DefaultPlaybackController(
@@ -163,4 +170,7 @@ class DefaultPlaybackController(
     override suspend fun restartDownload(fileId: Int) = coordinator.restartDownload(fileId)
 
     override fun refreshNetwork() = networkRefresher()
+
+    override fun storageBlockingDownload(): StorageSnapshot? =
+        storageGuard?.currentStorage()?.takeIf { !it.canDownload }
 }

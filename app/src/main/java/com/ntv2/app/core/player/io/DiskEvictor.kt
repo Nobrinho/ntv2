@@ -33,7 +33,14 @@ internal class DiskEvictor(
 
     private fun generation(fileId: Int): AtomicInteger = generations.computeIfAbsent(fileId) { AtomicInteger() }
 
-    fun submit(fileId: Int, path: String, start: Long, end: Long, onProgress: (Long) -> Unit = {}) {
+    /**
+     * [onEvicting] recebe o fim do bloco ANTES de ele ser liberado: a partir daí o player trata o
+     * trecho como ausente (baixa de novo se precisar). Antes o aviso vinha só depois do punch hole —
+     * durante a liberação de um bloco de 8 MB o player ainda o considerava válido e podia ler zeros
+     * (ex.: voltar exatamente para esse trecho). Se o punch falhar, o custo é só rebaixar bytes
+     * que ainda estavam bons.
+     */
+    fun submit(fileId: Int, path: String, start: Long, end: Long, onEvicting: (Long) -> Unit = {}) {
         if (end <= start) return
         val gen = generation(fileId).get()
         executor.execute {
@@ -48,6 +55,7 @@ internal class DiskEvictor(
                         cancelled = true
                         false
                     } else {
+                        onEvicting(position + length)
                         val t0 = SystemClock.elapsedRealtime()
                         val punched = puncher.punch(path, position, length)
                         slowestMs = max(slowestMs, SystemClock.elapsedRealtime() - t0)
@@ -59,9 +67,6 @@ internal class DiskEvictor(
                     break
                 }
                 position += length
-                // Só publica como liberado aquilo que o sistema de arquivos confirmou. Assim uma
-                // falha no punch hole nunca faz o player tratar bytes válidos como ausentes.
-                onProgress(position)
                 if (position < end) Thread.sleep(pauseMs)
             }
             if (position > start) {

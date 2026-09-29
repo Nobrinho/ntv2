@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backup e transferência entre aparelhos (Android 12+): mesmas exclusões de backup_rules.xml. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="tdlib/" />
+        <exclude domain="sharedpref" path="tdlib_db_key.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="tdlib/" />
+        <exclude domain="sharedpref" path="tdlib_db_key.xml" />
+    </device-transfer>
+</data-extraction-rules>

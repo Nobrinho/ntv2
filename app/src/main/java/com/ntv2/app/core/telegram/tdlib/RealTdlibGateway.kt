@@ -197,6 +197,9 @@ class RealTdlibGateway(
 
     private val authReducer = TdlibAuthReducer()
 
+    // Chave do banco do TDLib (cifrada pelo Android Keystore). Ver openDatabase().
+    private val dbKeyStore by lazy { TdlibDatabaseKeyStore(appContext) }
+
     /** Classifica e trata uma perda de sessão involuntária (revogação externa). Idempotente.
      *  Apenas SINALIZA — o app reage com o mesmo fluxo do logout manual (logout()), que fecha e
      *  recria o cliente com feedback visual. Não recriamos o cliente aqui para não duplicar o fluxo. */
@@ -972,7 +975,7 @@ class RealTdlibGateway(
         when (effect) {
             TdlibAuthReducer.Effect.SendParameters -> scope.launch {
                 runCatching {
-                    send(setTdlibParameters())
+                    openDatabase()
                 }.onFailure {
                     authReducer.onSendParametersFailed()
                     auth.value = TdAuthorizationState.Error(it.message ?: "Failed to configure TDLib")
@@ -1002,17 +1005,78 @@ class RealTdlibGateway(
         }
     }
 
-    private fun setTdlibParameters(): TdApi.SetTdlibParameters {
-        val filesRoot = File(appContext.filesDir, "tdlib")
-        if (!filesRoot.exists()) filesRoot.mkdirs()
-        val dbDir = File(filesRoot, "db").apply { mkdirs() }
-        val mediaDir = File(filesRoot, "files").apply { mkdirs() }
+    private val tdlibRoot: File get() = File(appContext.filesDir, "tdlib")
+    private val tdlibDbDir: File get() = File(tdlibRoot, "db")
+    private val tdlibMediaDir: File get() = File(tdlibRoot, "files")
+
+    /**
+     * Envia SetTdlibParameters abrindo o banco CIFRADO. Antes a chave era vazia: a sessão do Telegram
+     * e o cache de mensagens ficavam em texto claro no aparelho (e iam para o backup do Android).
+     *
+     * Tenta as chaves na ordem de [TdlibKeyPlan] (chave errada = erro 401, e dá para tentar de novo).
+     * Banco antigo em claro: abre sem chave e cifra na hora, sem deslogar. Nenhuma chave abre (ex.:
+     * dados restaurados em outro aparelho, sem a chave do Keystore): recria o banco — pede login.
+     */
+    private suspend fun openDatabase() {
+        val databaseExists = tdlibDbDir.listFiles()?.isNotEmpty() == true
+        val attempts = TdlibKeyPlan.attempts(
+            activeReadable = dbKeyStore.activeKey() != null,
+            pendingReadable = dbKeyStore.pendingKey() != null,
+            databaseExists = databaseExists
+        )
+        for (source in attempts) {
+            val key = when (source) {
+                TdlibKeySource.ACTIVE -> dbKeyStore.activeKey()
+                TdlibKeySource.PENDING -> dbKeyStore.pendingKey()
+                TdlibKeySource.LEGACY_EMPTY -> byteArrayOf()
+                TdlibKeySource.NEW -> dbKeyStore.createActiveKey()
+            } ?: continue
+            val result = send(setTdlibParameters(key))
+            if (result !is TdApi.Error) {
+                onDatabaseOpened(source)
+                return
+            }
+            if (result.code != 401) throw IllegalStateException("TDLib ${result.code}: ${result.message}")
+            Log.w(TAG, "banco do TDLib não abriu com a chave $source")
+        }
+        // Nenhuma chave abriu o banco existente: ilegível. Recria do zero (cifrado) e pede login.
+        Log.w(TAG, "banco do TDLib ilegível — recriando (será preciso entrar de novo)")
+        tdlibDbDir.deleteRecursively()
+        tdlibMediaDir.deleteRecursively()
+        dbKeyStore.clear()
+        val result = send(setTdlibParameters(dbKeyStore.createActiveKey()))
+        if (result is TdApi.Error) throw IllegalStateException("TDLib ${result.code}: ${result.message}")
+    }
+
+    private suspend fun onDatabaseOpened(source: TdlibKeySource) {
+        if (source == TdlibKeySource.PENDING) {
+            // Migração anterior chegou a cifrar mas não confirmou: a pendente é a chave certa.
+            dbKeyStore.promotePending()
+        }
+        if (TdlibKeyPlan.needsEncryption(source)) {
+            // Banco antigo em claro: grava a chave nova ANTES (pendente) e só a promove depois do OK.
+            // Se o app morrer no meio, a próxima abertura tenta a pendente e depois sem chave.
+            val newKey = dbKeyStore.createPendingKey()
+            val result = send(TdApi.SetDatabaseEncryptionKey(newKey))
+            if (result is TdApi.Error) {
+                Log.w(TAG, "falha ao cifrar o banco do TDLib: ${result.code} ${result.message}")
+            } else {
+                dbKeyStore.promotePending()
+                Log.i(TAG, "banco do TDLib cifrado")
+            }
+        }
+    }
+
+    private fun setTdlibParameters(encryptionKey: ByteArray): TdApi.SetTdlibParameters {
+        if (!tdlibRoot.exists()) tdlibRoot.mkdirs()
+        val dbDir = tdlibDbDir.apply { mkdirs() }
+        val mediaDir = tdlibMediaDir.apply { mkdirs() }
 
         return TdApi.SetTdlibParameters().apply {
             useTestDc = false
             databaseDirectory = dbDir.absolutePath
             filesDirectory = mediaDir.absolutePath
-            databaseEncryptionKey = byteArrayOf()
+            databaseEncryptionKey = encryptionKey
             useFileDatabase = true
             useChatInfoDatabase = true
             useMessageDatabase = true

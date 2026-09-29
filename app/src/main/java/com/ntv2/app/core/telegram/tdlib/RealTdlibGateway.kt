@@ -409,8 +409,8 @@ class RealTdlibGateway(
      * Garante um caminho local para a miniatura do vídeo (arquivo pequeno). Reaproveita se já
      * baixada; senão baixa de forma síncrona (roda em paralelo por item). Null se não houver.
      */
-    private suspend fun resolveThumbnailPath(video: TdApi.Video): String? {
-        val thumb = video.thumbnail?.file ?: return null
+    private suspend fun resolveThumbnailPath(thumbnail: TdApi.Thumbnail?): String? {
+        val thumb = thumbnail?.file ?: return null
         thumb.local?.let { local ->
             if (local.isDownloadingCompleted && local.path.isNotBlank()) return local.path
         }
@@ -439,11 +439,13 @@ class RealTdlibGateway(
             if (msgs.isEmpty()) return@repeat // provável carregamento — tenta de novo
             var skipped = 0
             for (m in msgs) {
-                when (val c = m.content) {
-                    is TdApi.MessageVideo -> {
-                        skipped++
-                        if (skipped > 12) return null
-                    }
+                val c = m.content
+                if (isVideoMessage(c)) {
+                    skipped++
+                    if (skipped > 12) return null
+                    continue
+                }
+                when (c) {
                     is TdApi.MessageText -> {
                         // Formato rico: mensagem de texto (metadados) antes do vídeo.
                         val meta = MovieMetadataParser.parse(c.text?.text)
@@ -484,7 +486,7 @@ class RealTdlibGateway(
             val res = send(TdApi.GetChatHistory(chatId, posterId, -9, 19, false)) as? TdApi.Messages
             val msgs = res?.messages?.filterNotNull().orEmpty()
             if (msgs.isEmpty()) return@repeat
-            val videos = msgs.filter { it.content is TdApi.MessageVideo }
+            val videos = msgs.filter { isVideoMessage(it.content) }
             (videos.filter { it.id > posterId }.minByOrNull { it.id }
                 ?: videos.filter { it.id < posterId }.maxByOrNull { it.id })
                 ?.let { return it }
@@ -572,22 +574,20 @@ class RealTdlibGateway(
         // Se vier um id "pequeno" (server id), converte para o formato do TDLib.
         val tdMessageId = if (messageId in 1..0xFFFFF) messageId shl 20 else messageId
         val direct = send(TdApi.GetMessage(chatId, tdMessageId)) as? TdApi.Message
-        val videoMsg = direct?.takeIf { it.content is TdApi.MessageVideo }
+        val videoMsg = direct?.takeIf { isVideoMessage(it.content) }
             ?: findVideoNearPoster(chatId, tdMessageId)
             ?: return null
-        val content = videoMsg.content as? TdApi.MessageVideo ?: return null
-        val video = content.video ?: return null
-        val tdFile = video.video ?: return null
+        val video = videoFileOf(videoMsg.content) ?: return null
         return TelegramVideoMessage(
             mediaId = "${videoMsg.chatId}_${videoMsg.id}",
             chatId = videoMsg.chatId,
             messageId = videoMsg.id,
-            title = content.caption?.text?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "Video ${videoMsg.id}",
-            caption = content.caption?.text,
+            title = video.caption?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "Video ${videoMsg.id}",
+            caption = video.caption,
             fileName = video.fileName.ifBlank { null },
-            durationSeconds = video.duration,
+            durationSeconds = video.durationSeconds,
             thumbnailPath = null,
-            fileId = tdFile.id,
+            fileId = video.file.id,
             width = video.width,
             height = video.height
         )
@@ -628,47 +628,66 @@ class RealTdlibGateway(
         // Garante que o TDLib conheça o chat (logo após o login a lista de diálogos pode não ter
         // carregado e SearchChatMessages volta vazio). GetChat força o carregamento do chat.
         runCatching { send(TdApi.GetChat(chatId)) }
-        // Listagem (query vazia): só vídeos. Busca por texto: SEM filtro, para varrer também as
-        // mensagens de PÔSTER/TEXTO — o título costuma estar nelas (não na legenda do vídeo). Sem
-        // isso, buscar "ogiva" não achava o filme (só casava a palavra na SINOPSE de outro).
-        val filter = if (query.isBlank()) TdApi.SearchMessagesFilterVideo() else null
-        val result = send(
+        suspend fun search(filter: TdApi.SearchMessagesFilter?): TdApi.FoundChatMessages? = send(
             if (newerOnly) {
                 // offset=-limit traz a mensagem âncora + até `limit` mais novas (limit > -offset).
                 TdApi.SearchChatMessages(chatId, null, query, null, fromMessageId, -limit, limit + 1, filter)
             } else {
                 TdApi.SearchChatMessages(chatId, null, query, null, fromMessageId, 0, limit, filter)
             }
-        )
-        if (result !is TdApi.FoundChatMessages) return TelegramVideoPage(emptyList(), 0L)
+        ) as? TdApi.FoundChatMessages
 
-        // Mensagens de vídeo a montar: na listagem são os próprios resultados; na busca por texto,
-        // os vídeos diretos + o vídeo adjacente de cada pôster/texto que casou.
-        val videoMessages: List<TdApi.Message> = if (query.isBlank()) {
-            result.messages.orEmpty().filterNotNull().filter { !newerOnly || it.id > fromMessageId }
+        val videoMessages: List<TdApi.Message>
+        val nextFromMessageId: Long
+        if (query.isBlank()) {
+            // Listagem: vídeos E documentos (filmes em MKV costumam vir como documento). São duas
+            // buscas que param em pontos diferentes do histórico — MessagePageMerge junta sem pular.
+            val found = coroutineScope {
+                listOf(TdApi.SearchMessagesFilterVideo(), TdApi.SearchMessagesFilterDocument())
+                    .map { async { search(it) } }
+                    .awaitAll()
+            }
+            if (found.all { it == null }) return TelegramVideoPage(emptyList(), 0L)
+            val pages = found.filterNotNull().map { r ->
+                MessagePageMerge.RawPage(r.messages.orEmpty().filterNotNull().map { it.id }, r.nextFromMessageId)
+            }
+            val selection = if (newerOnly) {
+                MessagePageMerge.newer(pages, anchor = fromMessageId, limit = limit)
+            } else {
+                MessagePageMerge.older(pages, limit)
+            }
+            val byId = found.filterNotNull().flatMap { it.messages.orEmpty().filterNotNull() }.associateBy { it.id }
+            // Documentos que não são vídeo (pdf, zip, legenda) ficam de fora aqui.
+            videoMessages = selection.ids.mapNotNull { byId[it] }.filter { isVideoMessage(it.content) }
+            nextFromMessageId = selection.nextFromMessageId
         } else {
-            coroutineScope {
+            // Busca por texto: SEM filtro, para varrer também as mensagens de PÔSTER/TEXTO — o título
+            // costuma estar nelas (não na legenda do vídeo). Sem isso, buscar "ogiva" não achava o
+            // filme (só casava a palavra na SINOPSE de outro). Vídeos diretos + o vídeo adjacente de
+            // cada pôster/texto que casou.
+            val result = search(null) ?: return TelegramVideoPage(emptyList(), 0L)
+            videoMessages = coroutineScope {
                 result.messages.orEmpty().filterNotNull().map { msg ->
                     async {
-                        when (msg.content) {
-                            is TdApi.MessageVideo -> msg
-                            is TdApi.MessagePhoto, is TdApi.MessageText -> findVideoNearPoster(chatId, msg.id)
+                        when {
+                            isVideoMessage(msg.content) -> msg
+                            msg.content is TdApi.MessagePhoto || msg.content is TdApi.MessageText ->
+                                findVideoNearPoster(chatId, msg.id)
                             else -> null
                         }
                     }
                 }.awaitAll().filterNotNull().distinctBy { it.id }
             }
+            nextFromMessageId = result.nextFromMessageId
         }
 
         // Monta os itens em paralelo: cada um baixa sua miniatura (arquivo pequeno) para termos
         // um caminho local — sem isso thumbnail.file.local.path fica vazio e o card fica cinza.
         val items = coroutineScope {
             videoMessages.mapNotNull { msg ->
-                val content = msg.content as? TdApi.MessageVideo ?: return@mapNotNull null
-                val video = content.video ?: return@mapNotNull null
-                val tdFile = video.video ?: return@mapNotNull null
+                val video = videoFileOf(msg.content) ?: return@mapNotNull null
                 async {
-                    val videoCaption = content.caption?.text
+                    val videoCaption = video.caption
                     val videoMeta = MovieMetadataParser.parse(videoCaption)
                     // Nome do PRÓPRIO vídeo (fonte da verdade p/ casar com o pôster): título da
                     // legenda → fileName limpo → 1ª linha da legenda.
@@ -731,7 +750,7 @@ class RealTdlibGateway(
                     // Só baixa a miniatura do vídeo (round-trip no TDLib) quando NÃO há pôster — o
                     // card usa posterPath quando existe. No canal rico o pôster é URL, então isso
                     // elimina um download por item na busca/listagem.
-                    val resolvedThumb = if (posterPath != null) null else resolveThumbnailPath(video)
+                    val resolvedThumb = if (posterPath != null) null else resolveThumbnailPath(video.thumbnail)
                     val backdropPath = posterMeta?.backdropUrl
 
                     // Proporção real só é conhecida para a foto do Telegram; URL → desconhecida (0).
@@ -752,9 +771,11 @@ class RealTdlibGateway(
                         title = displayTitle,
                         caption = metaCaption ?: videoCaption,
                         fileName = video.fileName.ifBlank { null },
-                        durationSeconds = video.duration,
+                        // Documento (MKV) não traz duração: usa a da legenda/pôster, se houver.
+                        durationSeconds = video.durationSeconds.takeIf { it > 0 }
+                            ?: ((posterMeta?.durationMin ?: videoMeta.durationMin)?.times(60) ?: 0),
                         thumbnailPath = resolvedThumb,
-                        fileId = tdFile.id,
+                        fileId = video.file.id,
                         width = video.width,
                         height = video.height,
                         coverAspectRatio = coverAspect,
@@ -810,7 +831,7 @@ class RealTdlibGateway(
             }
         }
         // nextFromMessageId=0 => fim (doc TDLib).
-        return TelegramVideoPage(videos = filtered, nextFromMessageId = result.nextFromMessageId)
+        return TelegramVideoPage(videos = filtered, nextFromMessageId = nextFromMessageId)
     }
 
     override suspend fun openFile(fileId: Int): TdlibPlaybackFileState {
@@ -1187,7 +1208,7 @@ private val VIDEO_TECH_TAGS: Set<String> = setOf(
     "dual", "dualaudio", "remux", "nacional", "dublado", "dub", "legendado", "leg", "extended"
 )
 
-private val VIDEO_EXTENSION_REGEX =
+internal val VIDEO_EXTENSION_REGEX =
     Regex("\\.(mp4|mkv|avi|mov|m4v|webm|ts|wmv|flv|mpg|mpeg)$", RegexOption.IGNORE_CASE)
 
 /** Normaliza para busca: sem acentos e em caixa baixa (para comparar termos de forma tolerante). */

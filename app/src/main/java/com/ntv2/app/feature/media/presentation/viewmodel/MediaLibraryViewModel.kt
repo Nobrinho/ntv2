@@ -1111,8 +1111,9 @@ class MediaLibraryViewModel(
             channelOrder.mapNotNull { id ->
                 val items = channelItems[id] ?: return@mapNotNull null
                 // Episódios de série não entram na grade de Filmes: vivem na aba Séries.
+                // Duração 0 = desconhecida (MKV enviado como documento): não esconde.
                 val filtered = items.filter {
-                    it.durationSeconds >= minSeconds &&
+                    (it.durationSeconds <= 0 || it.durationSeconds >= minSeconds) &&
                         it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE
                 }
                 if (filtered.isEmpty()) return@mapNotNull null

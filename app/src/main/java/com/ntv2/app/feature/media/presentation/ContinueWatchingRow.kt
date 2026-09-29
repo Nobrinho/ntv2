@@ -199,16 +199,17 @@ internal fun PosterTrackRow(
 }
 
 @Composable
-private fun PosterCard(
+internal fun PosterCard(
     media: MediaCardUi,
     showCovers: Boolean,
     width: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     val cover = media.posterPath ?: media.thumbnailPath
     Box(
-        modifier = Modifier
+        modifier = modifier
             .width(width)
             .height(width * 3 / 2)
             .clip(RoundedCornerShape(10.dp))

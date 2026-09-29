@@ -21,7 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterAltOff
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -162,8 +162,8 @@ fun NavRail(
     onChannels: () -> Unit,
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
-    // "Histórico": só aparece quando a tela fornece a ação (ex.: Biblioteca).
-    onHistory: (() -> Unit)? = null
+    // "Minha lista" (com o Histórico em outra aba): só aparece quando a tela fornece a ação (Biblioteca).
+    onMyList: (() -> Unit)? = null
 ) {
     RailColumn(enterFocus = firstItemFocus?.let { f -> { f } }) {
         RailButton(icon = Icons.Filled.Home, label = "Início", highlighted = homeActive, onClick = onHome)
@@ -185,8 +185,8 @@ fun NavRail(
             onClick = onChannels
         )
         RailButton(Icons.Filled.Refresh, "Atualizar", onClick = onRefresh)
-        if (onHistory != null) {
-            RailButton(Icons.Filled.History, "Histórico", onClick = onHistory)
+        if (onMyList != null) {
+            RailButton(Icons.Filled.VideoLibrary, "Minha lista", onClick = onMyList)
         }
         RailButton(
             Icons.Filled.Settings,

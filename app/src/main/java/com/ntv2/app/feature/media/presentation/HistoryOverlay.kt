@@ -18,6 +18,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,31 +56,52 @@ import androidx.tv.material3.Text
 import com.ntv2.app.core.ui.ConfirmDialog
 import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.feature.media.presentation.state.HistoryEntryUi
+import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import java.util.Calendar
 
+/** Abas da tela "Minha lista" da TV. */
+internal enum class ShelfTab(val label: String) { MyList("Minha lista"), History("Histórico") }
+
 /**
- * Histórico (personalização): lista agrupada por dia, com "Continuar" e remover por item, e
- * "Limpar tudo". Responsivo (TV/mobile). Único por dispositivo.
+ * "Minha lista" da TV (aberta pelo rail): abas Minha lista (grade de capas → Detalhes) e Histórico
+ * (lista agrupada por dia, com "Continuar", remover por item e "Limpar tudo"). Único por dispositivo.
+ * Com foco nas abas, ← / → trocam de aba; ↓ entra no conteúdo.
  */
 @Composable
-internal fun HistoryOverlay(
+internal fun MyListHistoryOverlay(
+    tab: ShelfTab,
+    onTabChange: (ShelfTab) -> Unit,
+    myList: List<MediaCardUi>,
     entries: List<HistoryEntryUi>,
     showCovers: Boolean,
     useTvLayout: Boolean,
-    onContinue: (com.ntv2.app.feature.media.presentation.state.MediaCardUi) -> Unit,
+    onOpenDetails: (MediaCardUi) -> Unit,
+    onContinue: (MediaCardUi) -> Unit,
     onRemove: (String) -> Unit,
     onClear: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    // Card da Minha lista que abriu os Detalhes: ao voltar deles, o foco retorna a esse card.
+    focusMediaId: String? = null
 ) {
     BackHandler(enabled = true) { onClose() }
     var confirmClear by remember { mutableStateOf(false) }
     // Sem pedir foco, o overlay abria "morto": o D-pad continuava na grade atrás e não dava para
-    // navegar nem fechar. Focar o botão Fechar ao abrir garante a navegação dentro do overlay.
-    val closeFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { closeFocus.requestFocus() } }
-    // Ao remover o último item, a linha focada some e o foco se perde: traz de volta para o Fechar.
+    // navegar nem fechar. Ao abrir, o foco vai para a aba atual (ou para o card de onde se saiu).
+    val tabFocus = remember { ShelfTab.entries.associateWith { FocusRequester() } }
+    val cardFocus = remember { mutableMapOf<String, FocusRequester>() }
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(Unit) {
+        val index = focusMediaId?.let { id -> myList.indexOfFirst { it.mediaId == id } } ?: -1
+        if (tab == ShelfTab.MyList && index >= 0) {
+            runCatching { gridState.scrollToItem(index) }
+            withFrameNanos { }
+            if (runCatching { cardFocus[myList[index].mediaId]?.requestFocus() }.isSuccess) return@LaunchedEffect
+        }
+        runCatching { tabFocus.getValue(tab).requestFocus() }
+    }
+    // Ao remover o último item do histórico, a linha focada some e o foco se perde: volta para a aba.
     LaunchedEffect(entries.isEmpty()) {
-        if (entries.isEmpty()) runCatching { closeFocus.requestFocus() }
+        if (entries.isEmpty() && tab == ShelfTab.History) runCatching { tabFocus.getValue(tab).requestFocus() }
     }
 
     Box(
@@ -87,9 +114,17 @@ internal fun HistoryOverlay(
             .padding(horizontal = if (useTvLayout) 48.dp else 16.dp, vertical = if (useTvLayout) 32.dp else 16.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Histórico", style = MaterialTheme.typography.headlineMedium, color = Color.White, modifier = Modifier.weight(1f))
-                if (entries.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ShelfTab.entries.forEach { t ->
+                    ShelfTabPill(
+                        label = t.label,
+                        selected = t == tab,
+                        modifier = Modifier.focusRequester(tabFocus.getValue(t)),
+                        onSelect = { onTabChange(t) }
+                    )
+                }
+                Box(modifier = Modifier.weight(1f))
+                if (tab == ShelfTab.History && entries.isNotEmpty()) {
                     HistoryTextButton(
                         icon = Icons.Filled.DeleteSweep,
                         label = "Limpar tudo",
@@ -97,10 +132,18 @@ internal fun HistoryOverlay(
                         onClick = { confirmClear = true }
                     )
                 }
-                HistoryIconButton(icon = Icons.Filled.Close, description = "Fechar", onClick = onClose, modifier = Modifier.focusRequester(closeFocus))
+                HistoryIconButton(icon = Icons.Filled.Close, description = "Fechar", onClick = onClose)
             }
 
-            if (entries.isEmpty()) {
+            if (tab == ShelfTab.MyList) {
+                MyListGrid(
+                    items = myList,
+                    showCovers = showCovers,
+                    gridState = gridState,
+                    focusFor = { id -> cardFocus.getOrPut(id) { FocusRequester() } },
+                    onOpenDetails = onOpenDetails
+                )
+            } else if (entries.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         "Nada por aqui ainda. Os títulos que você assistir aparecem no histórico.",
@@ -148,6 +191,64 @@ internal fun HistoryOverlay(
                 destructive = true,
                 onConfirm = { confirmClear = false; onClear() },
                 onDismiss = { confirmClear = false }
+            )
+        }
+    }
+}
+
+/** Aba selecionada: preenchida. Ao receber foco (D-pad) a aba é escolhida — ← / → trocam de aba. */
+@Composable
+private fun ShelfTabPill(label: String, selected: Boolean, modifier: Modifier, onSelect: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(22.dp))
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused && !selected) onSelect()
+            }
+            .clickable(onClick = onSelect)
+            .background(if (selected) Color.White else Color(0x1FFFFFFF))
+            .then(if (focused) Modifier.border(2.dp, BRAND_GREEN, RoundedCornerShape(22.dp)) else Modifier)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+    ) {
+        Text(label, color = if (selected) Color.Black else Color.White, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+private fun MyListGrid(
+    items: List<MediaCardUi>,
+    showCovers: Boolean,
+    gridState: LazyGridState,
+    focusFor: (String) -> FocusRequester,
+    onOpenDetails: (MediaCardUi) -> Unit
+) {
+    if (items.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "Sua lista está vazia. Use o coração nos detalhes de um filme para salvá-lo.",
+                color = Color(0xFF9A9A9A),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+        return
+    }
+    LazyVerticalGrid(
+        state = gridState,
+        // Mesmo tamanho das capas das trilhas da grade principal.
+        columns = GridCells.FixedSize(132.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
+    ) {
+        gridItems(items, key = { it.mediaId }) { media ->
+            PosterCard(
+                media = media,
+                showCovers = showCovers,
+                width = 132.dp,
+                modifier = Modifier.focusRequester(focusFor(media.mediaId)),
+                onClick = { onOpenDetails(media) }
             )
         }
     }

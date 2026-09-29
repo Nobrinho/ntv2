@@ -93,8 +93,12 @@ fun MediaLibraryScreen(
     // Teclado de busca próprio (D-pad) e picker de canal ativo — overlays na tela.
     var searching by remember { mutableStateOf(false) }
     var channelPicker by remember { mutableStateOf(false) }
-    // Histórico (TV, pelo rail) e "Meu" (celular, aba com segmented): overlays sobre a biblioteca.
+    // Minha lista + Histórico (TV, pelo rail) e "Meu" (celular, aba com segmented): overlays sobre a
+    // biblioteca. Saveable: ao abrir os Detalhes pela Minha lista (e ir ao player), fechar os
+    // Detalhes volta para a Minha lista, na aba e no card de onde se saiu.
     var showHistory by remember { mutableStateOf(false) }
+    var shelfTab by rememberSaveable { mutableStateOf(ShelfTab.MyList) }
+    var myListReturnMediaId by rememberSaveable { mutableStateOf<String?>(null) }
     var showMyStuff by remember { mutableStateOf(false) }
     // Card selecionado para a tela de Detalhes (overlay estilo Netflix/Prime).
     var detailsMedia by remember { mutableStateOf<MediaCardUi?>(null) }
@@ -417,7 +421,7 @@ fun MediaLibraryScreen(
                         onChannels = { pickerFromRail = true; channelPicker = true },
                         onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
                         onSettings = { returnToSettingsButton = true; onOpenSettings() },
-                        onHistory = { showHistory = true }
+                        onMyList = { showHistory = true }
                     )
                 }
             }
@@ -484,8 +488,10 @@ fun MediaLibraryScreen(
                 // As trilhas de personalização entram como CABEÇALHO da grade (rolam junto com os
                 // cards), para o D-pad descer da trilha para a grade e a grade nunca ser empurrada
                 // para fora da tela.
+                // TV: a Minha lista fica no rail (com o Histórico), não na grade.
+                val showMyListTrack = !useTvLayout && state.myList.isNotEmpty()
                 val hasTracks = state.continueWatching.isNotEmpty() ||
-                    state.myList.isNotEmpty() || state.recommendations.isNotEmpty()
+                    showMyListTrack || state.recommendations.isNotEmpty()
                 val libraryHeader: (@Composable () -> Unit)? = if (!hasTracks) null else {
                     {
                         Column(
@@ -500,7 +506,7 @@ fun MediaLibraryScreen(
                                     onCardClick = openDetails
                                 )
                             }
-                            if (state.myList.isNotEmpty()) {
+                            if (showMyListTrack) {
                                 PosterTrackRow(
                                     label = "Minha lista",
                                     items = state.myList,
@@ -686,7 +692,11 @@ fun MediaLibraryScreen(
                     detailsMedia = null
                     viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
                     viewModel.onAction(MediaLibraryAction.DetailsClosed(media.mediaId))
-                    if (searchReturnMediaId != null) searching = true else focusCard(media.mediaId)
+                    when {
+                        searchReturnMediaId != null -> searching = true
+                        myListReturnMediaId != null -> showHistory = true
+                        else -> focusCard(media.mediaId)
+                    }
                 },
                 playLoading = state.isOpeningVideo,
                 playFailed = state.openVideoFailed
@@ -694,10 +704,21 @@ fun MediaLibraryScreen(
         }
 
         if (showHistory) {
-            HistoryOverlay(
+            MyListHistoryOverlay(
+                tab = shelfTab,
+                onTabChange = { shelfTab = it },
+                myList = state.myList,
                 entries = state.history,
                 showCovers = state.showCovers,
                 useTvLayout = useTvLayout,
+                focusMediaId = myListReturnMediaId,
+                onOpenDetails = { media ->
+                    showHistory = false
+                    myListReturnMediaId = media.mediaId
+                    viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                    viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
+                    detailsMedia = media
+                },
                 onContinue = { media ->
                     showHistory = false
                     viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
@@ -706,7 +727,7 @@ fun MediaLibraryScreen(
                 },
                 onRemove = { mediaId -> viewModel.onAction(MediaLibraryAction.RemoveFromHistory(mediaId)) },
                 onClear = { viewModel.onAction(MediaLibraryAction.ClearHistory) },
-                onClose = { showHistory = false }
+                onClose = { showHistory = false; myListReturnMediaId = null }
             )
         }
 

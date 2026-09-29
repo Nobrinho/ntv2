@@ -288,6 +288,8 @@ fun AppNavHost(
             val nativeBlurGlow by settings.nativeBlurGlow.collectAsState(initial = true)
             val cardLoadingStyleName by settings.cardLoadingStyle
                 .collectAsState(initial = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT.name)
+            val searchIndex = appContainer.searchIndexRepository
+            val indexStatus by searchIndex.status.collectAsState()
             SettingsScreen(
                 showCovers = showCovers,
                 animationsEnabled = animationsEnabled,
@@ -356,6 +358,8 @@ fun AppNavHost(
                 onStartUpdateDownload = updateViewModel::startDownload,
                 onInstallUpdate = updateViewModel::install,
                 onCancelUpdateDownload = updateViewModel::cancelDownload,
+                indexStatus = indexStatus,
+                onRefreshIndex = { scope.launch { searchIndex.refresh() } },
                 runConnectionTest = {
                     com.ntv2.app.core.network.ConnectionTester(
                         navController.context,

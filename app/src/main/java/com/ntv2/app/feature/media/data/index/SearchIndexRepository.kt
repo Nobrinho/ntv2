@@ -1,10 +1,15 @@
 package com.ntv2.app.feature.media.data.index
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.ntv2.app.core.telegram.media.CastMemberMeta
+import okhttp3.CacheControl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -77,7 +82,22 @@ data class IndexSeries(
 private data class LoadedIndex(
     val channelId: Long,
     val movies: List<IndexMovie>,
-    val series: List<IndexSeries> = emptyList()
+    val series: List<IndexSeries> = emptyList(),
+    /** Quando o bot gerou o índice ("generated_at"), em ms; null se o JSON não trouxer. */
+    val generatedAtMillis: Long? = null
+)
+
+/** Situação do índice para a tela de Configurações. */
+data class SearchIndexStatus(
+    /** Quando o bot gerou o índice que está em uso (ms); null se desconhecido. */
+    val generatedAtMillis: Long? = null,
+    /** Quando este aparelho baixou o índice em uso (ms); 0 = ainda não baixou. */
+    val downloadedAtMillis: Long = 0L,
+    val movieCount: Int = 0,
+    val seriesCount: Int = 0,
+    val refreshing: Boolean = false,
+    /** Última atualização manual falhou (mantém o índice anterior). */
+    val failed: Boolean = false
 )
 
 /**
@@ -94,6 +114,10 @@ class SearchIndexRepository(
     @Volatile private var cached: LoadedIndex? = null
     @Volatile private var loadedAt = 0L
 
+    private val _status = MutableStateFlow(SearchIndexStatus())
+    /** Data do índice em uso e se há download manual em andamento. */
+    val status: StateFlow<SearchIndexStatus> = _status.asStateFlow()
+
     private suspend fun ensureLoaded(): LoadedIndex? {
         val now = System.currentTimeMillis()
         cached?.let { if (now - loadedAt < ttlMillis) return it }
@@ -101,16 +125,58 @@ class SearchIndexRepository(
             val fresh = cached
             if (fresh != null && System.currentTimeMillis() - loadedAt < ttlMillis) return fresh
             val loaded = runCatching { fetch() }.getOrNull()
-            if (loaded != null) {
-                cached = loaded
-                loadedAt = System.currentTimeMillis()
-            }
+            if (loaded != null) store(loaded)
             loaded ?: cached // se falhar o fetch, mantém o que tiver
         }
     }
 
-    private suspend fun fetch(): LoadedIndex? = withContext(Dispatchers.IO) {
-        val req = Request.Builder().url(indexUrl).build()
+    /**
+     * Baixa o índice agora, ignorando o cache de [ttlMillis] (botão em Configurações). Se falhar,
+     * mantém o índice anterior. Retorna true se baixou.
+     */
+    suspend fun refresh(): Boolean {
+        _status.update { it.copy(refreshing = true, failed = false) }
+        var ok = false
+        try {
+            mutex.withLock {
+                val loaded = runCatching { fetch(forceNetwork = true) }.getOrNull()
+                if (loaded != null) {
+                    store(loaded)
+                    ok = true
+                }
+            }
+        } finally {
+            _status.update { it.copy(refreshing = false, failed = !ok) }
+        }
+        return ok
+    }
+
+    private fun store(loaded: LoadedIndex) {
+        cached = loaded
+        loadedAt = System.currentTimeMillis()
+        _status.update {
+            it.copy(
+                generatedAtMillis = loaded.generatedAtMillis,
+                downloadedAtMillis = loadedAt,
+                movieCount = loaded.movies.size,
+                seriesCount = loaded.series.size
+            )
+        }
+    }
+
+    private suspend fun fetch(forceNetwork: Boolean = false): LoadedIndex? = withContext(Dispatchers.IO) {
+        val req = Request.Builder()
+            .apply {
+                if (forceNetwork) {
+                    // O GitHub Pages guarda o arquivo no CDN por 10 min: o parâmetro muda a URL
+                    // para pegar a versão mais nova publicada pelo bot.
+                    url("$indexUrl?t=${System.currentTimeMillis()}")
+                    cacheControl(CacheControl.FORCE_NETWORK)
+                } else {
+                    url(indexUrl)
+                }
+            }
+            .build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return@withContext null
             val body = resp.body?.string() ?: return@withContext null
@@ -121,7 +187,8 @@ class SearchIndexRepository(
     private fun parse(body: String): LoadedIndex {
         val root = JSONObject(body)
         val channelId = root.optString("channel").toLongOrNull() ?: 0L
-        val arr = root.optJSONArray("movies") ?: return LoadedIndex(channelId, emptyList())
+        val generatedAt = parseGeneratedAt(root.optString("generated_at"))
+        val arr = root.optJSONArray("movies") ?: return LoadedIndex(channelId, emptyList(), generatedAtMillis = generatedAt)
         val movies = ArrayList<IndexMovie>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
@@ -149,7 +216,7 @@ class SearchIndexRepository(
                 videoMessageId = videoMsg
             )
         }
-        return LoadedIndex(channelId, movies, parseSeries(root))
+        return LoadedIndex(channelId, movies, parseSeries(root), generatedAt)
     }
 
     private fun parseSeries(root: JSONObject): List<IndexSeries> {
@@ -248,6 +315,14 @@ class SearchIndexRepository(
             .take(limit)
             .toList()
     }
+}
+
+/** "generated_at" do índice (ISO-8601 com fuso, ex.: 2026-09-29T05:00:21+00:00) em ms; null se inválido. */
+internal fun parseGeneratedAt(raw: String?): Long? {
+    val value = raw?.trim()?.takeIf { it.isNotEmpty() && !it.equals("null", true) } ?: return null
+    return runCatching { java.time.OffsetDateTime.parse(value).toInstant().toEpochMilli() }
+        .recoverCatching { java.time.Instant.parse(value).toEpochMilli() }
+        .getOrNull()
 }
 
 /** optString tratando vazio e o literal "null"/"None" (comum em índices) como ausente. */

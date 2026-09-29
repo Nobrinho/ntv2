@@ -161,6 +161,25 @@ class MediaLibraryViewModel(
         observeFavorites()
         // Pré-carrega o índice de busca em background para a 1ª busca já vir instantânea.
         searchIndexRepository?.let { repo -> viewModelScope.launch { runCatching { repo.covers(0L) } } }
+        observeIndexUpdates()
+    }
+
+    /** Índice baixado de novo (ex.: botão em Configurações): recarrega as séries do canal ativo. */
+    private fun observeIndexUpdates() {
+        val repo = searchIndexRepository ?: return
+        viewModelScope.launch {
+            var lastDownloadedAt = repo.status.value.downloadedAtMillis
+            repo.status.collect { status ->
+                val downloadedAt = status.downloadedAtMillis
+                if (downloadedAt == lastDownloadedAt) return@collect
+                val firstLoad = lastDownloadedAt == 0L
+                lastDownloadedAt = downloadedAt
+                // A 1ª carga já é tratada ao abrir o canal.
+                if (firstLoad) return@collect
+                val activeId = _uiState.value.activeChannelId ?: return@collect
+                loadSeriesForChannel(activeId, channelTitles[activeId] ?: return@collect)
+            }
+        }
     }
 
     fun onAction(action: MediaLibraryAction) {

@@ -80,6 +80,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.CloudDownload
+import com.ntv2.app.feature.media.data.index.SearchIndexStatus
 import com.ntv2.app.core.ui.CardLoadingPlaceholder
 import com.ntv2.app.core.ui.CardLoadingStyle
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -112,6 +114,8 @@ fun SettingsScreen(
     onStartUpdateDownload: () -> Unit = {},
     onInstallUpdate: () -> Unit = {},
     onCancelUpdateDownload: () -> Unit = {},
+    indexStatus: SearchIndexStatus? = null,
+    onRefreshIndex: () -> Unit = {},
     // Rail: Busca abre a busca da Biblioteca; Atualizar recarrega a Biblioteca.
     onSearch: () -> Unit = onOpenLibrary,
     onRefresh: () -> Unit = onOpenLibrary,
@@ -225,6 +229,16 @@ fun SettingsScreen(
                         modifier = itemMod(5),
                         onClick = onManageChannels
                     )
+                    if (indexStatus != null) {
+                        NavCard(
+                            icon = Icons.Filled.CloudDownload,
+                            title = "Índice de filmes e séries",
+                            subtitle = indexSubtitle(indexStatus),
+                            destructive = false,
+                            modifier = itemMod(11),
+                            onClick = { if (!indexStatus.refreshing) onRefreshIndex() }
+                        )
+                    }
                     if (runConnectionTest != null) {
                         NavCard(
                             icon = Icons.Filled.NetworkCheck,
@@ -341,7 +355,7 @@ private fun ToggleCard(
     }
 }
 
-private const val SETTINGS_ITEM_COUNT = 11
+private const val SETTINGS_ITEM_COUNT = 12
 
 private fun updateSubtitle(state: UpdateUiState): String = when (state.stage) {
     UpdateStage.IDLE -> "Versão ${BuildConfig.VERSION_NAME} · Verificar atualizações"
@@ -358,6 +372,22 @@ private fun updateSubtitle(state: UpdateUiState): String = when (state.stage) {
     UpdateStage.PERMISSION_REQUIRED -> "Permita esta fonte e selecione para instalar"
     UpdateStage.UNSUPPORTED, UpdateStage.ERROR -> state.message ?: "Não foi possível verificar"
 }
+
+private fun indexSubtitle(status: SearchIndexStatus): String {
+    if (status.refreshing) return "Baixando índice atualizado…"
+    if (status.downloadedAtMillis == 0L) {
+        return if (status.failed) "Falha ao baixar · selecione para tentar de novo"
+        else "Ainda não baixado · selecione para baixar"
+    }
+    // Data em que o bot atualizou o índice; sem ela, a do download neste aparelho.
+    val date = formatIndexDate(status.generatedAtMillis ?: status.downloadedAtMillis)
+    val counts = "${status.movieCount} filmes · ${status.seriesCount} séries"
+    return if (status.failed) "Falha ao baixar · atual de $date · selecione para tentar de novo"
+    else "Atualizado em $date · $counts · selecione para baixar"
+}
+
+private fun formatIndexDate(millis: Long): String =
+    java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale("pt", "BR")).format(java.util.Date(millis))
 
 private val DURATION_STEPS = listOf(0, 5, 10, 15, 20, 30, 45, 60, 90, 120)
 

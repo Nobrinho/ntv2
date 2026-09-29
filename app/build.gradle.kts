@@ -72,6 +72,7 @@ android {
         targetSdk = 35
         versionCode = 12
         versionName = "0.4.7"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
@@ -150,6 +151,12 @@ android {
     }
 }
 
+// Schema do Room exportado a cada versão do banco (app/schemas, versionado no git): referência para
+// escrever e testar as migrações.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -194,6 +201,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.json)
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

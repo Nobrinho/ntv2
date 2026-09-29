@@ -1,7 +1,6 @@
 package com.ntv2.app.di
 
 import android.content.Context
-import androidx.room.Room
 import com.ntv2.app.core.database.AppDatabase
 import com.ntv2.app.core.player.PlaybackCoordinator
 import com.ntv2.app.core.player.controller.DefaultPlaybackController
@@ -254,14 +253,7 @@ class DefaultAppContainer(
     }
 
     override val appDatabase: AppDatabase by lazy {
-        Room.databaseBuilder(
-            appContext,
-            AppDatabase::class.java,
-            "ntv2.db"
-        )
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
-            .fallbackToDestructiveMigration()
-            .build()
+        AppDatabase.build(appContext)
     }
 
     override val authRepository: AuthRepository by lazy {

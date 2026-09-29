@@ -1,6 +1,8 @@
 package com.ntv2.app.core.database
 
+import android.content.Context
 import androidx.room.Database
+import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -21,7 +23,8 @@ import com.ntv2.app.core.database.entity.WatchHistoryEntity
         WatchHistoryEntity::class
     ],
     version = 4,
-    exportSchema = false
+    // Schema em app/schemas (no git): a cada versão nova, o JSON gerado é a referência da migração.
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun selectedChannelDao(): SelectedChannelDao
@@ -30,6 +33,23 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun watchHistoryDao(): WatchHistoryDao
 
     companion object {
+        const val NAME = "ntv2.db"
+
+        /**
+         * Único ponto de construção do banco (app e testes de migração usam o mesmo).
+         *
+         * SEM fallbackToDestructiveMigration: antes, se uma migração faltasse ou falhasse numa
+         * atualização, o Room apagava o banco em silêncio e o usuário perdia Minha lista, histórico e
+         * "continuar assistindo". Agora toda versão nova PRECISA de uma migração em [ALL_MIGRATIONS]
+         * (coberta por AppDatabaseMigrationTest). Só o downgrade (instalar versão mais antiga por cima)
+         * recria o banco, para não travar o app.
+         */
+        fun build(context: Context, name: String = NAME): AppDatabase =
+            Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, name)
+                .addMigrations(*ALL_MIGRATIONS)
+                .fallbackToDestructiveMigrationOnDowngrade()
+                .build()
+
         // Preserva os canais selecionados ao adicionar a tabela de progresso de reprodução.
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -82,5 +102,8 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             }
         }
+
+        /** Todas as migrações, em ordem. Toda versão nova do banco acrescenta a sua aqui. */
+        val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
     }
 }

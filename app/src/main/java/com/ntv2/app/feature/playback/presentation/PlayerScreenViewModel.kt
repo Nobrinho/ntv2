@@ -9,6 +9,8 @@ import com.ntv2.app.core.player.PlaybackState
 import com.ntv2.app.core.player.controller.PlaybackController
 import com.ntv2.app.core.player.controller.PlaybackPrepareRequest
 import com.ntv2.app.core.player.controller.PlaybackPrepareResult
+import com.ntv2.app.core.player.recovery.StallAction
+import com.ntv2.app.core.player.recovery.StallPolicy
 import com.ntv2.app.core.player.source.MediaAvailability
 import com.ntv2.app.core.storage.StorageBudget
 import com.ntv2.app.feature.media.domain.MediaDetailsCache
@@ -408,9 +410,7 @@ class PlayerScreenViewModel(
         watchdogJob?.cancel()
         _uiState.update { it.copy(loadError = null, loadingHint = null, downloadProgress = null) }
         prepareJob = viewModelScope.launch {
-            var lastBytes = -1L
-            var lastProgressAt = now()
-            var restarts = 0
+            val stall = StallPolicy(nowMs = now(), initialBytes = -1L, maxRestarts = MAX_RESTARTS)
             val speed = SpeedMeter()
             var detail: String? = null
             while (true) {
@@ -429,11 +429,6 @@ class PlayerScreenViewModel(
                         val t = now()
                         when (availability) {
                             is MediaAvailability.Downloading -> {
-                                // Qualquer mudança conta (o total cai para 0 quando a cópia é recriada).
-                                if (availability.downloadedBytes != lastBytes) {
-                                    lastBytes = availability.downloadedBytes
-                                    lastProgressAt = t
-                                }
                                 val progress = DownloadProgress(
                                     downloadedBytes = availability.downloadedBytes,
                                     expectedBytes = availability.expectedBytes,
@@ -463,41 +458,51 @@ class PlayerScreenViewModel(
                         }
 
                         if (!networkReady.value) {
-                            lastProgressAt = t
                             _uiState.update { it.copy(statusMessage = "conectando ao Telegram…") }
                         }
-                        val neverStarted = lastBytes <= 0L
-                        val restartAfter = if (neverStarted) FIRST_BYTE_RESTART_MS else STALL_RESTART_MS
-                        val failAfter = if (neverStarted) FIRST_BYTE_FAIL_MS else STALL_FAIL_MS
-                        val stalledFor = t - lastProgressAt
-                        if (stalledFor >= restartAfter && restarts < MAX_RESTARTS) {
-                            restarts++
-                            playbackController.refreshNetwork()
-                            playbackController.restartDownload(request.fileId)
-                            lastProgressAt = t
-                            _uiState.update {
-                                it.copy(statusMessage = "download parado — reconectando ($restarts de $MAX_RESTARTS)…")
-                            }
-                        } else if (stalledFor >= failAfter && restarts >= MAX_RESTARTS) {
-                            fail(
-                                if (availability is MediaAvailability.TdlibFileUnavailable && neverStarted) {
-                                    PlayerLoadError(
-                                        title = "Arquivo indisponível no Telegram",
-                                        message = "O Telegram não liberou este arquivo. A postagem pode ter sido " +
-                                            "removida ou o canal pode ter restrições.",
-                                        detail = detail
-                                    )
-                                } else {
-                                    PlayerLoadError(
-                                        title = "Download parado",
-                                        message = "O Telegram parou de enviar este vídeo" +
-                                            (if (lastBytes > 0L) " (${formatBytes(lastBytes)} recebidos)" else "") +
-                                            ". Tente novamente em instantes.",
-                                        detail = detail
-                                    )
+                        val downloaded = (availability as? MediaAvailability.Downloading)?.downloadedBytes ?: stall.lastBytes
+                        // Nenhum byte ainda: o 1º contato com o servidor do canal pode demorar (limites maiores).
+                        val neverStarted = maxOf(downloaded, stall.lastBytes) <= 0L
+                        val storage = playbackController.storageBlockingDownload()
+                        val action = stall.tick(
+                            nowMs = t,
+                            waiting = true,
+                            downloadedBytes = downloaded,
+                            networkReady = networkReady.value,
+                            storageBlocked = storage != null,
+                            restartAfterMs = if (neverStarted) FIRST_BYTE_RESTART_MS else STALL_RESTART_MS,
+                            failAfterMs = if (neverStarted) FIRST_BYTE_FAIL_MS else STALL_FAIL_MS,
+                            // Sem reconectar antes: no início reconectar recomeçava o contato com o servidor.
+                            refreshAfterMs = null
+                        )
+                        when (action) {
+                            is StallAction.Restart -> {
+                                playbackController.refreshNetwork()
+                                playbackController.restartDownload(request.fileId)
+                                _uiState.update {
+                                    it.copy(statusMessage = "download parado — reconectando (${action.attempt} de $MAX_RESTARTS)…")
                                 }
-                            )
-                            return@launch
+                            }
+                            is StallAction.FailStalled -> {
+                                fail(
+                                    if (availability is MediaAvailability.TdlibFileUnavailable && neverStarted) {
+                                        PlayerLoadError(
+                                            title = "Arquivo indisponível no Telegram",
+                                            message = "O Telegram não liberou este arquivo. A postagem pode ter sido " +
+                                                "removida ou o canal pode ter restrições.",
+                                            detail = detail
+                                        )
+                                    } else {
+                                        stalledError(action.lastBytes, detail)
+                                    }
+                                )
+                                return@launch
+                            }
+                            StallAction.FailLowStorage -> {
+                                fail(storageError(storage))
+                                return@launch
+                            }
+                            StallAction.RefreshNetwork, StallAction.None -> Unit
                         }
                         delay(1_000L)
                     }
@@ -543,12 +548,13 @@ class PlayerScreenViewModel(
         watchdogJob?.cancel()
         watchdogJob = viewModelScope.launch {
             val startedAt = now()
-            var lastBytes = playbackController.snapshot.value.downloadedBytes
-            var lastProgressAt = startedAt
-            var restarts = 0
+            val stall = StallPolicy(
+                nowMs = startedAt,
+                initialBytes = playbackController.snapshot.value.downloadedBytes,
+                maxRestarts = MAX_RESTARTS,
+                healthyResetMs = HEALTHY_RESET_MS
+            )
             var everPlayed = false
-            var networkRefreshed = false
-            var healthySince = startedAt
             val speed = SpeedMeter()
             while (true) {
                 delay(1_000L)
@@ -572,26 +578,25 @@ class PlayerScreenViewModel(
                 if (state == PlaybackState.Ready || state == PlaybackState.Paused || state == PlaybackState.Ended) {
                     everPlayed = everPlayed || state != PlaybackState.Paused || snap.currentPositionMs > 0L
                 }
-                val waiting = state == PlaybackState.Buffering || state == PlaybackState.Preparing
                 val complete = snap.expectedBytes?.let { it > 0L && snap.downloadedBytes >= it } == true
-                if (!waiting || complete) {
-                    lastProgressAt = t
-                    lastBytes = snap.downloadedBytes
-                    networkRefreshed = false
-                    if (restarts > 0 && t - healthySince >= HEALTHY_RESET_MS) restarts = 0
+                val waiting = (state == PlaybackState.Buffering || state == PlaybackState.Preparing) && !complete
+                // Só consulta o espaço (StatFs) quando está esperando bytes.
+                val storage = if (waiting) playbackController.storageBlockingDownload() else null
+                val action = stall.tick(
+                    nowMs = t,
+                    waiting = waiting,
+                    downloadedBytes = snap.downloadedBytes,
+                    networkReady = networkReady.value,
+                    storageBlocked = storage != null,
+                    restartAfterMs = STALL_RESTART_MS,
+                    failAfterMs = STALL_FAIL_MS,
+                    refreshAfterMs = STALL_NETWORK_REFRESH_MS
+                )
+                if (!waiting) {
                     if (uiState.value.downloadProgress != null || uiState.value.loadingHint != null) {
                         _uiState.update { it.copy(downloadProgress = null, loadingHint = null) }
                     }
                     continue
-                }
-                healthySince = t
-                // Qualquer mudança conta como progresso: ao recriar a cópia local (janela de disco) o
-                // total baixado volta a 0 — com ">" o download andando parecia parado até passar do
-                // valor antigo, e o vídeo terminava em "O Telegram parou de enviar".
-                if (snap.downloadedBytes != lastBytes || !networkReady.value) {
-                    lastBytes = snap.downloadedBytes
-                    lastProgressAt = t
-                    networkRefreshed = false
                 }
                 val hint = if (!everPlayed && t - startedAt >= SLOW_START_HINT_MS) {
                     "Este vídeo precisa baixar mais dados antes de começar (índice no fim do arquivo)."
@@ -606,48 +611,36 @@ class PlayerScreenViewModel(
                         loadingHint = hint
                     )
                 }
-                val stalledFor = t - lastProgressAt
-                // Parado por falta de espaço (o player deixa de baixar de propósito): não é rede.
-                // Reiniciar não adianta e a tela dizia "O Telegram parou de enviar" — o usuário não
-                // sabia que era preciso liberar espaço. Dá tempo à limpeza automática e, se não
-                // resolver, mostra o erro de armazenamento.
-                if (stalledFor >= STALL_NETWORK_REFRESH_MS) {
-                    val storage = playbackController.storageBlockingDownload()
-                    if (storage != null) {
-                        if (stalledFor >= STALL_FAIL_MS) {
-                            fail(
-                                lowStorageError(
-                                    freeBytes = storage.freeBytes,
-                                    requiredBytes = StorageBudget.downloadFloor(storage.totalBytes)
-                                )
-                            )
-                            return@launch
-                        }
-                        continue
+                when (action) {
+                    StallAction.RefreshNetwork -> playbackController.refreshNetwork()
+                    is StallAction.Restart -> playbackController.retry()
+                    is StallAction.FailStalled -> {
+                        fail(stalledError(action.lastBytes, detail = null))
+                        return@launch
                     }
-                }
-                if (stalledFor >= STALL_NETWORK_REFRESH_MS && !networkRefreshed) {
-                    networkRefreshed = true
-                    playbackController.refreshNetwork()
-                }
-                if (stalledFor >= STALL_RESTART_MS && restarts < MAX_RESTARTS) {
-                    restarts++
-                    lastProgressAt = t
-                    networkRefreshed = false
-                    playbackController.retry()
-                } else if (stalledFor >= STALL_FAIL_MS && restarts >= MAX_RESTARTS) {
-                    fail(
-                        PlayerLoadError(
-                            title = "Download parado",
-                            message = "O Telegram parou de enviar este vídeo (${formatBytes(lastBytes)} recebidos). " +
-                                "Tente novamente em instantes."
-                        )
-                    )
-                    return@launch
+                    StallAction.FailLowStorage -> {
+                        fail(storageError(storage))
+                        return@launch
+                    }
+                    StallAction.None -> Unit
                 }
             }
         }
     }
+
+    private fun stalledError(lastBytes: Long, detail: String?) = PlayerLoadError(
+        title = "Download parado",
+        message = "O Telegram parou de enviar este vídeo" +
+            (if (lastBytes > 0L) " (${formatBytes(lastBytes)} recebidos)" else "") +
+            ". Tente novamente em instantes.",
+        detail = detail
+    )
+
+    /** Parado por falta de espaço (o player deixa de baixar de propósito): não é rede. */
+    private fun storageError(storage: com.ntv2.app.core.storage.StorageSnapshot?) = lowStorageError(
+        freeBytes = storage?.freeBytes,
+        requiredBytes = storage?.let { StorageBudget.downloadFloor(it.totalBytes) }
+    )
 
     private fun lowStorageError(freeBytes: Long?, requiredBytes: Long?): PlayerLoadError {
         val detail = if (freeBytes != null && requiredBytes != null) {

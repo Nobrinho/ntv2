@@ -23,6 +23,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -339,26 +340,54 @@ class RealTdlibGateway(
 
     override suspend fun listChats(limit: Int): List<TelegramChatSummary> {
         ensureConfigured()
-        // GetChats sozinho pode vir vazio numa sessão nova: LoadChats popula a lista principal.
-        loadMainChatList(limit)
-
-        val chats = send(TdApi.GetChats(TdApi.ChatListMain(), limit))
-        if (chats !is TdApi.Chats) return emptyList()
+        // GetChats sozinho pode vir vazio numa sessão nova: LoadChats popula as listas. Inclui os
+        // ARQUIVADOS — no Telegram é comum arquivar canais, e antes eles nunca apareciam no app.
+        val main = TdApi.ChatListMain()
+        val archive = TdApi.ChatListArchive()
+        var mainIds = longArrayOf()
+        var archiveIds = longArrayOf()
+        // Logo após o login a lista vinha VAZIA (o TDLib ainda sincronizava a sessão nova com o
+        // servidor) e a tela de canais ficava sem nada até reiniciar o app. Conta logada sempre tem
+        // ao menos um chat: lista vazia = ainda sincronizando → espera a conexão e tenta de novo.
+        for (attempt in 1..ChatListLoading.EMPTY_LIST_ATTEMPTS) {
+            withTimeoutOrNull(ChatListLoading.CONNECTION_WAIT_MS) { connectionReady.first { it } }
+            loadChatList(main, limit)
+            loadChatList(archive, limit)
+            mainIds = (send(TdApi.GetChats(main, limit)) as? TdApi.Chats)?.chatIds ?: longArrayOf()
+            archiveIds = (send(TdApi.GetChats(archive, limit)) as? TdApi.Chats)?.chatIds ?: longArrayOf()
+            if (!ChatListLoading.looksUnsynced(mainIds, archiveIds)) break
+            if (attempt < ChatListLoading.EMPTY_LIST_ATTEMPTS) {
+                Log.w(TAG, "listChats: lista vazia (tentativa $attempt) — sessão ainda sincronizando")
+                delay(ChatListLoading.EMPTY_LIST_RETRY_MS * attempt)
+            }
+        }
+        val chatIds = ChatListLoading.mergeChatIds(mainIds, archiveIds, limit)
 
         // Resolve os chats em paralelo (antes: N+1 serial, ~1 round-trip por chat).
         return coroutineScope {
-            chats.chatIds.take(limit)
+            chatIds
                 .map { chatId ->
                     async {
                         val chat = send(TdApi.GetChat(chatId)) as? TdApi.Chat ?: return@async null
                         val summary = mapChat(chat)
                         // Baixa a miniatura do avatar (arquivo pequeno) para termos um caminho
-                        // local — sem isso photo.small.local.path fica vazio e nada é exibido.
+                        // local — sem isso photo.small.local.path fica vazio e nada é exibido. Só
+                        // de canais/supergrupos (os únicos listados no app): antes baixava de TODOS
+                        // os chats, inclusive conversas privadas, e a 1ª carga esperava por isso.
+                        val listed = summary.type == TelegramChatType.Channel ||
+                            summary.type == TelegramChatType.Supergroup
+                        if (!listed) return@async summary
                         summary.copy(avatarPath = resolveAvatarPath(chat) ?: summary.avatarPath)
                     }
                 }
                 .awaitAll()
                 .filterNotNull()
+        }.also { chats ->
+            Log.i(
+                TAG,
+                "listChats: principal=${mainIds.size} arquivados=${archiveIds.size} total=${chatIds.size} " +
+                    "resolvidos=${chats.size} por tipo=${chats.groupingBy { it.type }.eachCount()}"
+            )
         }
     }
 
@@ -509,14 +538,19 @@ class RealTdlibGateway(
         return file.local?.path?.takeIf { it.isNotBlank() }
     }
 
-    private suspend fun loadMainChatList(limit: Int) {
-        // LoadChats carrega mais chats por vez e retorna Error 404 quando a lista acaba.
-        // Loop limitado para não bloquear indefinidamente.
-        val chatList = TdApi.ChatListMain()
-        var iterations = (limit / 100) + 1
-        while (iterations-- > 0) {
-            if (send(TdApi.LoadChats(chatList, limit)) is TdApi.Error) break
+    private suspend fun loadChatList(chatList: TdApi.ChatList, limit: Int) {
+        // LoadChats carrega mais chats por vez e retorna Error 404 quando a lista acaba. Outros erros
+        // (rede) têm novas tentativas; antes o 1º erro qualquer encerrava e a lista ficava incompleta.
+        val complete = ChatListLoading.loadUntilEnd(maxCalls = (limit / 100) + 1) {
+            when (val result = send(TdApi.LoadChats(chatList, limit))) {
+                is TdApi.Error -> if (result.code == 404) LoadChatsOutcome.END else {
+                    Log.w(TAG, "LoadChats(${chatList.javaClass.simpleName}) falhou: ${result.code} ${result.message}")
+                    LoadChatsOutcome.ERROR
+                }
+                else -> LoadChatsOutcome.LOADED
+            }
         }
+        if (!complete) Log.w(TAG, "lista ${chatList.javaClass.simpleName} pode estar incompleta")
     }
 
     override suspend fun listVideoMessages(chatId: Long, fromMessageId: Long, limit: Int): TelegramVideoPage =

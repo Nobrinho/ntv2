@@ -408,8 +408,9 @@ private fun EpisodeRow(
     }
 }
 
+/** Voltar da TV (detalhes de série e de filme): só o ícone, no canto superior direito. */
 @Composable
-private fun BackChip(onClose: () -> Unit, modifier: Modifier) {
+internal fun BackChip(onClose: () -> Unit, modifier: Modifier) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = modifier

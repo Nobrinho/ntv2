@@ -677,8 +677,7 @@ fun MediaLibraryScreen(
                 isTv = adaptive.isTv,
                 isFavorite = state.favoriteIds.contains(media.mediaId),
                 onToggleFavorite = { viewModel.onAction(MediaLibraryAction.ToggleFavorite(media)) },
-                recommendations = remember(media.mediaId, state.items.size) { viewModel.recommendationsFor(media.mediaId) },
-                recommendationSections = remember(media.mediaId, state.items.size) { viewModel.recommendationsByGenre(media.mediaId) },
+                recommendations = remember(media.mediaId, state.items.size) { viewModel.recommendationsFor(media.mediaId, limit = 20) },
                 onRecommendationClick = { rec ->
                     viewModel.onAction(MediaLibraryAction.DetailsOpened(rec))
                     detailsMedia = rec

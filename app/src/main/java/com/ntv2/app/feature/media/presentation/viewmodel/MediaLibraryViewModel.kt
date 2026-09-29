@@ -1156,31 +1156,6 @@ class MediaLibraryViewModel(
     /** Detalhes ricos para a tela de Detalhes (lidos do cache por mediaId). */
     fun detailsFor(mediaId: String): MovieDetails? = mediaDetailsCache.get(mediaId)
 
-    /**
-     * Recomendações agrupadas por CATEGORIA (gênero do título), uma fileira por gênero — para a TV
-     * usar a largura toda com várias trilhas ("Ação", "Crime", …). Cada trilha exclui o próprio título.
-     */
-    fun recommendationsByGenre(mediaId: String, perRow: Int = 14, maxRows: Int = 6): List<Pair<String, List<MediaCardUi>>> {
-        val raw = mediaDetailsCache.get(mediaId)?.genres ?: return emptyList()
-        val labels = raw.split(',', '/', '|').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (labels.isEmpty()) return emptyList()
-        val summaries = channelOrder.flatMap { channelItems[it].orEmpty() }
-        if (summaries.isEmpty()) return emptyList()
-        val result = ArrayList<Pair<String, List<MediaCardUi>>>()
-        for (label in labels.take(maxRows)) {
-            val g = label.lowercase()
-            val cards = summaries.asSequence()
-                .filter { it.mediaId != mediaId }
-                .filter { it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
-                .filter { RecommendationEngine.parseGenres(it.genres).contains(g) }
-                .take(perRow)
-                .map { it.toCard(0L) }
-                .toList()
-            if (cards.isNotEmpty()) result.add(label to cards)
-        }
-        return result
-    }
-
     /** "Porque você viu X": recomendações pelos gêneros DESTE título, dentro do catálogo do canal. */
     fun recommendationsFor(mediaId: String, limit: Int = 12): List<MediaCardUi> {
         val seedGenres = RecommendationEngine.parseGenres(mediaDetailsCache.get(mediaId)?.genres)

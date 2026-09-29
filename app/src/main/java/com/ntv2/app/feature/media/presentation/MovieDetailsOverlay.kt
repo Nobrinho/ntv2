@@ -50,7 +50,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
@@ -78,6 +87,7 @@ internal val BRAND_GREEN = Color(0xFF2BEE34)
 
 // Tela de Detalhes (estilo Netflix/Prime): responsiva (TV/paisagem lado a lado, celular/retrato
 // empilhado). O conteúdo aparece imediatamente; imagens secundárias carregam sem bloquear a tela.
+@OptIn(ExperimentalFoundationApi::class) // LocalBringIntoViewSpec (rolagem por foco na TV)
 @Composable
 internal fun MovieDetailsOverlay(
     media: MediaCardUi,
@@ -95,8 +105,6 @@ internal fun MovieDetailsOverlay(
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     recommendations: List<MediaCardUi> = emptyList(),
-    // TV: recomendações por categoria (uma fileira por gênero), full-width abaixo do herói.
-    recommendationSections: List<Pair<String, List<MediaCardUi>>> = emptyList(),
     onRecommendationClick: (MediaCardUi) -> Unit = {}
 ) {
     BackHandler(enabled = true) { onDismiss() }
@@ -161,7 +169,6 @@ internal fun MovieDetailsOverlay(
                     playLoading = playLoading,
                     playFailed = playFailed,
                     onRestart = onRestart,
-                    showBackButton = isTv,
                     fillActions = !isTv,
                     onReportClick = { reporting = true },
                     isFavorite = isFavorite,
@@ -171,10 +178,24 @@ internal fun MovieDetailsOverlay(
                 )
             }
         } else {
-            // TV: herói (backdrop + infos à esquerda) ocupando a tela, e ABAIXO as recomendações em
-            // várias fileiras — uma por categoria/gênero — usando a largura toda (o espaço à direita).
+            // TV: herói (backdrop + infos à esquerda) e ABAIXO uma fileira de recomendações (gêneros
+            // misturados, como no celular) na largura toda. O herói deixa o topo das capas aparecendo
+            // no rodapé da tela, sinalizando que há mais conteúdo ao rolar.
+            val showRecommendations = recommendations.isNotEmpty()
+            val heroMinHeight = if (showRecommendations) screenHeight - RECOMMENDATIONS_PEEK else screenHeight
+            val scope = rememberCoroutineScope()
+            var heroHeightPx by remember { mutableIntStateOf(0) }
+            // A rolagem por foco padrão da TV reposiciona a tela a cada movimento (mantém o item focado
+            // num ponto fixo): andar de Assistir para o botão ao lado já rolava para baixo. Aqui só rola
+            // quando o item focado não está inteiro na tela — na prática, ao descer para "Porque você viu".
+            CompositionLocalProvider(LocalBringIntoViewSpec provides ScrollOnlyIfHidden) {
             Column(modifier = Modifier.fillMaxSize().verticalScroll(contentScroll)) {
-                Box(modifier = Modifier.fillMaxWidth().heightIn(min = screenHeight)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = heroMinHeight)
+                        .onSizeChanged { heroHeightPx = it.height }
+                ) {
                     if (backdrop != null) {
                         AsyncImage(
                             model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
@@ -184,7 +205,9 @@ internal fun MovieDetailsOverlay(
                         )
                     }
                     Box(modifier = Modifier.matchParentSize().background(
-                        Brush.horizontalGradient(0f to Color(0xF2050505), 0.45f to Color(0xB3050505), 0.8f to Color(0x00050505))
+                        // Escurece até onde vai a coluna de informações (80% da largura), para o texto
+                        // continuar legível sobre o banner.
+                        Brush.horizontalGradient(0f to Color(0xF2050505), 0.6f to Color(0xB3050505), 0.95f to Color(0x00050505))
                     ))
                     Box(modifier = Modifier.matchParentSize().background(
                         Brush.verticalGradient(0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505))
@@ -193,12 +216,13 @@ internal fun MovieDetailsOverlay(
                         media, details, showCastPhotos, lowRamPlaybackWarnings, animationsEnabled,
                         playFocus, onPlay, onDismiss,
                         actionsFirst = compactLandscape,
-                        modifier = Modifier.fillMaxWidth(0.62f).align(Alignment.TopStart)
+                        // 80% da largura: com 62% os chips e os botões (Continuar + Recomeçar + Voltar)
+                        // eram cortados à direita mesmo com espaço sobrando na tela.
+                        modifier = Modifier.fillMaxWidth(0.8f).align(Alignment.TopStart)
                             .padding(start = 48.dp, end = 24.dp, top = 48.dp, bottom = 40.dp),
                         playLoading = playLoading,
                         playFailed = playFailed,
                         onRestart = onRestart,
-                        showBackButton = isTv,
                         onReportClick = { reporting = true },
                         isFavorite = isFavorite,
                         onToggleFavorite = onToggleFavorite,
@@ -207,26 +231,46 @@ internal fun MovieDetailsOverlay(
                         onRecommendationClick = onRecommendationClick
                     )
                 }
-                if (recommendationSections.isNotEmpty()) {
-                    Column(
+                if (showRecommendations) {
+                    PosterTrackRow(
+                        label = recommendationsHeading(details?.title ?: media.title),
+                        items = recommendations,
+                        showCovers = true,
+                        useTvLayout = true,
+                        onCardClick = onRecommendationClick,
                         modifier = Modifier
                             .fillMaxWidth()
+                            // Saindo das recomendações (de volta ao herói): rola ao topo, se o herói cabe
+                            // na tela; senão fica a rolagem mínima para mostrar o item focado. O grupo é
+                            // SÓ desta fileira: um grupo no herói (tela toda) cobria o botão voltar e o
+                            // D-pad não achava mais nada abaixo/à esquerda dele.
+                            .onFocusChanged { focus ->
+                                if (!focus.hasFocus && contentScroll.value > 0 && heroHeightPx <= contentScroll.viewportSize) {
+                                    scope.launch { contentScroll.animateScrollTo(0) }
+                                }
+                            }
+                            .focusGroup()
                             .background(Color(0xFF050505))
-                            .padding(start = 48.dp, end = 32.dp, top = 6.dp, bottom = 44.dp),
-                        verticalArrangement = Arrangement.spacedBy(22.dp)
-                    ) {
-                        recommendationSections.forEach { (label, cards) ->
-                            PosterTrackRow(
-                                label = label,
-                                items = cards,
-                                showCovers = true,
-                                useTvLayout = true,
-                                onCardClick = onRecommendationClick
-                            )
-                        }
-                    }
+                            .padding(start = 48.dp, end = 32.dp, top = 6.dp, bottom = 44.dp)
+                    )
                 }
             }
+            }
+        }
+        // TV: voltar só com ícone no canto superior direito (mesmo padrão dos detalhes de série),
+        // fora da linha de ações. Focável ao subir com o D-pad; o foco inicial fica no Assistir.
+        if (isTv) {
+            BackChip(
+                onDismiss,
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 24.dp, end = 24.dp)
+                    // Sai do canto direto para o Assistir (↓ ou ←), sem depender da busca de foco.
+                    .focusProperties {
+                        down = playFocus
+                        left = playFocus
+                    }
+            )
         }
         // Celular: fechar pelo X no canto superior esquerdo (mesmo padrão do player), em vez do
         // botão "Voltar" na linha de ações — que não cabia ao lado de Continuar e Recomeçar.
@@ -285,7 +329,6 @@ internal fun DetailsInfo(
     playLoading: Boolean = false,
     playFailed: Boolean = false,
     onRestart: () -> Unit = {},
-    showBackButton: Boolean = true,
     fillActions: Boolean = false,
     onReportClick: () -> Unit = {},
     isFavorite: Boolean = false,
@@ -318,7 +361,6 @@ internal fun DetailsInfo(
         if (actionsFirst) {
             DetailsActionRow(
                 media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
-                showBackButton = showBackButton,
                 fillWidth = fillActions,
                 isFavorite = isFavorite,
                 onToggleFavorite = onToggleFavorite,
@@ -374,7 +416,6 @@ internal fun DetailsInfo(
         if (!actionsFirst) {
             DetailsActionRow(
                 media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
-                showBackButton = showBackButton,
                 fillWidth = fillActions,
                 isFavorite = isFavorite,
                 onToggleFavorite = onToggleFavorite,
@@ -393,6 +434,28 @@ internal fun DetailsInfo(
     }
 }
 
+/** Rolagem por foco mínima: só rola se o item focado não estiver inteiro na área visível. */
+@OptIn(ExperimentalFoundationApi::class)
+private object ScrollOnlyIfHidden : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val trailing = offset + size
+        return when {
+            offset >= 0f && trailing <= containerSize -> 0f // já visível
+            size > containerSize -> offset // maior que a tela: alinha o topo
+            offset < 0f -> offset // acima: sobe o necessário
+            else -> trailing - containerSize // abaixo: desce o necessário
+        }
+    }
+}
+
+/** Quanto das recomendações aparece no rodapé da TV antes de rolar: o título e o topo das capas. */
+private val RECOMMENDATIONS_PEEK = 110.dp
+
+private fun recommendationsHeading(seedTitle: String) = buildAnnotatedString {
+    append("Porque você viu ")
+    withStyle(SpanStyle(color = BRAND_GREEN)) { append(seedTitle) }
+}
+
 /** "Porque você viu <título>": trilha de pôsteres recomendados dentro dos Detalhes. */
 @Composable
 internal fun RecommendationsRow(
@@ -401,16 +464,12 @@ internal fun RecommendationsRow(
     onClick: (MediaCardUi) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        val heading = buildAnnotatedString {
-            append("Porque você viu ")
-            withStyle(SpanStyle(color = BRAND_GREEN)) { append(seedTitle) }
-        }
-        Text(heading, color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Text(recommendationsHeading(seedTitle), color = Color.White, style = MaterialTheme.typography.titleMedium)
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items.take(12).forEach { rec ->
+            items.forEach { rec ->
                 RecommendationPoster(media = rec, onClick = { onClick(rec) })
             }
         }
@@ -508,13 +567,51 @@ internal fun DetailsActionRow(
     playLoading: Boolean = false,
     playFailed: Boolean = false,
     onRestart: () -> Unit = {},
-    showBackButton: Boolean = true,
     // Celular em pé: os botões dividem a largura toda (nunca cortam na lateral).
     fillWidth: Boolean = false,
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     onReportClick: () -> Unit = {}
 ) {
+    val playLabel = when {
+        playLoading -> "Abrindo…"
+        playFailed -> "Falhou — tentar de novo"
+        showPlaybackWarning -> "Tentar assistir"
+        media.progress > 0f -> continueLabel(media)
+        else -> "Assistir"
+    }
+    // Vídeo parado no meio: "Recomeçar" zera o progresso e toca do início (útil também quando
+    // o download a partir do ponto salvo não anda).
+    val showRestart = media.progress > 0f && !playLoading
+
+    // Celular em pé com Continuar + Recomeçar: não cabem os dois ao lado dos ícones sem quebrar o
+    // texto letra a letra. O botão principal ocupa a linha de cima inteira; o resto vai embaixo.
+    if (fillWidth && showRestart) {
+        Column(
+            modifier = Modifier.focusGroup().fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            DetailButton(
+                icon = Icons.Filled.PlayArrow,
+                label = playLabel,
+                primary = true,
+                modifier = Modifier.fillMaxWidth().focusRequester(playFocus),
+                loading = playLoading,
+                onClick = onPlay
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DetailButton(icon = Icons.Filled.Replay, label = "Recomeçar", primary = false, onClick = onRestart, modifier = Modifier.weight(1f))
+                FavoriteToggleButton(isFavorite = isFavorite, onClick = onToggleFavorite)
+                DetailIconButton(icon = Icons.Filled.Flag, description = "Reportar problema", onClick = onReportClick)
+            }
+        }
+        return
+    }
+
     Row(
         modifier = Modifier.focusGroup().then(if (fillWidth) Modifier.fillMaxWidth() else Modifier),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -523,29 +620,18 @@ internal fun DetailsActionRow(
         val share = if (fillWidth) Modifier.weight(1f) else Modifier
         DetailButton(
             icon = Icons.Filled.PlayArrow,
-            label = when {
-                playLoading -> "Abrindo…"
-                playFailed -> "Falhou — tentar de novo"
-                showPlaybackWarning -> "Tentar assistir"
-                media.progress > 0f -> continueLabel(media)
-                else -> "Assistir"
-            },
+            label = playLabel,
             primary = true,
             modifier = share.focusRequester(playFocus),
             loading = playLoading,
             onClick = onPlay
         )
-        // Vídeo parado no meio: "Recomeçar" zera o progresso e toca do início (útil também quando
-        // o download a partir do ponto salvo não anda).
-        if (media.progress > 0f && !playLoading) {
+        if (showRestart) {
             DetailButton(icon = Icons.Filled.Replay, label = "Recomeçar", primary = false, onClick = onRestart, modifier = share)
         }
         // Coração e reportar: quadrados só-ícone ao lado das ações (como no protótipo).
         FavoriteToggleButton(isFavorite = isFavorite, onClick = onToggleFavorite)
         DetailIconButton(icon = Icons.Filled.Flag, description = "Reportar problema", onClick = onReportClick)
-        if (showBackButton) {
-            DetailButton(icon = Icons.Filled.Close, label = "Voltar", primary = false, onClick = onDismiss, modifier = share)
-        }
     }
 }
 
@@ -694,6 +780,6 @@ internal fun DetailButton(
         } else {
             Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
         }
-        Text(label, color = content, style = MaterialTheme.typography.titleMedium)
+        Text(label, color = content, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

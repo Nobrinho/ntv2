@@ -166,6 +166,17 @@ internal fun PosterTrackRow(
     useTvLayout: Boolean,
     onCardClick: (MediaCardUi) -> Unit,
     modifier: Modifier = Modifier
+) = PosterTrackRow(androidx.compose.ui.text.AnnotatedString(label), items, showCovers, useTvLayout, onCardClick, modifier)
+
+/** Igual, com título formatado (ex.: "Porque você viu" + título em verde). */
+@Composable
+internal fun PosterTrackRow(
+    label: androidx.compose.ui.text.AnnotatedString,
+    items: List<MediaCardUi>,
+    showCovers: Boolean,
+    useTvLayout: Boolean,
+    onCardClick: (MediaCardUi) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     if (items.isEmpty()) return
     val posterWidth = if (useTvLayout) 132.dp else 112.dp

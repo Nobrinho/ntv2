@@ -359,10 +359,13 @@ private fun ToggleCard(
 
 private const val SETTINGS_ITEM_COUNT = 12
 
+private val INSTALLED_VERSION_LABEL: String =
+    "Versão ${BuildConfig.VERSION_NAME} (${if (BuildConfig.DEBUG) "debug" else "release"})"
+
 private fun updateSubtitle(state: UpdateUiState): String = when (state.stage) {
-    UpdateStage.IDLE -> "Versão ${BuildConfig.VERSION_NAME} · Verificar atualizações"
+    UpdateStage.IDLE -> "$INSTALLED_VERSION_LABEL · Verificar atualizações"
     UpdateStage.CHECKING -> "Verificando…"
-    UpdateStage.UP_TO_DATE -> "Versão ${BuildConfig.VERSION_NAME} · Você está atualizado"
+    UpdateStage.UP_TO_DATE -> "$INSTALLED_VERSION_LABEL · Você está atualizado"
     UpdateStage.AVAILABLE -> "Nova versão ${state.update?.versionName.orEmpty()} disponível"
     UpdateStage.WAITING_FOR_DOWNLOAD -> "Aguardando conexão · selecione para cancelar"
     UpdateStage.DOWNLOADING -> {

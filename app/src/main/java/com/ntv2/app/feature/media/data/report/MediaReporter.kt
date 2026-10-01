@@ -31,7 +31,7 @@ class MediaReporter(private val gateway: TdlibMediaGateway) {
             appendLine("⚑ Reporte: ${report.reasonLabel}")
             appendLine("🎬 $title")
             appendLine("📺 Canal: ${report.channelName} · msg $messageId")
-            append("📱 ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · app ${BuildConfig.VERSION_NAME}")
+            append("📱 ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · app ${BuildConfig.VERSION_NAME} ${if (BuildConfig.DEBUG) "debug" else "release"}")
         }
     }
 }

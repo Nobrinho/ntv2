@@ -59,6 +59,7 @@ import com.ntv2.app.feature.update.data.HttpUpdateRepository
 import com.ntv2.app.feature.update.data.UpdatePreferences
 import com.ntv2.app.feature.update.domain.UpdateRepository
 import com.ntv2.app.feature.update.installer.ApkVerifier
+import com.ntv2.app.feature.update.installer.AppReplacer
 import com.ntv2.app.feature.update.installer.AppUpdateInstaller
 
 interface AppContainer {
@@ -97,6 +98,7 @@ interface AppContainer {
     val updateDownloadManager: ApkDownloadManager
     val updateVerifier: ApkVerifier
     val updateInstaller: AppUpdateInstaller
+    val appReplacer: AppReplacer
     val updatePreferences: UpdatePreferences
 }
 
@@ -292,6 +294,7 @@ class DefaultAppContainer(
     override val updateDownloadManager: ApkDownloadManager by lazy { ApkDownloadManager(appContext) }
     override val updateVerifier: ApkVerifier by lazy { ApkVerifier(appContext) }
     override val updateInstaller: AppUpdateInstaller by lazy { AppUpdateInstaller(appContext) }
+    override val appReplacer: AppReplacer by lazy { AppReplacer(appContext) }
     override val updatePreferences: UpdatePreferences by lazy { UpdatePreferences(appContext) }
 
     private companion object {

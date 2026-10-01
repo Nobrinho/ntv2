@@ -10,8 +10,11 @@ import com.ntv2.app.feature.update.domain.AppUpdate
 import com.ntv2.app.feature.update.domain.UpdateAvailability
 import com.ntv2.app.feature.update.domain.UpdateRepository
 import com.ntv2.app.feature.update.installer.ApkVerifier
+import com.ntv2.app.feature.update.installer.AppReplacer
+import com.ntv2.app.feature.update.installer.SignatureMismatchException
 import com.ntv2.app.feature.update.installer.AppUpdateInstaller
 import com.ntv2.app.feature.update.installer.InstallLaunchResult
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,10 +22,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class UpdateStage {
     IDLE, CHECKING, UP_TO_DATE, AVAILABLE, WAITING_FOR_DOWNLOAD, DOWNLOADING,
-    VERIFYING, READY_TO_INSTALL, PERMISSION_REQUIRED, UNSUPPORTED, ERROR
+    VERIFYING, READY_TO_INSTALL, PERMISSION_REQUIRED, SIGNATURE_MISMATCH, UNSUPPORTED, ERROR
 }
 
 data class UpdateUiState(
@@ -43,6 +47,7 @@ class UpdateViewModel(
     private val verifier: ApkVerifier,
     private val installer: AppUpdateInstaller,
     private val preferences: UpdatePreferences,
+    private val replacer: AppReplacer,
     private val clock: () -> Long = System::currentTimeMillis
 ) : ViewModel() {
     private val _state = MutableStateFlow(UpdateUiState())
@@ -145,6 +150,27 @@ class UpdateViewModel(
         }
     }
 
+    fun replaceInstalledApp() {
+        val update = _state.value.update ?: return
+        viewModelScope.launch {
+            runCatching {
+                val name = withContext(Dispatchers.IO) {
+                    replacer.exportToDownloads(downloader.fileFor(update.versionCode), update.versionName)
+                }
+                replacer.requestUninstall()
+                name
+            }
+                .onSuccess { name ->
+                    _state.update {
+                        it.copy(
+                            message = "Após desinstalar, abra “$name” na pasta Downloads (gerenciador de arquivos) para instalar."
+                        )
+                    }
+                }
+                .onFailure { error -> fail(error.message ?: "Não foi possível preparar a troca do aplicativo") }
+        }
+    }
+
     fun clearTransientMessage() {
         if (_state.value.stage == UpdateStage.UP_TO_DATE || _state.value.stage == UpdateStage.ERROR) {
             _state.value = UpdateUiState()
@@ -175,6 +201,18 @@ class UpdateViewModel(
                                 _state.update { it.copy(stage = UpdateStage.READY_TO_INSTALL, update = update) }
                             }
                             .onFailure { error ->
+                                if (error is SignatureMismatchException) {
+                                    // Mantém o APK: ele será copiado para Downloads antes da desinstalação.
+                                    _state.update {
+                                        it.copy(
+                                            stage = UpdateStage.SIGNATURE_MISMATCH,
+                                            update = update,
+                                            message = "O NTV instalado usa outra assinatura (ex.: versão de teste). " +
+                                                "Selecione para desinstalar e instalar a versão oficial. Os dados locais serão apagados."
+                                        )
+                                    }
+                                    return@launch
+                                }
                                 download.file.delete()
                                 preferences.clearDownload()
                                 fail(error.message ?: "A atualização baixada é inválida")
@@ -208,9 +246,10 @@ class UpdateViewModelFactory(
     private val downloader: ApkDownloadManager,
     private val verifier: ApkVerifier,
     private val installer: AppUpdateInstaller,
-    private val preferences: UpdatePreferences
+    private val preferences: UpdatePreferences,
+    private val replacer: AppReplacer
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        UpdateViewModel(repository, downloader, verifier, installer, preferences) as T
+        UpdateViewModel(repository, downloader, verifier, installer, preferences, replacer) as T
 }

@@ -82,7 +82,8 @@ fun AppNavHost(
             downloader = appContainer.updateDownloadManager,
             verifier = appContainer.updateVerifier,
             installer = appContainer.updateInstaller,
-            preferences = appContainer.updatePreferences
+            preferences = appContainer.updatePreferences,
+            replacer = appContainer.appReplacer
         )
     )
     val updateState by updateViewModel.state.collectAsState()
@@ -357,6 +358,7 @@ fun AppNavHost(
                 onCheckForUpdates = { updateViewModel.check(manual = true) },
                 onStartUpdateDownload = updateViewModel::startDownload,
                 onInstallUpdate = updateViewModel::install,
+                onReplaceInstalledApp = updateViewModel::replaceInstalledApp,
                 onCancelUpdateDownload = updateViewModel::cancelDownload,
                 indexStatus = indexStatus,
                 onRefreshIndex = { scope.launch { searchIndex.refresh() } },

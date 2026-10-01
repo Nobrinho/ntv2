@@ -12,6 +12,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
 
+/** O APK baixado foi assinado por outra chave que a do app instalado (ex.: build de debug). */
+class SignatureMismatchException : IllegalArgumentException(
+    "O APK não foi assinado pela chave oficial do NTV"
+)
+
 class ApkVerifier(private val context: Context) {
     suspend fun verify(file: File, update: AppUpdate): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
@@ -35,8 +40,8 @@ class ApkVerifier(private val context: Context) {
             require(update.versionCode > BuildConfig.VERSION_CODE.toLong()) { "A atualização não é mais nova" }
 
             val installed = context.packageManager.getPackageInfo(BuildConfig.APPLICATION_ID, flags)
-            require(archive.signingDigests().intersect(installed.signingDigests()).isNotEmpty()) {
-                "O APK não foi assinado pela chave oficial do NTV"
+            if (archive.signingDigests().intersect(installed.signingDigests()).isEmpty()) {
+                throw SignatureMismatchException()
             }
         }
     }

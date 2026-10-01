@@ -113,6 +113,7 @@ fun SettingsScreen(
     onCheckForUpdates: () -> Unit = {},
     onStartUpdateDownload: () -> Unit = {},
     onInstallUpdate: () -> Unit = {},
+    onReplaceInstalledApp: () -> Unit = {},
     onCancelUpdateDownload: () -> Unit = {},
     indexStatus: SearchIndexStatus? = null,
     onRefreshIndex: () -> Unit = {},
@@ -260,6 +261,7 @@ fun SettingsScreen(
                                 UpdateStage.AVAILABLE -> onStartUpdateDownload()
                                 UpdateStage.READY_TO_INSTALL, UpdateStage.PERMISSION_REQUIRED -> onInstallUpdate()
                                 UpdateStage.DOWNLOADING, UpdateStage.WAITING_FOR_DOWNLOAD -> onCancelUpdateDownload()
+                                UpdateStage.SIGNATURE_MISMATCH -> onReplaceInstalledApp()
                                 UpdateStage.VERIFYING, UpdateStage.CHECKING -> Unit
                                 else -> onCheckForUpdates()
                             }
@@ -370,7 +372,7 @@ private fun updateSubtitle(state: UpdateUiState): String = when (state.stage) {
     UpdateStage.VERIFYING -> "Verificando segurança do APK…"
     UpdateStage.READY_TO_INSTALL -> "Versão ${state.update?.versionName.orEmpty()} pronta para instalar"
     UpdateStage.PERMISSION_REQUIRED -> "Permita esta fonte e selecione para instalar"
-    UpdateStage.UNSUPPORTED, UpdateStage.ERROR -> state.message ?: "Não foi possível verificar"
+    UpdateStage.SIGNATURE_MISMATCH, UpdateStage.UNSUPPORTED, UpdateStage.ERROR -> state.message ?: "Não foi possível verificar"
 }
 
 private fun indexSubtitle(status: SearchIndexStatus): String {

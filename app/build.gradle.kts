@@ -70,8 +70,8 @@ android {
         applicationId = "com.ntv2.app"
         minSdk = 23
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.4.9"
+        versionCode = 15
+        versionName = "0.4.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())

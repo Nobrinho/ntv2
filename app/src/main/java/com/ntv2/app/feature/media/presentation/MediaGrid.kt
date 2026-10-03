@@ -423,50 +423,13 @@ internal fun MediaCard(
                     .background(Color(0xFF1C1C1C))
             ) {
                 if (cover != null) {
-                    // Loader por card, mas SÓ se demorar (>180ms): cache hit (voltar à grade) e
-                    // cargas rápidas mostram a capa direto, sem spinner nem "blink".
-                    var loaded by remember(cover) { mutableStateOf(false) }
-                    // O blur-up precisa aparecer já (a miniatura tem que baixar ANTES da capa); os
-                    // demais só entram se a capa demorar (>180 ms), para cache hit não piscar.
-                    var showLoading by remember(cover, cardLoadingStyle) {
-                        mutableStateOf(cardLoadingStyle.startsImmediately)
-                    }
-                    var fromMemory by remember(cover) { mutableStateOf(false) }
-                    // Entrada suave da capa: sem isso a troca do placeholder pela imagem "pisca".
-                    val coverAlpha by animateFloatAsState(
-                        targetValue = if (loaded) 1f else 0f,
-                        animationSpec = tween(if (animationsEnabled && !fromMemory) 320 else 0),
-                        label = "cover-alpha"
-                    )
-                    // O placeholder fica ATRÁS e só sai quando a capa termina de aparecer.
-                    if (showLoading && coverAlpha < 1f) {
-                        CardLoadingPlaceholder(
-                            style = cardLoadingStyle,
-                            modifier = Modifier.fillMaxSize(),
-                            animate = animationsEnabled,
-                            cover = cover
-                        )
-                    }
-                    AsyncImage(
-                        model = cover,
+                    com.ntv2.app.core.ui.CoverWithLoading(
+                        cover = cover,
                         contentDescription = media.title,
-                        contentScale = ContentScale.Crop,
-                        onState = { st ->
-                            // Vindo da memória (rolar de volta), aparece na hora: sem fade a cada card.
-                            if (st is coil.compose.AsyncImagePainter.State.Success &&
-                                st.result.dataSource == coil.decode.DataSource.MEMORY_CACHE
-                            ) {
-                                fromMemory = true
-                            }
-                            if (st.isDone()) loaded = true
-                        },
-                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = coverAlpha }
+                        style = cardLoadingStyle,
+                        animationsEnabled = animationsEnabled,
+                        modifier = Modifier.fillMaxSize()
                     )
-                    LaunchedEffect(cover, cardLoadingStyle) {
-                        if (showLoading) return@LaunchedEffect
-                        kotlinx.coroutines.delay(180)
-                        if (!loaded) showLoading = true
-                    }
                 } else {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -585,6 +548,8 @@ internal fun LazySeriesGrid(
     focusRequesterFor: (String) -> FocusRequester,
     onSeriesClick: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit,
     onCardFocused: (String) -> Unit = {},
+    cardLoadingStyle: CardLoadingStyle = CardLoadingStyle.DEFAULT,
+    animationsEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -602,6 +567,8 @@ internal fun LazySeriesGrid(
                 SeriesGridCard(
                     series = s,
                     showCover = showCovers,
+                    cardLoadingStyle = cardLoadingStyle,
+                    animationsEnabled = animationsEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequesterFor(id))
@@ -617,6 +584,8 @@ internal fun LazySeriesGrid(
 private fun SeriesGridCard(
     series: com.ntv2.app.feature.media.domain.SeriesSummary,
     showCover: Boolean,
+    cardLoadingStyle: CardLoadingStyle,
+    animationsEnabled: Boolean,
     modifier: Modifier,
     onClick: () -> Unit
 ) {
@@ -642,22 +611,15 @@ private fun SeriesGridCard(
                     .background(Color(0xFF1C1C1C))
             ) {
                 if (cover != null) {
-                    AsyncImage(
-                        model = cover,
+                    com.ntv2.app.core.ui.CoverWithLoading(
+                        cover = cover,
                         contentDescription = series.title,
-                        contentScale = ContentScale.Crop,
+                        style = cardLoadingStyle,
+                        animationsEnabled = animationsEnabled,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
             }
-            Text(
-                series.title,
-                color = Color.White,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
-            )
         }
     }
 }

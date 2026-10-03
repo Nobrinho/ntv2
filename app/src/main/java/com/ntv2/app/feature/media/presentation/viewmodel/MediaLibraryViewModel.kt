@@ -40,6 +40,8 @@ sealed interface MediaLibraryAction {
     data object Refresh : MediaLibraryAction
     data class SearchChanged(val query: String) : MediaLibraryAction
     data object SubmitSearch : MediaLibraryAction
+    data class SearchByFilter(val filter: com.ntv2.app.feature.media.presentation.state.SearchFilter) : MediaLibraryAction
+    data class SetSearchFilters(val filters: com.ntv2.app.feature.media.presentation.state.SearchFilters) : MediaLibraryAction
     data object LoadMoreSearch : MediaLibraryAction
     data object ClearOpenVideoState : MediaLibraryAction
     data class VideoFocused(val mediaId: String) : MediaLibraryAction
@@ -137,6 +139,43 @@ class MediaLibraryViewModel(
     // Paginação infinita da busca: itens acumulados + cursor + guarda de concorrência.
     private val searchItems = mutableListOf<MediaItemSummary>()
     private var searchCursor = 0L
+
+    /** Identidade de uma busca pelo índice: se igual à já publicada/guardada, não refaz. */
+    private data class SearchKey(
+        val channelId: Long,
+        val query: String,
+        val filters: com.ntv2.app.feature.media.presentation.state.SearchFilters,
+        val indexGeneratedAt: Long,
+        val indexDownloadedAt: Long
+    )
+
+    private class SearchSnapshot(
+        val results: List<MediaCardUi>,
+        val series: List<com.ntv2.app.feature.media.domain.SeriesSummary>,
+        val episodeProgress: Map<String, Float>,
+        val actorCount: Int
+    )
+
+    /** Últimas buscas pelo índice (LRU): voltar a um filtro já feito restaura sem varrer o índice. */
+    private val searchCache = object : LinkedHashMap<SearchKey, SearchSnapshot>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<SearchKey, SearchSnapshot>?) =
+            size > SEARCH_CACHE_SIZE
+    }
+
+    /** Chave dos resultados que estão hoje no estado (null = nenhum resultado do índice publicado). */
+    private var publishedSearchKey: SearchKey? = null
+
+    private fun searchKeyFor(
+        query: String,
+        filters: com.ntv2.app.feature.media.presentation.state.SearchFilters
+    ): SearchKey? {
+        val channelId = _uiState.value.activeChannelId ?: return null
+        val status = searchIndexRepository?.status?.value
+        return SearchKey(
+            channelId, query, filters,
+            status?.generatedAtMillis ?: 0L, status?.downloadedAtMillis ?: 0L
+        )
+    }
     private var searchLoadingMore = false
     // Página enxuta, sempre múltipla do passo da grade (TV=5 → 30; celular=2 → 24).
     private val pageSize = if (gridStep >= 5) 30 else 24
@@ -144,6 +183,7 @@ class MediaLibraryViewModel(
     private val searchPageSize = if (gridStep >= 5) 10 else 8
     // Teto de páginas que a busca avança sozinha quando o filtro de título esvazia as primeiras.
     private val MAX_SEARCH_AUTO_PAGES = 5
+    private val SEARCH_CACHE_SIZE = 5
     // Teto de segurança de itens mantidos por canal. A grade é lazy (só compõe os cards visíveis)
     // e cada item são poucos KB de texto: na prática não descarta nada. Se passar disso, o topo é
     // descartado e volta pela página "para cima" (loadPrevious) ao subir perto do início.
@@ -190,11 +230,14 @@ class MediaLibraryViewModel(
             is MediaLibraryAction.SearchChanged -> {
                 searchDebounceJob?.cancel()
                 val query = action.query
+                val hasAttribute = _uiState.value.searchFilters.hasAttribute
                 _uiState.update {
-                    if (query.trim().isEmpty()) {
+                    if (query.trim().isEmpty() && !hasAttribute) {
+                        publishedSearchKey = null
                         it.copy(
                             searchQuery = query,
                             searchResults = emptyList(),
+                            searchSeries = emptyList(),
                             isSearchPending = false,
                             isSearchLoading = false,
                             isSearchLoadingMore = false,
@@ -208,7 +251,7 @@ class MediaLibraryViewModel(
                         )
                     }
                 }
-                if (query.trim().isNotEmpty()) {
+                if (query.trim().isNotEmpty() || hasAttribute) {
                     scheduleSearch(query)
                 }
             }
@@ -217,7 +260,23 @@ class MediaLibraryViewModel(
                 // Enter/ação de busca: dispara já, sem esperar o debounce.
                 searchDebounceJob?.cancel()
                 val q = _uiState.value.searchQuery.trim()
-                if (q.isNotEmpty()) searchCurrentChannel(q)
+                if (q.isNotEmpty() || _uiState.value.searchFilters.hasAttribute) searchCurrentChannel(q)
+            }
+
+            is MediaLibraryAction.SetSearchFilters -> applySearchFilters(action.filters, keepQuery = true)
+
+            is MediaLibraryAction.SearchByFilter -> {
+                // Chip dos Detalhes: lista só por esse gênero/ano (sem texto, tipo = todos).
+                val f = action.filter
+                val filters = when (f.kind) {
+                    com.ntv2.app.feature.media.presentation.state.SearchFilterKind.GENRE ->
+                        com.ntv2.app.feature.media.presentation.state.SearchFilters(genres = setOf(f.value.trim()))
+                    com.ntv2.app.feature.media.presentation.state.SearchFilterKind.YEAR ->
+                        com.ntv2.app.feature.media.presentation.state.SearchFilters(years = setOfNotNull(f.value.trim().toIntOrNull()))
+                    com.ntv2.app.feature.media.presentation.state.SearchFilterKind.ACTOR ->
+                        com.ntv2.app.feature.media.presentation.state.SearchFilters(actor = f.value.trim())
+                }
+                applySearchFilters(filters, keepQuery = false)
             }
 
             MediaLibraryAction.LoadMoreSearch -> loadMoreSearch()
@@ -323,6 +382,7 @@ class MediaLibraryViewModel(
                     // Atualiza o indicador de progresso após voltar da reprodução.
                     projectSections()
                 }
+                refreshVisibleSearchProgress()
             }
 
             MediaLibraryAction.ClearError -> {
@@ -404,7 +464,7 @@ class MediaLibraryViewModel(
     }
 
     /** Carrega a 1ª página do canal ativo (grade plana). */
-    private fun loadActiveChannel(channel: ChannelSummary) {
+    private fun loadActiveChannel(channel: ChannelSummary, keepTab: Boolean = false) {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             clearChannelData()
@@ -418,8 +478,9 @@ class MediaLibraryViewModel(
                     errorMessage = null,
                     emptyState = null,
                     // Troca de canal reinicia a aba e limpa as séries do canal anterior.
-                    libraryTab = com.ntv2.app.feature.media.presentation.state.LibraryTab.MOVIES,
-                    series = emptyList()
+                    libraryTab = if (keepTab) it.libraryTab
+                    else com.ntv2.app.feature.media.presentation.state.LibraryTab.MOVIES,
+                    series = if (keepTab) it.series else emptyList()
                 )
             }
             val query = ""
@@ -479,11 +540,22 @@ class MediaLibraryViewModel(
     private fun loadSeriesForChannel(channelId: Long, channelTitle: String) {
         val idx = searchIndexRepository ?: return
         viewModelScope.launch {
-            if (!runCatching { idx.covers(channelId) }.getOrDefault(false)) return@launch
+            if (!runCatching { idx.covers(channelId) }.getOrDefault(false)) {
+                if (_uiState.value.activeChannelId == channelId) {
+                    _uiState.update { it.copy(searchFilterOptions = com.ntv2.app.feature.media.presentation.state.SearchFilterOptions()) }
+                }
+                return@launch
+            }
             val series = runCatching { idx.allSeries(channelId) }.getOrDefault(emptyList())
                 .map { it.toSeriesSummary(channelId, channelTitle) }
+            val (genres, years) = runCatching { idx.filterOptions(channelId) }.getOrDefault(emptyList<String>() to emptyList())
             if (_uiState.value.activeChannelId != channelId) return@launch
-            _uiState.update { it.copy(series = series) }
+            _uiState.update {
+                it.copy(
+                    series = series,
+                    searchFilterOptions = com.ntv2.app.feature.media.presentation.state.SearchFilterOptions(genres, years)
+                )
+            }
         }
     }
 
@@ -671,6 +743,7 @@ class MediaLibraryViewModel(
             posterUrl = posterUrl,
             backdropUrl = backdropUrl,
             genres = genres,
+            year = year,
             seasons = seasons.map { season ->
                 com.ntv2.app.feature.media.domain.SeasonSummary(
                     number = season.number,
@@ -687,10 +760,147 @@ class MediaLibraryViewModel(
         }
     }
 
+    /** Publica resultados vindos do índice (busca por texto ou por filtro): filmes mais novos primeiro. */
+    private suspend fun publishIndexSearch(
+        query: String,
+        filters: com.ntv2.app.feature.media.presentation.state.SearchFilters,
+        activeId: Long,
+        title: String,
+        movies: List<com.ntv2.app.feature.media.data.index.IndexMovie>,
+        seriesHits: List<com.ntv2.app.feature.media.data.index.IndexSeries>
+    ) {
+        val summaries = dedupByKey(movies.map { it.toSummary(activeId, title) }).newestFirst()
+        val series = seriesHits.map { it.toSeriesSummary(activeId, title) }
+        val episodeIds = series.flatMap { s -> s.seasons.flatMap { it.episodes.map { e -> e.mediaId } } }
+        val saved = withContext(ioDispatcher) {
+            progressStore.savedPositions(summaries.map { it.mediaId } + episodeIds)
+        }
+        val epProgress = episodeIds.associateWith { id ->
+            // saved traz posição em ms; sem duração aqui, tratamos >0 como "iniciado".
+            if ((saved[id] ?: 0L) > 0L) 0.01f else 0f
+        }
+        val cards = summaries.map { it.toCard(saved[it.mediaId] ?: 0L) }
+        var stored = false
+        _uiState.update { current ->
+            if (current.searchQuery.trim() != query || current.searchFilters != filters) current
+            else {
+                stored = true
+                current.copy(
+                    isSearchLoading = false,
+                    isSearchLoadingMore = false,
+                    searchHasMore = false,
+                    searchResults = cards,
+                    searchSeries = series,
+                    episodeProgress = epProgress
+                )
+            }
+        }
+        if (stored) {
+            searchKeyFor(query, filters)?.takeIf { it.channelId == activeId }?.let { key ->
+                searchCache[key] = SearchSnapshot(cards, series, epProgress, _uiState.value.searchActorCount)
+                publishedSearchKey = key
+            }
+        }
+    }
+
+    /** Voltou do player: atualiza o progresso dos resultados de busca em tela e do cache, sem refazer a busca. */
+    private fun refreshVisibleSearchProgress() {
+        val s = _uiState.value
+        if (s.searchResults.isEmpty() && s.searchSeries.isEmpty()) return
+        val shown = publishedSearchKey
+        viewModelScope.launch {
+            val fresh = refreshSearchProgress(s.searchResults, s.searchSeries)
+            _uiState.update { current ->
+                if (current.searchResults.map { it.mediaId } != s.searchResults.map { it.mediaId }) current
+                else current.copy(searchResults = fresh.first, episodeProgress = fresh.second)
+            }
+            if (shown != null) {
+                searchCache[shown]?.let { snap ->
+                    searchCache[shown] = SearchSnapshot(fresh.first, snap.series, fresh.second, snap.actorCount)
+                }
+            }
+        }
+    }
+
+    /**
+     * Progresso atualizado (posição salva) dos cards/episódios de uma busca já pronta: o cache e os
+     * resultados em tela não precisam ser refeitos só porque o usuário assistiu algo.
+     */
+    private suspend fun refreshSearchProgress(
+        cards: List<MediaCardUi>,
+        series: List<com.ntv2.app.feature.media.domain.SeriesSummary>
+    ): Pair<List<MediaCardUi>, Map<String, Float>> {
+        val episodeIds = series.flatMap { s -> s.seasons.flatMap { it.episodes.map { e -> e.mediaId } } }
+        if (cards.isEmpty() && episodeIds.isEmpty()) return cards to emptyMap()
+        val saved = withContext(ioDispatcher) { progressStore.savedPositions(cards.map { it.mediaId } + episodeIds) }
+        val fresh = cards.map { card ->
+            val total = card.durationSeconds * 1_000L
+            val pos = saved[card.mediaId] ?: 0L
+            card.copy(progress = if (total > 0L && pos > 0L) (pos.toFloat() / total).coerceIn(0f, 1f) else 0f)
+        }
+        val epProgress = episodeIds.associateWith { id -> if ((saved[id] ?: 0L) > 0L) 0.01f else 0f }
+        return fresh to epProgress
+    }
+
+    /** Aplica filtros da busca (botão de filtro ou chip dos Detalhes) e refaz a busca, só no canal ativo. */
+    private fun applySearchFilters(
+        filters: com.ntv2.app.feature.media.presentation.state.SearchFilters,
+        keepQuery: Boolean
+    ) {
+        searchDebounceJob?.cancel()
+        val query = if (keepQuery) _uiState.value.searchQuery else ""
+        _uiState.update {
+            it.copy(
+                searchFilters = filters,
+                searchQuery = query,
+                isSearchPending = false,
+                isSearchLoading = false,
+                isSearchLoadingMore = false,
+                searchHasMore = false
+            )
+        }
+        if (query.isBlank() && !filters.hasAttribute) {
+            publishedSearchKey = null
+            _uiState.update { it.copy(searchResults = emptyList(), searchSeries = emptyList()) }
+        } else {
+            searchCurrentChannel(query.trim())
+        }
+    }
+
     private fun searchCurrentChannel(query: String) {
-        if (query.isBlank()) return
+        val filters = _uiState.value.searchFilters
+        if (query.isBlank() && !filters.hasAttribute) return
         val activeId = _uiState.value.activeChannelId ?: return
         val title = channelTitles[activeId] ?: _uiState.value.activeChannelName
+        // Mesma busca já publicada: nada a fazer (só garante que não ficou "pendente").
+        val key = searchKeyFor(query, filters)
+        if (key != null && key == publishedSearchKey && !_uiState.value.isSearchLoading) {
+            if (_uiState.value.isSearchPending) _uiState.update { it.copy(isSearchPending = false) }
+            return
+        }
+        // Já feita há pouco: restaura do cache (atualizando só o progresso) em vez de varrer o índice.
+        val cached = key?.let { searchCache[it] }
+        if (key != null && cached != null) {
+            publishedSearchKey = key
+            viewModelScope.launch {
+                val fresh = refreshSearchProgress(cached.results, cached.series)
+                _uiState.update { current ->
+                    if (current.searchQuery.trim() != query || current.searchFilters != filters) current
+                    else current.copy(
+                        isSearchPending = false,
+                        isSearchLoading = false,
+                        isSearchLoadingMore = false,
+                        searchHasMore = false,
+                        searchResults = fresh.first,
+                        searchSeries = cached.series,
+                        episodeProgress = fresh.second,
+                        searchActorCount = cached.actorCount
+                    )
+                }
+            }
+            return
+        }
+        publishedSearchKey = null
         viewModelScope.launch {
             searchItems.clear()
             searchCursor = 0L
@@ -708,31 +918,21 @@ class MediaLibraryViewModel(
             // Índice local (canal rico): busca instantânea por título, sem TDLib.
             val idx = searchIndexRepository
             if (idx != null && runCatching { idx.covers(activeId) }.getOrDefault(false)) {
-                val movies = runCatching { idx.search(activeId, query) }.getOrDefault(emptyList())
-                val seriesHits = runCatching { idx.searchSeries(activeId, query) }.getOrDefault(emptyList())
-                if (_uiState.value.searchQuery.trim() != query) return@launch
-                val summaries = dedupByKey(movies.map { it.toSummary(activeId, title) })
-                val series = seriesHits.map { it.toSeriesSummary(activeId, title) }
-                val episodeIds = series.flatMap { s -> s.seasons.flatMap { it.episodes.map { e -> e.mediaId } } }
-                val saved = withContext(ioDispatcher) {
-                    progressStore.savedPositions(summaries.map { it.mediaId } + episodeIds)
-                }
-                val epProgress = episodeIds.associateWith { id ->
-                    // saved traz posição em ms; sem duração aqui, tratamos >0 como "iniciado" (fração
-                    // real é recomputada no card). Para o indicador da linha basta marcar em andamento.
-                    if ((saved[id] ?: 0L) > 0L) 0.01f else 0f
-                }
-                _uiState.update { current ->
-                    if (current.searchQuery.trim() != query) current
-                    else current.copy(
-                        isSearchLoading = false,
-                        isSearchLoadingMore = false,
-                        searchHasMore = false,
-                        searchResults = summaries.map { it.toCard(saved[it.mediaId] ?: 0L) },
-                        searchSeries = series,
-                        episodeProgress = epProgress
-                    )
-                }
+                val (allMovies, allSeries) = runCatching {
+                    idx.searchFiltered(activeId, query, filters.genres, filters.years, filters.actor)
+                }.getOrDefault(emptyList<com.ntv2.app.feature.media.data.index.IndexMovie>() to
+                    emptyList<com.ntv2.app.feature.media.data.index.IndexSeries>())
+                val movies = if (filters.type == com.ntv2.app.feature.media.presentation.state.SearchTypeFilter.SERIES) emptyList() else allMovies
+                val seriesHits = if (filters.type == com.ntv2.app.feature.media.presentation.state.SearchTypeFilter.MOVIES) emptyList() else allSeries
+                val actorCount = filters.actor?.let { runCatching { idx.countByActor(activeId, it) }.getOrDefault(0) } ?: 0
+                if (_uiState.value.searchQuery.trim() != query || _uiState.value.searchFilters != filters) return@launch
+                _uiState.update { it.copy(searchActorCount = actorCount) }
+                publishIndexSearch(query, filters, activeId, title, movies, seriesHits)
+                return@launch
+            }
+            // Sem índice só há busca por texto (filtros dependem do índice).
+            if (query.isBlank()) {
+                _uiState.update { it.copy(isSearchLoading = false) }
                 return@launch
             }
             try {
@@ -785,9 +985,13 @@ class MediaLibraryViewModel(
         }
     }
 
+    /** Mais recente primeiro (ano de lançamento); sem ano vai para o fim. Estável: empate mantém a ordem. */
+    private fun List<MediaItemSummary>.newestFirst(): List<MediaItemSummary> =
+        sortedByDescending { it.year ?: Int.MIN_VALUE }
+
     /** Deduplica os itens acumulados da busca, resolve progresso e publica em searchResults. */
     private suspend fun publishSearchResults(query: String, hasMore: Boolean) {
-        val items = dedupByKey(searchItems)
+        val items = dedupByKey(searchItems).newestFirst()
         val savedPositions = withContext(ioDispatcher) {
             progressStore.savedPositions(items.map { it.mediaId })
         }
@@ -806,7 +1010,7 @@ class MediaLibraryViewModel(
     private fun loadFirstPages() {
         val activeId = _uiState.value.activeChannelId ?: return
         val title = channelTitles[activeId] ?: _uiState.value.activeChannelName
-        loadActiveChannel(ChannelSummary(id = activeId, title = title, avatarPath = null))
+        loadActiveChannel(ChannelSummary(id = activeId, title = title, avatarPath = null), keepTab = true)
     }
 
     /** Carrega a próxima página de um canal específico e a acrescenta. */
@@ -1151,6 +1355,18 @@ class MediaLibraryViewModel(
         currentChannelsCount == 0 -> MediaLibraryEmptyState.NoChannelsSelected
         sections.isEmpty() -> MediaLibraryEmptyState.NoVideosFound
         else -> null
+    }
+
+    /** Itens da Minha lista/Histórico podem não estar na grade carregada (cache de detalhes vazio):
+     *  busca os metadados no índice local antes de abrir os Detalhes. */
+    suspend fun ensureDetails(media: MediaCardUi) {
+        if (mediaDetailsCache.get(media.mediaId) != null) return
+        val idx = searchIndexRepository ?: return
+        val messageId = media.mediaId.substringAfterLast('_').toLongOrNull() ?: return
+        val movie = runCatching { idx.movieByMessage(media.channelId, messageId) }.getOrNull() ?: return
+        movie.toSummary(media.channelId, media.channelName)
+            .copy(durationSeconds = media.durationSeconds)
+            .toCard(0L)
     }
 
     /** Detalhes ricos para a tela de Detalhes (lidos do cache por mediaId). */

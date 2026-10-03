@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +63,8 @@ import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.feature.media.domain.MediaItemSummary
 import com.ntv2.app.feature.media.domain.SeasonSummary
 import com.ntv2.app.feature.media.domain.SeriesSummary
+import com.ntv2.app.feature.media.presentation.state.SearchFilter
+import com.ntv2.app.feature.media.presentation.state.SearchFilterKind
 
 /**
  * Detalhes de uma série: arte + seletor de temporada + lista de episódios em ordem. Cada linha
@@ -77,7 +80,8 @@ internal fun SeriesDetailsOverlay(
     showCovers: Boolean,
     // (episódio, próximo da série ou null) — o próximo alimenta o autoplay no player.
     onPlayEpisode: (MediaItemSummary, MediaItemSummary?) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onFilterClick: (SearchFilter) -> Unit = {}
 ) {
     BackHandler(enabled = true) { onClose() }
     val isTv = rememberAdaptiveLayoutInfo().useTvLayout
@@ -127,13 +131,7 @@ internal fun SeriesDetailsOverlay(
                 ) {
                     SeriesHero(series, showCovers)
                     Text(series.title, color = Color.White, style = MaterialTheme.typography.headlineSmall)
-                    if (series.genres.isNotEmpty()) {
-                        Text(
-                            series.genres.joinToString(" • "),
-                            color = Color(0xFF9A9A9A),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
+                    SeriesFilterChips(series, onFilterClick)
                     nextEpisode?.let { ep ->
                         PlayButton(
                             label = "Assistir ${ep.episodeCode()}",
@@ -209,14 +207,10 @@ internal fun SeriesDetailsOverlay(
                             )
                         }
                         SeriesHero(series, showCovers)
-                        if (series.genres.isNotEmpty()) {
-                            Text(
-                                series.genres.joinToString(" • "),
-                                color = Color(0xFF9A9A9A),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                            )
-                        }
+                        SeriesFilterChips(
+                            series, onFilterClick,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                        )
                         nextEpisode?.let { ep ->
                             Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                                 PlayButton(
@@ -234,6 +228,48 @@ internal fun SeriesDetailsOverlay(
                         onPlayEpisode(ep, successorOf(ep))
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Chips da série: linha de cima com os informativos (temporadas, episódios, qualidade; não
+ * clicáveis) e, numa linha exclusiva logo abaixo, ano e gêneros (clicáveis: listam as mídias do canal).
+ */
+@Composable
+private fun SeriesFilterChips(
+    series: SeriesSummary,
+    onFilterClick: (SearchFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val seasons = series.seasons.count { it.episodes.isNotEmpty() }
+    val episodes = series.seasons.sumOf { it.episodes.size }
+    val quality = series.seasons.asSequence().flatMap { it.episodes.asSequence() }
+        .firstNotNullOfOrNull { it.quality?.takeIf { q -> q.isNotBlank() } }
+        ?.trim()?.replace(Regex("\\s*,\\s*"), " • ")
+    val genres = series.genres.map { it.trim() }.filter { it.isNotEmpty() }
+    if (seasons == 0 && quality == null && series.year == null && genres.isEmpty()) return
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (seasons > 0 || quality != null) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (seasons > 0) MetaChip(if (seasons == 1) "1 temporada" else "$seasons temporadas")
+                if (episodes > 0) MetaChip(if (episodes == 1) "1 episódio" else "$episodes episódios")
+                quality?.let { MetaChip(it) }
+            }
+        }
+        if (series.year != null || genres.isNotEmpty()) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                series.year?.let { y -> MetaChip(y.toString()) { onFilterClick(SearchFilter(SearchFilterKind.YEAR, y.toString())) } }
+                genres.forEach { g -> MetaChip(g) { onFilterClick(SearchFilter(SearchFilterKind.GENRE, g)) } }
             }
         }
     }

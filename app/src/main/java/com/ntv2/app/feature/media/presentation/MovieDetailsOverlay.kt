@@ -75,6 +75,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.feature.media.domain.MovieDetails
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
+import com.ntv2.app.feature.media.presentation.state.SearchFilter
+import com.ntv2.app.feature.media.presentation.state.SearchFilterKind
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
@@ -105,7 +107,8 @@ internal fun MovieDetailsOverlay(
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     recommendations: List<MediaCardUi> = emptyList(),
-    onRecommendationClick: (MediaCardUi) -> Unit = {}
+    onRecommendationClick: (MediaCardUi) -> Unit = {},
+    onFilterClick: (SearchFilter) -> Unit = {}
 ) {
     BackHandler(enabled = true) { onDismiss() }
     var reporting by remember { mutableStateOf(false) }
@@ -174,7 +177,8 @@ internal fun MovieDetailsOverlay(
                     isFavorite = isFavorite,
                     onToggleFavorite = onToggleFavorite,
                     recommendations = recommendations,
-                    onRecommendationClick = onRecommendationClick
+                    onRecommendationClick = onRecommendationClick,
+                    onFilterClick = onFilterClick
                 )
             }
         } else {
@@ -228,7 +232,8 @@ internal fun MovieDetailsOverlay(
                         onToggleFavorite = onToggleFavorite,
                         // As recomendações vão nas fileiras full-width abaixo (não inline na coluna).
                         showInlineRecommendations = false,
-                        onRecommendationClick = onRecommendationClick
+                        onRecommendationClick = onRecommendationClick,
+                        onFilterClick = onFilterClick
                     )
                 }
                 if (showRecommendations) {
@@ -335,7 +340,8 @@ internal fun DetailsInfo(
     onToggleFavorite: () -> Unit = {},
     recommendations: List<MediaCardUi> = emptyList(),
     onRecommendationClick: (MediaCardUi) -> Unit = {},
-    showInlineRecommendations: Boolean = true
+    showInlineRecommendations: Boolean = true,
+    onFilterClick: (SearchFilter) -> Unit = {}
 ) {
     val title = details?.title ?: media.title
     val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
@@ -345,7 +351,7 @@ internal fun DetailsInfo(
         details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
             Text(it, color = Color(0xFFC9C9C9), style = MaterialTheme.typography.titleMedium)
         }
-        DetailMetaRow(details, durationSecs)
+        DetailMetaRow(details, durationSecs, onFilterClick)
         if (showPlaybackWarning) {
             Text(
                 text = "Este aparelho pode tocar apenas o som em vídeos 1080p. Prefira versão 720p quando disponível.",
@@ -385,11 +391,17 @@ internal fun DetailsInfo(
                     // anterior, em vez de a fileira inteira piscar junto.
                     var castVisible by remember(cast) { mutableStateOf(false) }
                     LaunchedEffect(cast) { castVisible = true }
-                    cast.take(8).forEachIndexed { index, c ->
+                    cast.forEachIndexed { index, c ->
+                        var actorFocused by remember { mutableStateOf(false) }
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.width(76.dp)
                                 .fadeInUpStaggered(castVisible, index, animationsEnabled)
+                                .clip(RoundedCornerShape(10.dp))
+                                .onFocusChanged { actorFocused = it.isFocused }
+                                .clickable { onFilterClick(SearchFilter(SearchFilterKind.ACTOR, c.name)) }
+                                .then(if (actorFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
+                                .padding(2.dp)
                         ) {
                             if (c.photoUrl != null) {
                                 val castTiming = imageTiming("elenco#$index", c.photoUrl)
@@ -409,7 +421,15 @@ internal fun DetailsInfo(
                     }
                 }
             } else {
-                Text("Elenco: ${cast.joinToString(", ") { it.name }}", color = Color(0xFFB6B6B6), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    cast.forEach { c ->
+                        MetaChip(c.name) { onFilterClick(SearchFilter(SearchFilterKind.ACTOR, c.name)) }
+                    }
+                }
             }
         }
 
@@ -643,41 +663,78 @@ private fun continueLabel(media: MediaCardUi): String {
     return "Continuar • ${durationLabel(watched)}"
 }
 
-/** Metadados no estilo do protótipo: nota verde com estrela + chips com borda (idade/qualidade/gênero). */
+/** Metadados no estilo do protótipo: nota verde com estrela + chips com borda (idade/qualidade/gênero).
+ *  Ano e gêneros são clicáveis: listam as mídias do canal com esse ano/gênero. */
 @Composable
-private fun DetailMetaRow(details: MovieDetails?, durationSecs: Int) {
-    Row(
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        details?.rating?.let { rating ->
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Star, contentDescription = null, tint = BRAND_GREEN, modifier = Modifier.size(15.dp))
-                Text("%.1f".format(rating), color = BRAND_GREEN, style = MaterialTheme.typography.titleSmall)
+private fun DetailMetaRow(details: MovieDetails?, durationSecs: Int, onFilterClick: (SearchFilter) -> Unit) {
+    // Linha 1: informativos (não clicáveis). Linha 2, exclusiva: ano e gêneros (clicáveis).
+    val bullet = Regex("\\s*,\\s*")
+    val genres = details?.genres?.split(',', ';', '/', '•')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            details?.rating?.let { rating ->
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Star, contentDescription = null, tint = BRAND_GREEN, modifier = Modifier.size(15.dp))
+                    Text("%.1f".format(rating), color = BRAND_GREEN, style = MaterialTheme.typography.titleSmall)
+                }
+            }
+            if (durationSecs > 0) MetaText(durationLabel(durationSecs))
+            details?.ageRating?.takeIf { it.isNotBlank() }?.let { MetaChip(it.trim().replace(bullet, " • ")) }
+            details?.quality?.takeIf { it.isNotBlank() }?.let { MetaChip(it.trim().replace(bullet, " • ")) }
+        }
+        if (details?.year != null || genres.isNotEmpty()) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                details?.year?.let { year ->
+                    MetaText(year.toString()) { onFilterClick(SearchFilter(SearchFilterKind.YEAR, year.toString())) }
+                }
+                genres.forEach { genre ->
+                    MetaChip(genre) { onFilterClick(SearchFilter(SearchFilterKind.GENRE, genre)) }
+                }
             }
         }
-        details?.year?.let { MetaText(it.toString()) }
-        if (durationSecs > 0) MetaText(durationLabel(durationSecs))
-        details?.ageRating?.takeIf { it.isNotBlank() }?.let { MetaChip(it) }
-        details?.quality?.takeIf { it.isNotBlank() }?.let { MetaChip(it) }
-        details?.genres?.takeIf { it.isNotBlank() }?.let { MetaChip(it) }
     }
 }
 
 @Composable
-private fun MetaText(text: String) {
-    Text(text, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.titleSmall)
-}
-
-@Composable
-private fun MetaChip(text: String) {
+private fun MetaText(text: String, onClick: (() -> Unit)? = null) {
+    if (onClick == null) {
+        Text(text, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.titleSmall)
+        return
+    }
+    var focused by remember { mutableStateOf(false) }
     Text(
         text,
-        color = Color(0xFFCFCFCF),
+        color = if (focused) Color.White else Color(0xFF8A8A8A),
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .then(if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+    )
+}
+
+/** Chip com borda; com [onClick] é focável (D-pad) e clicável (toque). */
+@Composable
+internal fun MetaChip(text: String, onClick: (() -> Unit)? = null) {
+    var focused by remember { mutableStateOf(false) }
+    Text(
+        text,
+        color = if (focused) Color.White else Color(0xFFCFCFCF),
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier
-            .border(1.dp, Color(0xFF33343A), RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp))
+            .then(if (onClick != null) Modifier.onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick) else Modifier)
+            .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF33343A), RoundedCornerShape(20.dp))
             .padding(horizontal = 12.dp, vertical = 4.dp)
     )
 }

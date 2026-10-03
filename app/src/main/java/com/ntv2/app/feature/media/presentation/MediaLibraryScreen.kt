@@ -18,8 +18,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.runtime.Composable
@@ -64,7 +64,7 @@ import com.ntv2.app.feature.media.presentation.state.MediaLibraryEmptyState
 import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryAction
 import com.ntv2.app.feature.media.presentation.viewmodel.MediaLibraryViewModel
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MediaLibraryScreen(
     viewModel: MediaLibraryViewModel,
@@ -430,19 +430,13 @@ fun MediaLibraryScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(if (useTvLayout) Modifier else Modifier.statusBarsPadding())
                     .padding(
                         horizontal = if (useTvLayout) 24.dp else 14.dp,
                         vertical = if (useTvLayout) 20.dp else 12.dp
                     ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (!useTvLayout) {
-                    CompactLibraryActions(
-                        firstItemFocus = initialActionsFocus,
-                        onSearch = { searching = true },
-                        onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) }
-                    )
-                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -488,10 +482,8 @@ fun MediaLibraryScreen(
                 // As trilhas de personalização entram como CABEÇALHO da grade (rolam junto com os
                 // cards), para o D-pad descer da trilha para a grade e a grade nunca ser empurrada
                 // para fora da tela.
-                // TV: a Minha lista fica no rail (com o Histórico), não na grade.
-                val showMyListTrack = !useTvLayout && state.myList.isNotEmpty()
-                val hasTracks = state.continueWatching.isNotEmpty() ||
-                    showMyListTrack || state.recommendations.isNotEmpty()
+                // A Minha lista fica no rail (TV) / aba "Meu" (celular), não na grade.
+                val hasTracks = state.continueWatching.isNotEmpty() || state.recommendations.isNotEmpty()
                 val libraryHeader: (@Composable () -> Unit)? = if (!hasTracks) null else {
                     {
                         Column(
@@ -501,15 +493,6 @@ fun MediaLibraryScreen(
                             if (state.continueWatching.isNotEmpty()) {
                                 ContinueWatchingRow(
                                     items = state.continueWatching,
-                                    showCovers = state.showCovers,
-                                    useTvLayout = useTvLayout,
-                                    onCardClick = openDetails
-                                )
-                            }
-                            if (showMyListTrack) {
-                                PosterTrackRow(
-                                    label = "Minha lista",
-                                    items = state.myList,
                                     showCovers = state.showCovers,
                                     useTvLayout = useTvLayout,
                                     onCardClick = openDetails
@@ -528,7 +511,7 @@ fun MediaLibraryScreen(
                     }
                 }
 
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                val gridContent: @Composable () -> Unit = {
                 if (state.libraryTab == com.ntv2.app.feature.media.presentation.state.LibraryTab.SERIES) {
                     LazySeriesGrid(
                         series = state.series,
@@ -536,6 +519,8 @@ fun MediaLibraryScreen(
                         state = seriesGridState,
                         focusRequesterFor = { id -> cardFocusRequesters.getOrPut(id) { FocusRequester() } },
                         onCardFocused = { id -> lastFocusedSeriesId = id },
+                        cardLoadingStyle = state.cardLoadingStyle,
+                        animationsEnabled = state.animationsEnabled,
                         onSeriesClick = { s ->
                             viewModel.onAction(MediaLibraryAction.OpenSeries(s))
                             seriesFromSearch = false
@@ -624,6 +609,16 @@ fun MediaLibraryScreen(
                     }
                 }
                 }
+                if (useTvLayout) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) { gridContent() }
+                } else {
+                    // Celular: atualizar a listagem puxando a tela para baixo.
+                    PullToRefreshBox(
+                        isRefreshing = state.isLoading,
+                        onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
+                        modifier = Modifier.weight(1f).fillMaxWidth()
+                    ) { gridContent() }
+                }
             }
         }
 
@@ -633,6 +628,7 @@ fun MediaLibraryScreen(
                 onLibrary = { showMyStuff = false },
                 onChannels = { channelPicker = true },
                 onSettings = onOpenSettings,
+                onSearch = { searching = true },
                 onMyStuff = { showMyStuff = true },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
@@ -648,7 +644,10 @@ fun MediaLibraryScreen(
                     showMyStuff = false
                     viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                     viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
-                    detailsMedia = media
+                    scope.launch {
+                        viewModel.ensureDetails(media)
+                        detailsMedia = media
+                    }
                 },
                 onContinue = { media ->
                     showMyStuff = false
@@ -688,6 +687,16 @@ fun MediaLibraryScreen(
                     viewModel.onAction(MediaLibraryAction.DetailsOpened(rec))
                     detailsMedia = rec
                 },
+                onFilterClick = { filter ->
+                    // Chip de ano/gênero: fecha os Detalhes e lista as mídias do canal; ao fechar um
+                    // Detalhe aberto a partir da lista, a busca reabre (searchReturnMediaId).
+                    searchReturnMediaId = media.mediaId
+                    detailsMedia = null
+                    viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
+                    viewModel.onAction(MediaLibraryAction.DetailsClosed(media.mediaId))
+                    viewModel.onAction(MediaLibraryAction.SearchByFilter(filter))
+                    searching = true
+                },
                 onDismiss = {
                     detailsMedia = null
                     viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
@@ -717,7 +726,10 @@ fun MediaLibraryScreen(
                     myListReturnMediaId = media.mediaId
                     viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                     viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
-                    detailsMedia = media
+                    scope.launch {
+                        viewModel.ensureDetails(media)
+                        detailsMedia = media
+                    }
                 },
                 onContinue = { media ->
                     showHistory = false
@@ -766,13 +778,15 @@ fun MediaLibraryScreen(
 
         if (searching) {
             val searchInProgress = state.isSearchPending || state.isSearchLoading
-            val resultCount = if (state.searchQuery.isBlank() || searchInProgress) 0 else state.searchResults.size
+            val filtersActive = state.searchFilters.hasAttribute
+            val searchHidden = (state.searchQuery.isBlank() && !filtersActive) || searchInProgress
+            val resultCount = if (searchHidden) 0 else state.searchResults.size
             if (useTvLayout) {
                 TvSearchOverlay(
-                    query = state.searchQuery,
+                    query = state.searchQuery.ifBlank { state.searchFilters.label },
                     resultCount = resultCount,
                     searchInProgress = searchInProgress,
-                    results = if (state.searchQuery.isBlank() || searchInProgress) emptyList() else state.searchResults,
+                    results = if (searchHidden) emptyList() else state.searchResults,
                     hasMore = state.searchHasMore,
                     loadingMore = state.isSearchLoadingMore,
                     restoreFocusMediaId = searchReturnMediaId,
@@ -787,29 +801,36 @@ fun MediaLibraryScreen(
                         detailsMedia = media
                         searching = false
                     },
-                    series = if (state.searchQuery.isBlank() || searchInProgress) emptyList() else state.searchSeries,
+                    series = if (searchHidden) emptyList() else state.searchSeries,
                     onSeriesSelect = { s -> seriesFromSearch = true; openSeriesTmdbId = s.tmdbId; searching = false },
+                    textEnabled = state.searchFilters.actor == null,
                     onKey = { c ->
-                        viewModel.onAction(MediaLibraryAction.SearchChanged(state.searchQuery + c))
+                        if (state.searchFilters.actor == null) {
+                            viewModel.onAction(MediaLibraryAction.SearchChanged(state.searchQuery + c))
+                        }
                     },
                     onBackspace = {
                         val q = state.searchQuery
-                        if (q.isNotEmpty()) {
+                        if (q.isNotEmpty() && state.searchFilters.actor == null) {
                             viewModel.onAction(MediaLibraryAction.SearchChanged(q.dropLast(1)))
                         }
                     },
-                    onClear = { viewModel.onAction(MediaLibraryAction.SearchChanged("")) },
+                    onClear = {
+                        viewModel.onAction(MediaLibraryAction.SearchChanged(""))
+                        viewModel.onAction(MediaLibraryAction.SetSearchFilters(com.ntv2.app.feature.media.presentation.state.SearchFilters()))
+                    },
                     onClose = {
                         searching = false
                         searchReturnMediaId = null
                         viewModel.onAction(MediaLibraryAction.SearchChanged(""))
+                        viewModel.onAction(MediaLibraryAction.SetSearchFilters(com.ntv2.app.feature.media.presentation.state.SearchFilters()))
                     }
                 )
             } else {
                 TouchSearchOverlay(
                     query = state.searchQuery,
                     searchInProgress = searchInProgress,
-                    suggestions = if (state.searchQuery.isBlank() || searchInProgress) emptyList() else state.searchResults,
+                    suggestions = if (searchHidden) emptyList() else state.searchResults,
                     hasMore = state.searchHasMore,
                     loadingMore = state.isSearchLoadingMore,
                     onQueryChange = { viewModel.onAction(MediaLibraryAction.SearchChanged(it)) },
@@ -818,6 +839,7 @@ fun MediaLibraryScreen(
                         searching = false
                         searchReturnMediaId = null
                         viewModel.onAction(MediaLibraryAction.SearchChanged(""))
+                        viewModel.onAction(MediaLibraryAction.SetSearchFilters(com.ntv2.app.feature.media.presentation.state.SearchFilters()))
                     },
                     onLoadMore = { viewModel.onAction(MediaLibraryAction.LoadMoreSearch) },
                     onSubmit = { viewModel.onAction(MediaLibraryAction.SubmitSearch) },
@@ -829,8 +851,14 @@ fun MediaLibraryScreen(
                         detailsMedia = media
                         searching = false
                     },
-                    series = if (state.searchQuery.isBlank() || searchInProgress) emptyList() else state.searchSeries,
-                    onSeriesSelect = { s -> seriesFromSearch = true; openSeriesTmdbId = s.tmdbId; searching = false }
+                    series = if (searchHidden) emptyList() else state.searchSeries,
+                    onSeriesSelect = { s -> seriesFromSearch = true; openSeriesTmdbId = s.tmdbId; searching = false },
+                    cardLoadingStyle = state.cardLoadingStyle,
+                    animationsEnabled = state.animationsEnabled,
+                    filters = state.searchFilters,
+                    filterOptions = state.searchFilterOptions,
+                    onFiltersChange = { viewModel.onAction(MediaLibraryAction.SetSearchFilters(it)) },
+                    actorCount = state.searchActorCount
                 )
             }
         }
@@ -844,6 +872,13 @@ fun MediaLibraryScreen(
                     viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                     viewModel.onAction(MediaLibraryAction.OpenEpisode(ep, next))
                 },
+                onFilterClick = { filter ->
+                    seriesFromSearch = true
+                    openSeriesTmdbId = -1L
+                    viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
+                    viewModel.onAction(MediaLibraryAction.SearchByFilter(filter))
+                    searching = true
+                },
                 onClose = {
                     openSeriesTmdbId = -1L
                     viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
@@ -851,63 +886,6 @@ fun MediaLibraryScreen(
                 }
             )
         }
-    }
-}
-
-@Composable
-internal fun CompactLibraryActions(
-    firstItemFocus: FocusRequester,
-    onSearch: () -> Unit,
-    onRefresh: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        CompactLibraryChip(
-            icon = Icons.Filled.Search,
-            contentDescription = "Busca",
-            modifier = Modifier.focusRequester(firstItemFocus),
-            onClick = onSearch
-        )
-        CompactLibraryChip(
-            icon = Icons.Filled.Refresh,
-            contentDescription = "Atualizar",
-            onClick = onRefresh
-        )
-    }
-}
-
-// Botão de ação da biblioteca no celular: circular, só ícone, com contraste (círculo escuro +
-// borda visível) e destaque de foco (fundo branco / ícone escuro).
-@Composable
-internal fun CompactLibraryChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier
-            .size(46.dp)
-            .clip(CircleShape)
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color(0xFF2C2C2E))
-            .border(1.dp, if (focused) Color.White else Color(0x66FFFFFF), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            icon,
-            contentDescription = contentDescription,
-            tint = if (focused) Color.Black else Color.White,
-            modifier = Modifier.size(24.dp)
-        )
     }
 }
 

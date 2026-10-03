@@ -376,15 +376,17 @@ fun AppNavHost(
             arguments = listOf(
                 navArgument("mediaId") { type = NavType.StringType },
                 navArgument("fileId") { type = NavType.IntType },
-                navArgument("title") { type = NavType.StringType },
-                navArgument("channel") { type = NavType.StringType },
+                navArgument("title") { type = NavType.StringType; nullable = true },
+                navArgument("channel") { type = NavType.StringType; nullable = true },
                 navArgument("duration") { type = NavType.IntType },
                 navArgument("fileName") {
                     type = NavType.StringType
+                    nullable = true
                     defaultValue = ""
                 },
                 navArgument("thumbnail") {
                     type = NavType.StringType
+                    nullable = true
                     defaultValue = ""
                 }
             )

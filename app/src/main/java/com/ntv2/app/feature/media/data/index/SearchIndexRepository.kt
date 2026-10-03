@@ -64,6 +64,10 @@ data class IndexSeries(
     val genres: List<String>,
     val seasons: List<IndexSeason>
 ) {
+    /** Ano da série = ano do 1º episódio (menor temporada/episódio) que traz data de exibição. */
+    val year: Int? = seasons.asSequence().flatMap { it.episodes.asSequence() }
+        .firstNotNullOfOrNull { e -> e.airDate?.take(4)?.toIntOrNull() }
+
     /** Chave de busca: título da série + títulos dos episódios + códigos SxxExx. */
     val searchKey: String = normalizeForIndex(
         buildString {
@@ -85,7 +89,12 @@ private data class LoadedIndex(
     val series: List<IndexSeries> = emptyList(),
     /** Quando o bot gerou o índice ("generated_at"), em ms; null se o JSON não trouxer. */
     val generatedAtMillis: Long? = null
-)
+) {
+    /** Nomes do elenco normalizados de cada filme (paralelo a [movies]); montado 1x, sob demanda. */
+    val movieActorKeys: List<Set<String>> by lazy {
+        movies.map { m -> m.cast.map { normalizeForIndex(it.name).trim() }.toSet() }
+    }
+}
 
 /** Situação do índice para a tela de Configurações. */
 data class SearchIndexStatus(
@@ -302,6 +311,70 @@ class SearchIndexRepository(
             .filter { s -> tokens.all { s.searchKey.contains(it) } }
             .take(limit)
             .toList()
+    }
+
+    /**
+     * Busca no índice combinando texto (opcional), gêneros (todos os marcados) e anos (qualquer um; série: ano do 1º episódio). Com texto
+     * limita a 60 resultados (como a busca simples); só com filtro devolve todos.
+     */
+    suspend fun searchFiltered(
+        channelId: Long,
+        query: String,
+        genres: Set<String>,
+        years: Set<Int>,
+        actor: String? = null,
+        limit: Int = 60
+    ): Pair<List<IndexMovie>, List<IndexSeries>> {
+        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return emptyList<IndexMovie>() to emptyList()
+        val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
+        val wanted = genres.map { normalizeForIndex(it).trim() }
+        fun genreOk(have: List<String>): Boolean {
+            if (wanted.isEmpty()) return true
+            val keys = have.map { normalizeForIndex(it).trim() }.toSet()
+            return wanted.all { it in keys }
+        }
+        fun <T> Sequence<T>.cap() = if (tokens.isEmpty()) this else take(limit)
+        val actorKey = actor?.let { normalizeForIndex(it).trim() }
+        val actorKeys = if (actorKey != null) idx.movieActorKeys else emptyList()
+        val movies = idx.movies.asSequence().withIndex()
+            .filter { (i, _) -> actorKey == null || actorKey in actorKeys[i] }
+            .map { it.value }
+            .filter { m ->
+                tokens.all { m.searchKey.contains(it) } && genreOk(m.genres) &&
+                    (years.isEmpty() || m.year?.take(4)?.toIntOrNull() in years)
+            }.cap().toList()
+        // Séries não trazem elenco no índice: com filtro de ator não entram.
+        val series = (if (actorKey != null) emptySequence() else idx.series.asSequence())
+            .filter { sr -> tokens.all { sr.searchKey.contains(it) } && genreOk(sr.genres) && (years.isEmpty() || sr.year in years) }
+            .cap().toList()
+        return movies to series
+    }
+
+    /** Quantos filmes do canal têm [actor] no elenco. */
+    suspend fun countByActor(channelId: Long, actor: String): Int {
+        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return 0
+        val key = normalizeForIndex(actor).trim()
+        return idx.movieActorKeys.count { key in it }
+    }
+
+    /** Gêneros (A-Z) e anos (mais recente primeiro) existentes no índice do canal, para o filtro. */
+    suspend fun filterOptions(channelId: Long): Pair<List<String>, List<Int>> {
+        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return emptyList<String>() to emptyList()
+        val genres = LinkedHashMap<String, String>()
+        (idx.movies.flatMap { it.genres } + idx.series.flatMap { it.genres }).forEach { g ->
+            val label = g.trim()
+            if (label.isNotEmpty()) genres.putIfAbsent(normalizeForIndex(label).trim(), label)
+        }
+        val years = (idx.movies.mapNotNull { it.year?.take(4)?.toIntOrNull() } + idx.series.mapNotNull { it.year })
+            .toSortedSet(compareByDescending { it })
+        return genres.values.sortedBy { normalizeForIndex(it) } to years.toList()
+    }
+
+    /** Filme do índice pelo id da mensagem do vídeo (metadados dos Detalhes de itens fora da grade). */
+    suspend fun movieByMessage(channelId: Long, messageId: Long): IndexMovie? {
+        val idx = ensureLoaded() ?: return null
+        if (idx.channelId != channelId) return null
+        return idx.movies.firstOrNull { it.videoMessageId == messageId }
     }
 
     /** Busca local por título/título original (sem acento/caixa). Vazio se não cobrir o canal. */

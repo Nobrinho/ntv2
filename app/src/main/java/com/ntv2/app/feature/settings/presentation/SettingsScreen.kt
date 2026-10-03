@@ -294,6 +294,7 @@ fun SettingsScreen(
                 onLibrary = onOpenLibrary,
                 onChannels = onOpenListedChannels,
                 onSettings = {},
+                onSearch = onSearch,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }

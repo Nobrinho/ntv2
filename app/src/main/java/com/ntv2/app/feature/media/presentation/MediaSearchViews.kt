@@ -27,6 +27,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.grid.items
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -43,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -63,6 +67,9 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
+import com.ntv2.app.feature.media.presentation.state.SearchFilterOptions
+import com.ntv2.app.feature.media.presentation.state.SearchFilters
+import com.ntv2.app.feature.media.presentation.state.SearchTypeFilter
 
 // Busca da biblioteca: teclado de TV, busca por toque e lista de resultados.
 
@@ -133,7 +140,9 @@ internal fun TvSearchOverlay(
     onSelect: (MediaCardUi) -> Unit,
     onClose: () -> Unit,
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
-    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {}
+    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {},
+    // false na busca por elenco: teclado e campo ficam esmaecidos (o screen ignora as teclas).
+    textEnabled: Boolean = true
 ) {
     val scope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -269,9 +278,13 @@ internal fun TvSearchOverlay(
                             .padding(horizontal = 16.dp, vertical = 14.dp)
                     ) {
                         Text(
-                            text = if (query.isEmpty()) "Digite para buscar por título, canal ou arquivo" else "$query|",
-                            color = if (query.isEmpty()) Color(0xFF9A9A9A) else Color.White,
-                            style = if (query.isEmpty()) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleLarge,
+                            text = when {
+                                !textEnabled -> "Elenco: $query"
+                                query.isEmpty() -> "Digite para buscar por título, canal ou arquivo"
+                                else -> "$query|"
+                            },
+                            color = if (query.isEmpty() || !textEnabled) Color(0xFF9A9A9A) else Color.White,
+                            style = if (query.isEmpty() || !textEnabled) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleLarge,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -291,7 +304,10 @@ internal fun TvSearchOverlay(
                         } else false
                     }
 
-                    Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                    Column(
+                        modifier = Modifier.alpha(if (textEnabled) 1f else 0.35f),
+                        verticalArrangement = Arrangement.spacedBy(gap)
+                    ) {
                         KEYBOARD_ROWS.forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                                 row.forEachIndexed { colIndex, c ->
@@ -436,15 +452,26 @@ internal fun TouchSearchOverlay(
     onSubmit: () -> Unit,
     onSelect: (MediaCardUi) -> Unit,
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
-    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {}
+    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {},
+    cardLoadingStyle: com.ntv2.app.core.ui.CardLoadingStyle = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT,
+    animationsEnabled: Boolean = true,
+    filters: SearchFilters = SearchFilters(),
+    filterOptions: SearchFilterOptions = SearchFilterOptions(),
+    onFiltersChange: (SearchFilters) -> Unit = {},
+    actorCount: Int = 0
 ) {
+    var showFilterSheet by remember { mutableStateOf(false) }
     val fieldFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
 
+    // Busca por elenco (toque num ator): o texto fica desabilitado, o filtro é o ator.
+    val actorMode = filters.actor != null
     LaunchedEffect(Unit) {
-        fieldFocus.requestFocus()
-        keyboard?.show()
+        if (!actorMode) {
+            fieldFocus.requestFocus()
+            keyboard?.show()
+        }
     }
     BackHandler(enabled = true) { onClose() }
 
@@ -488,6 +515,7 @@ internal fun TouchSearchOverlay(
                 androidx.compose.foundation.text.BasicTextField(
                     value = query,
                     onValueChange = onQueryChange,
+                    enabled = !actorMode,
                     modifier = Modifier
                         .weight(1f)
                         .focusRequester(fieldFocus),
@@ -499,8 +527,10 @@ internal fun TouchSearchOverlay(
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
                             if (query.isEmpty()) {
                                 androidx.compose.material3.Text(
-                                    "Pesquisar",
+                                    if (actorMode) "Elenco: ${filters.actor}" else "Pesquisar",
                                     color = Color(0xFF9A9A9A),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     style = androidx.compose.material3.MaterialTheme.typography.titleMedium
                                 )
                             }
@@ -525,37 +555,352 @@ internal fun TouchSearchOverlay(
                     }
                 }
             }
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF252525)),
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.material3.Icon(
-                    Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(26.dp)
-                )
+            if (filterOptions.isAvailable) {
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(CircleShape)
+                        .background(if (filters.isActive) BRAND_GREEN else Color(0xFF252525))
+                        .clickable { keyboard?.hide(); showFilterSheet = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.Icon(
+                        Icons.Filled.FilterList,
+                        contentDescription = "Filtros",
+                        tint = if (filters.isActive) Color.Black else Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
             }
         }
 
-        SearchResultsList(
+        ActiveFilterChips(filters, actorCount, onFiltersChange)
+
+        TouchSearchResultsGrid(
             query = query,
             searchInProgress = searchInProgress,
             results = suggestions,
             hasMore = hasMore,
             loadingMore = loadingMore,
-            listState = listState,
+            gridState = gridState,
             onLoadMore = onLoadMore,
             onSelect = onSelect,
             series = series,
             onSeriesSelect = onSeriesSelect,
+            cardLoadingStyle = cardLoadingStyle,
+            animationsEnabled = animationsEnabled,
+            filtersActive = filters.hasAttribute,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
         )
+    }
+
+    if (showFilterSheet) {
+        SearchFilterSheet(
+            filters = filters,
+            options = filterOptions,
+            onChange = onFiltersChange,
+            onDismiss = { showFilterSheet = false }
+        )
+    }
+}
+
+/** Chips dos filtros ativos (gênero/ano/tipo), cada um com "x" para remover. */
+@Composable
+private fun ActiveFilterChips(filters: SearchFilters, actorCount: Int, onChange: (SearchFilters) -> Unit) {
+    if (!filters.isActive) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (filters.type != SearchTypeFilter.ALL) {
+            RemovableChip(filters.type.label) { onChange(filters.copy(type = SearchTypeFilter.ALL)) }
+        }
+        filters.actor?.let { a ->
+            val count = if (actorCount == 1) "1 filme" else "$actorCount filmes"
+            RemovableChip(if (actorCount > 0) "$a \u2022 $count" else a) { onChange(filters.copy(actor = null)) }
+        }
+        filters.genres.forEach { g -> RemovableChip(g) { onChange(filters.copy(genres = filters.genres - g)) } }
+        filters.years.sortedDescending().forEach { y -> RemovableChip(y.toString()) { onChange(filters.copy(years = filters.years - y)) } }
+    }
+}
+
+@Composable
+private fun RemovableChip(text: String, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0x332BEE34))
+            .clickable(onClick = onRemove)
+            .padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.Text(
+            text,
+            color = Color.White,
+            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+        )
+        androidx.compose.material3.Icon(
+            Icons.Filled.Close,
+            contentDescription = "Remover filtro",
+            tint = Color(0xFFD8D8D8),
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+/** Painel de filtros: tipo (todos/filmes/séries) e vários gêneros/anos; aplica ao tocar. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun SearchFilterSheet(
+    filters: SearchFilters,
+    options: SearchFilterOptions,
+    onChange: (SearchFilters) -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF181818)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.Text(
+                    "Filtros",
+                    color = Color.White,
+                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge
+                )
+                if (filters.isActive) {
+                    androidx.compose.material3.Text(
+                        "Limpar",
+                        color = BRAND_GREEN,
+                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onChange(SearchFilters()) }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            FilterSection("Tipo") {
+                SearchTypeFilter.entries.forEach { t ->
+                    SelectableChip(t.label, filters.type == t) { onChange(filters.copy(type = t)) }
+                }
+            }
+            if (options.genres.isNotEmpty()) {
+                FilterSection("Gênero") {
+                    options.genres.forEach { g ->
+                        SelectableChip(g, g in filters.genres) {
+                            onChange(filters.copy(genres = if (g in filters.genres) filters.genres - g else filters.genres + g))
+                        }
+                    }
+                }
+            }
+            if (options.years.isNotEmpty()) {
+                FilterSection("Ano") {
+                    options.years.forEach { y ->
+                        SelectableChip(y.toString(), y in filters.years) {
+                            onChange(filters.copy(years = if (y in filters.years) filters.years - y else filters.years + y))
+                        }
+                    }
+                }
+            }
+            Box(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun FilterSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.material3.Text(
+            title,
+            color = Color(0xFF8A8A8A),
+            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+        )
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) { content() }
+    }
+}
+
+@Composable
+private fun SelectableChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    androidx.compose.material3.Text(
+        text,
+        color = if (selected) Color.Black else Color(0xFFE0E0E0),
+        style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (selected) BRAND_GREEN else Color(0xFF2A2A2A))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp)
+    )
+}
+
+/** Resultados da busca no celular: grade de 3 colunas só com as capas (séries primeiro). */
+@Composable
+internal fun TouchSearchResultsGrid(
+    query: String,
+    searchInProgress: Boolean,
+    results: List<MediaCardUi>,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+    gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
+    onLoadMore: () -> Unit,
+    onSelect: (MediaCardUi) -> Unit,
+    modifier: Modifier = Modifier,
+    series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
+    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {},
+    cardLoadingStyle: com.ntv2.app.core.ui.CardLoadingStyle = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT,
+    animationsEnabled: Boolean = true,
+    // Gênero/ano ativos listam mídias mesmo sem texto digitado.
+    filtersActive: Boolean = false
+) {
+    val hidden = (query.isBlank() && !filtersActive) || searchInProgress
+    val visibleResults = remember(hidden, results) { if (hidden) emptyList() else results }
+    val visibleSeries = remember(hidden, series) { if (hidden) emptyList() else series }
+    val totalCovers = visibleSeries.size + visibleResults.size
+    val shouldLoadMore by remember(totalCovers) {
+        androidx.compose.runtime.derivedStateOf {
+            val last = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            totalCovers > 0 && last >= totalCovers - 6
+        }
+    }
+    LaunchedEffect(shouldLoadMore, hasMore, loadingMore) {
+        if (shouldLoadMore && hasMore && !loadingMore) onLoadMore()
+    }
+
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+        state = gridState,
+        modifier = modifier,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(visibleSeries, key = { "series_${it.tmdbId}" }) { s ->
+            SearchCoverCell(
+                cover = s.posterUrl ?: s.backdropUrl,
+                description = s.title,
+                cardLoadingStyle = cardLoadingStyle,
+                animationsEnabled = animationsEnabled,
+                onClick = { onSeriesSelect(s) }
+            )
+        }
+        items(visibleResults, key = { it.mediaId }) { media ->
+            SearchCoverCell(
+                cover = media.posterPath ?: media.thumbnailPath,
+                description = media.title,
+                cardLoadingStyle = cardLoadingStyle,
+                animationsEnabled = animationsEnabled,
+                onClick = { onSelect(media) }
+            )
+        }
+        if (totalCovers > 0) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (loadingMore) {
+                        CircularProgressIndicator(
+                            color = BRAND_GREEN,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    } else if (!hasMore) {
+                        androidx.compose.material3.Text(
+                            "Fim da lista",
+                            color = Color(0xFF6E6E6E),
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
+        if (searchInProgress && (query.isNotBlank() || filtersActive)) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 34.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            color = BRAND_GREEN,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        androidx.compose.material3.Text(
+                            "Pesquisando…",
+                            color = Color.White,
+                            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
+            }
+        } else if (totalCovers == 0 && (query.isNotBlank() || filtersActive)) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.Text(
+                        "Nenhum resultado encontrado",
+                        color = Color(0xFFB0B0B0),
+                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchCoverCell(
+    cover: String?,
+    description: String,
+    cardLoadingStyle: com.ntv2.app.core.ui.CardLoadingStyle,
+    animationsEnabled: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(2f / 3f)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF222222))
+            .clickable(onClick = onClick)
+    ) {
+        if (cover != null) {
+            com.ntv2.app.core.ui.CoverWithLoading(
+                cover = cover,
+                contentDescription = description,
+                style = cardLoadingStyle,
+                animationsEnabled = animationsEnabled,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
 

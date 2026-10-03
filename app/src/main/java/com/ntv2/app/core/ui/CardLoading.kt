@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -14,6 +15,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,8 +39,7 @@ import coil.request.ImageRequest
  * Os efeitos vêm dos exemplos em components/preview.html.
  */
 enum class CardLoadingStyle(val label: String, val description: String) {
-    SKELETON_SHIMMER("Skeleton shimmer", "Placeholder claro com brilho passando na horizontal."),
-    DARK_SHIMMER("Shimmer escuro", "O mesmo brilho, em tons escuros — combina com o fundo do app."),
+    DARK_SHIMMER("Shimmer escuro", "Brilho passando na horizontal, em tons escuros — combina com o fundo do app."),
     BREATHING_GRADIENT("Gradiente respirando", "Gradiente suave que se move devagar, sem repetição marcada."),
     BLUR_UP("Blur-up", "Mostra a capa em baixa resolução, desfocada, até a definitiva chegar."),
     FADE_IN("Fade-in", "Fundo neutro e a capa surgindo aos poucos, sem troca seca."),
@@ -45,7 +49,7 @@ enum class CardLoadingStyle(val label: String, val description: String) {
     val startsImmediately: Boolean get() = this == BLUR_UP
 
     companion object {
-        val DEFAULT = SKELETON_SHIMMER
+        val DEFAULT = BLUR_UP
         fun fromName(name: String?): CardLoadingStyle =
             entries.firstOrNull { it.name == name } ?: DEFAULT
     }
@@ -79,7 +83,6 @@ fun CardLoadingPlaceholder(
     preview: Boolean = false
 ) {
     when (style) {
-        CardLoadingStyle.SKELETON_SHIMMER -> Shimmer(modifier, animate, LIGHT_SHIMMER)
         CardLoadingStyle.DARK_SHIMMER -> Shimmer(modifier, animate, DARK_SHIMMER)
         CardLoadingStyle.BREATHING_GRADIENT -> BreathingGradient(modifier, animate)
         CardLoadingStyle.BLUR_UP -> BlurUp(modifier, animate, cover, preview)
@@ -90,7 +93,6 @@ fun CardLoadingPlaceholder(
     }
 }
 
-private val LIGHT_SHIMMER = listOf(Color(0xFFD7DDE5), Color(0xFFF7F9FB), Color(0xFFD7DDE5))
 private val DARK_SHIMMER = listOf(Color(0xFF202A37), Color(0xFF364356), Color(0xFF202A37))
 private val PLACEHOLDER_BG = Color(0xFF1C1C1C)
 private val BRAND_GREEN = Color(0xFF2BEE34)
@@ -217,5 +219,62 @@ private fun BlurUp(modifier: Modifier, animate: Boolean, cover: String?, preview
             contentScale = ContentScale.Crop,
             modifier = blurModifier
         )
+    }
+}
+
+/**
+ * Capa com a animação de carregamento escolhida nas Configurações (blur-up, fade-in, etc.).
+ * O placeholder fica ATRÁS e só sai quando a capa termina de aparecer; o blur-up entra já (a
+ * miniatura tem que baixar antes da capa) e os demais só se a capa demorar (>180 ms), para
+ * cache hit não piscar. Vindo da memória a capa aparece na hora, sem fade.
+ */
+@Composable
+fun CoverWithLoading(
+    cover: String,
+    contentDescription: String?,
+    style: CardLoadingStyle,
+    animationsEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var loaded by remember(cover) { mutableStateOf(false) }
+    var showLoading by remember(cover, style) { mutableStateOf(style.startsImmediately) }
+    var fromMemory by remember(cover) { mutableStateOf(false) }
+    val coverAlpha by animateFloatAsState(
+        targetValue = if (loaded) 1f else 0f,
+        animationSpec = tween(if (animationsEnabled && !fromMemory) 320 else 0),
+        label = "cover-alpha"
+    )
+    Box(modifier = modifier) {
+        if (showLoading && coverAlpha < 1f) {
+            CardLoadingPlaceholder(
+                style = style,
+                modifier = Modifier.fillMaxSize(),
+                animate = animationsEnabled,
+                cover = cover
+            )
+        }
+        AsyncImage(
+            model = cover,
+            contentDescription = contentDescription,
+            contentScale = ContentScale.Crop,
+            onState = { st ->
+                if (st is coil.compose.AsyncImagePainter.State.Success &&
+                    st.result.dataSource == coil.decode.DataSource.MEMORY_CACHE
+                ) {
+                    fromMemory = true
+                }
+                if (st is coil.compose.AsyncImagePainter.State.Success ||
+                    st is coil.compose.AsyncImagePainter.State.Error
+                ) {
+                    loaded = true
+                }
+            },
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = coverAlpha }
+        )
+        LaunchedEffect(cover, style) {
+            if (showLoading) return@LaunchedEffect
+            kotlinx.coroutines.delay(180)
+            if (!loaded) showLoading = true
+        }
     }
 }

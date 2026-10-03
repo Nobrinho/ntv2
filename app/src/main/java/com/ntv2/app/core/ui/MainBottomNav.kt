@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.runtime.Composable
@@ -23,8 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
 
 private val BRAND = Color(0xFF2BEE34)
 
@@ -42,6 +41,7 @@ fun MainBottomNav(
     onChannels: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    onSearch: (() -> Unit)? = null,
     // "Meu" (histórico/personalização): só aparece quando a tela fornece a ação.
     onMyStuff: (() -> Unit)? = null
 ) {
@@ -61,6 +61,15 @@ fun MainBottomNav(
             modifier = Modifier.weight(1f),
             onClick = onLibrary
         )
+        if (onSearch != null) {
+            MainBottomNavItem(
+                icon = Icons.Filled.Search,
+                label = "Busca",
+                selected = false,
+                modifier = Modifier.weight(1f),
+                onClick = onSearch
+            )
+        }
         if (onMyStuff != null) {
             MainBottomNavItem(
                 icon = Icons.Filled.Favorite,
@@ -107,10 +116,9 @@ private fun MainBottomNavItem(
                 else Modifier.border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(22.dp))
             )
             .padding(horizontal = 10.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = label, tint = content, modifier = Modifier.size(19.dp))
-        Text(label, color = content, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        Icon(icon, contentDescription = label, tint = content, modifier = Modifier.size(22.dp))
     }
 }

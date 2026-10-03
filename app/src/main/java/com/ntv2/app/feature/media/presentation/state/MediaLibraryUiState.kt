@@ -62,7 +62,38 @@ data class ChannelChipUi(
     val avatarPath: String? = null
 )
 
+enum class SearchFilterKind { GENRE, YEAR, ACTOR }
+
+enum class SearchTypeFilter(val label: String) { ALL("Todos"), MOVIES("Filmes"), SERIES("Séries") }
+
+/** Filtros combináveis da busca. Gêneros: a mídia precisa ter TODOS os marcados; anos: qualquer um deles. [type] sozinho não lista nada: precisa de texto, gênero ou ano. */
+data class SearchFilters(
+    val type: SearchTypeFilter = SearchTypeFilter.ALL,
+    val genres: Set<String> = emptySet(),
+    val years: Set<Int> = emptySet(),
+    /** Ator (nome do elenco do índice); séries não têm elenco no índice, então só filmes casam. */
+    val actor: String? = null
+) {
+    /** Gênero ou ano ativos: listam mídias mesmo sem texto digitado. */
+    val hasAttribute: Boolean get() = genres.isNotEmpty() || years.isNotEmpty() || actor != null
+    val isActive: Boolean get() = hasAttribute || type != SearchTypeFilter.ALL
+    val label: String get() = (listOfNotNull(actor) + genres + years.map { it.toString() }).joinToString(" • ")
+}
+
+data class SearchFilterOptions(val genres: List<String> = emptyList(), val years: List<Int> = emptyList()) {
+    val isAvailable: Boolean get() = genres.isNotEmpty() || years.isNotEmpty()
+}
+
+/** Busca por filtro (chip dos Detalhes): lista as mídias do canal com esse gênero/ano. */
+data class SearchFilter(val kind: SearchFilterKind, val value: String)
+
 data class MediaLibraryUiState(
+    /** Filtros da busca (botão de filtro / chips dos Detalhes); combinam com o texto digitado. */
+    val searchFilters: SearchFilters = SearchFilters(),
+    /** Gêneros e anos disponíveis no índice do canal ativo (vazio = sem índice → sem filtro). */
+    val searchFilterOptions: SearchFilterOptions = SearchFilterOptions(),
+    /** Quantos filmes do canal têm o ator filtrado (chip "Ator • N filmes"). */
+    val searchActorCount: Int = 0,
     val searchQuery: String = "",
     val minDurationMinutes: Int = 15,
     val sections: List<ChannelMediaSectionUi> = emptyList(),

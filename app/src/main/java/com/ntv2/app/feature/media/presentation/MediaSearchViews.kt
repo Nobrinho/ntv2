@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import com.ntv2.app.core.ui.trapFocus
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -38,6 +40,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -142,10 +146,14 @@ internal fun TvSearchOverlay(
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
     onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {},
     // false na busca por elenco: teclado e campo ficam esmaecidos (o screen ignora as teclas).
-    textEnabled: Boolean = true
+    textEnabled: Boolean = true,
+    filters: SearchFilters = SearchFilters(),
+    filterOptions: SearchFilterOptions = SearchFilterOptions(),
+    onFiltersChange: (SearchFilters) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var showFilters by remember { mutableStateOf(false) }
+    val listState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val keyRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     val resultRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     fun keyRequester(id: String) = keyRequesters.getOrPut(id) { FocusRequester() }
@@ -161,7 +169,9 @@ internal fun TvSearchOverlay(
     var focusInResults by remember { mutableStateOf(false) }
     // "Buscar" pressionado: leva o foco ao 1º resultado assim que a busca terminar.
     var focusResultsWhenReady by remember { mutableStateOf(false) }
-    val currentResults by androidx.compose.runtime.rememberUpdatedState(results)
+    // Células da grade na ordem de exibição: séries primeiro, depois filmes (id = chave do foco).
+    val cellIds = series.map { "series_${it.tmdbId}" } + results.map { it.mediaId }
+    val currentCells by androidx.compose.runtime.rememberUpdatedState(cellIds)
 
     fun focusKeyboard() {
         runCatching { keyRequester(lastKeyId).requestFocus() }
@@ -169,7 +179,7 @@ internal fun TvSearchOverlay(
     }
 
     fun focusResult(index: Int) {
-        val list = currentResults
+        val list = currentCells
         if (list.isEmpty()) return
         val i = index.coerceIn(0, list.lastIndex)
         scope.launch {
@@ -178,20 +188,20 @@ internal fun TvSearchOverlay(
                 listState.scrollToItem(i)
                 withFrameNanos { }
             }
-            runCatching { resultRequester(list[i].mediaId).requestFocus() }
+            runCatching { resultRequester(list[i]).requestFocus() }
         }
     }
 
     // Foco inicial: volta ao resultado que abriu os Detalhes; senão, 1ª tecla.
     LaunchedEffect(Unit) {
-        val index = restoreFocusMediaId?.let { id -> results.indexOfFirst { it.mediaId == id } } ?: -1
+        val index = restoreFocusMediaId?.let { id -> cellIds.indexOf(id) } ?: -1
         onRestoreConsumed()
         if (index >= 0) {
             lastResultIndex = index
             listState.scrollToItem(index)
             withFrameNanos { }
             withFrameNanos { }
-            runCatching { resultRequester(results[index].mediaId).requestFocus() }
+            runCatching { resultRequester(cellIds[index]).requestFocus() }
                 .onFailure { focusKeyboard() }
         } else {
             runCatching { keyRequester(firstKeyId).requestFocus() }
@@ -204,10 +214,10 @@ internal fun TvSearchOverlay(
         if (focusInResults) focusKeyboard()
     }
 
-    LaunchedEffect(focusResultsWhenReady, searchInProgress, results) {
+    LaunchedEffect(focusResultsWhenReady, searchInProgress, results, series) {
         if (!focusResultsWhenReady || searchInProgress) return@LaunchedEffect
         focusResultsWhenReady = false
-        if (results.isNotEmpty()) {
+        if (currentCells.isNotEmpty()) {
             listState.scrollToItem(0)
             withFrameNanos { }
             focusResult(0)
@@ -224,6 +234,8 @@ internal fun TvSearchOverlay(
             .background(Color(0xF2000000))
             .onPreviewKeyEvent { e ->
                 when {
+                    // Painel de filtros aberto: ele trata BACK e as teclas sozinho.
+                    showFilters -> false
                     // BACK em camadas: resultados → teclado; teclado → fecha a busca.
                     e.key == Key.Back || e.key == Key.Escape -> {
                         if (e.type == KeyEventType.KeyUp) {
@@ -299,7 +311,7 @@ internal fun TvSearchOverlay(
                     // Última tecla de cada linha: → entra nos resultados.
                     val enterResultsOnRight = Modifier.onPreviewKeyEvent { e ->
                         if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight) {
-                            if (currentResults.isNotEmpty()) focusResult(lastResultIndex)
+                            if (currentCells.isNotEmpty()) focusResult(lastResultIndex)
                             true
                         } else false
                     }
@@ -381,6 +393,18 @@ internal fun TvSearchOverlay(
                                     .height(actionHeight),
                                 onClick = { lastKeyId = "clear"; onClear() }
                             )
+                            if (filterOptions.isAvailable) {
+                                val activeCount = filters.genres.size + filters.years.size +
+                                    (if (filters.type != SearchTypeFilter.ALL) 1 else 0)
+                                KeyButton(
+                                    label = if (activeCount > 0) "Filtros ($activeCount)" else "Filtros",
+                                    modifier = Modifier
+                                        .then(keyMod("filters"))
+                                        .weight(1f)
+                                        .height(actionHeight),
+                                    onClick = { lastKeyId = "filters"; showFilters = true }
+                                )
+                            }
                             KeyButton(
                                 label = "Fechar",
                                 modifier = enterResultsOnRight
@@ -394,7 +418,14 @@ internal fun TvSearchOverlay(
                 }
             }
 
-            // ── Coluna direita: resultados ao vivo ──
+            // ── Coluna direita: filtros ativos + resultados ao vivo ──
+            Column(
+                modifier = Modifier
+                    .weight(0.58f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+            TvActiveFilters(filters)
             SearchResultsList(
                 query = query,
                 searchInProgress = searchInProgress,
@@ -407,35 +438,202 @@ internal fun TvSearchOverlay(
                 series = series,
                 onSeriesSelect = onSeriesSelect,
                 modifier = Modifier
-                    .weight(0.58f)
-                    .fillMaxHeight()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0x0DFFFFFF))
                     .focusGroup()
                     .onFocusChanged { focusInResults = it.hasFocus },
-                rowModifier = { index, media ->
+                cellModifier = { index, id ->
                     Modifier
-                        .focusRequester(resultRequester(media.mediaId))
+                        .focusRequester(resultRequester(id))
                         .onFocusChanged {
                             if (it.isFocused) {
                                 lastResultIndex = index
                                 // Paginação pelo foco: perto do fim, pede a próxima página.
-                                if (index >= currentResults.size - 3 && hasMore && !loadingMore) onLoadMore()
+                                if (index >= currentCells.size - 6 && hasMore && !loadingMore) onLoadMore()
                             }
                         }
                         .onPreviewKeyEvent { e ->
                             if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             when (e.key) {
-                                Key.DirectionLeft -> { focusKeyboard(); true }
-                                Key.DirectionUp -> index == 0
-                                Key.DirectionDown -> index == currentResults.lastIndex
+                                // Coluna da esquerda volta ao teclado; as outras andam na grade.
+                                Key.DirectionLeft -> if (index % 3 == 0) { focusKeyboard(); true } else false
+                                // Não sai da grade pela 1ª nem pela última linha.
+                                Key.DirectionUp -> index < 3
+                                Key.DirectionDown -> index / 3 == currentCells.lastIndex / 3
                                 else -> false
                             }
                         }
                 }
             )
+            }
+        }
+
+        if (showFilters) {
+            TvFilterPanel(
+                filters = filters,
+                options = filterOptions,
+                onChange = onFiltersChange,
+                onDismiss = {
+                    showFilters = false
+                    scope.launch { withFrameNanos { }; focusKeyboard() }
+                }
+            )
         }
     }
+}
+
+/** Filtros ativos (tipo/ator/gênero/ano) acima dos resultados da TV; só exibição — edita-se no painel. */
+@Composable
+private fun TvActiveFilters(filters: SearchFilters) {
+    if (!filters.isActive) return
+    val labels = buildList {
+        if (filters.type != SearchTypeFilter.ALL) add(filters.type.label)
+        filters.actor?.let { add(it) }
+        addAll(filters.genres)
+        addAll(filters.years.sortedDescending().map { it.toString() })
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        labels.forEach { l ->
+            Text(
+                l,
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0x332BEE34))
+                    .padding(horizontal = 12.dp, vertical = 5.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Painel de filtros da TV (tipo, gênero, ano), igual ao do celular: chips alternáveis que aplicam na
+ * hora. O foco fica preso no painel; BACK ou "Concluir" fecha e devolve o foco ao botão "Filtros".
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun TvFilterPanel(
+    filters: SearchFilters,
+    options: SearchFilterOptions,
+    onChange: (SearchFilters) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val initialFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { initialFocus.requestFocus() } }
+    // Foco inicial: 1º gênero (ou o chip de tipo atual, se não houver gêneros).
+    val firstGenre = options.genres.firstOrNull()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xF2000000))
+            .onPreviewKeyEvent { e ->
+                if ((e.key == Key.Back || e.key == Key.Escape)) {
+                    if (e.type == KeyEventType.KeyUp) onDismiss()
+                    true
+                } else false
+            }
+            .trapFocus(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .widthIn(max = 960.dp)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 40.dp, vertical = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Filtros", style = MaterialTheme.typography.headlineMedium, color = Color.White, modifier = Modifier.weight(1f))
+                if (filters.isActive) {
+                    KeyButton("Limpar", Modifier.width(120.dp).height(44.dp)) { onChange(SearchFilters()) }
+                }
+                KeyButton("Concluir", Modifier.width(120.dp).height(44.dp), onDismiss)
+            }
+            TvFilterSection("Tipo") {
+                SearchTypeFilter.entries.forEach { t ->
+                    TvFilterChip(
+                        text = t.label,
+                        selected = filters.type == t,
+                        modifier = if (firstGenre == null && filters.type == t) Modifier.focusRequester(initialFocus) else Modifier
+                    ) { onChange(filters.copy(type = t)) }
+                }
+            }
+            if (options.genres.isNotEmpty()) {
+                TvFilterSection("Gênero") {
+                    options.genres.forEach { g ->
+                        TvFilterChip(
+                            text = g,
+                            selected = g in filters.genres,
+                            modifier = if (g == firstGenre) Modifier.focusRequester(initialFocus) else Modifier
+                        ) {
+                            onChange(filters.copy(genres = if (g in filters.genres) filters.genres - g else filters.genres + g))
+                        }
+                    }
+                }
+            }
+            if (options.years.isNotEmpty()) {
+                TvFilterSection("Ano") {
+                    options.years.forEach { y ->
+                        TvFilterChip(text = y.toString(), selected = y in filters.years) {
+                            onChange(filters.copy(years = if (y in filters.years) filters.years - y else filters.years + y))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun TvFilterSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.labelLarge)
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) { content() }
+    }
+}
+
+@Composable
+private fun TvFilterChip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Text(
+        text,
+        color = if (focused || selected) Color.Black else Color(0xFFE0E0E0),
+        style = MaterialTheme.typography.labelLarge,
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(
+                when {
+                    focused -> Color.White
+                    selected -> BRAND_GREEN
+                    else -> Color(0xFF2A2A2A)
+                }
+            )
+            .border(
+                if (focused) 2.dp else 1.dp,
+                if (focused) Color.White else if (selected) BRAND_GREEN else Color(0xFF3A3A3A),
+                RoundedCornerShape(20.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    )
 }
 
 @Composable
@@ -905,9 +1103,10 @@ private fun SearchCoverCell(
 }
 
 /**
- * Lista de resultados compartilhada por TV e mobile: mesmas regras de exibição (esconde durante a
- * busca, "Pesquisando…", "Nenhum resultado encontrado", "Fim da lista") e paginação infinita ao
- * aproximar do fim. [rowModifier] permite à TV anexar foco/D-pad a cada linha.
+ * Resultados da busca da TV: grade de 3 colunas só com as capas (séries primeiro), igual ao celular.
+ * Mesmas regras de exibição (esconde durante a busca, "Pesquisando…", "Nenhum resultado encontrado",
+ * "Fim da lista") e paginação infinita ao aproximar do fim. [cellModifier] recebe o índice da célula
+ * na grade (séries + filmes) e o id dela, para a TV anexar foco/D-pad.
  */
 @Composable
 internal fun SearchResultsList(
@@ -916,11 +1115,11 @@ internal fun SearchResultsList(
     results: List<MediaCardUi>,
     hasMore: Boolean,
     loadingMore: Boolean,
-    listState: androidx.compose.foundation.lazy.LazyListState,
+    listState: androidx.compose.foundation.lazy.grid.LazyGridState,
     onLoadMore: () -> Unit,
     onSelect: (MediaCardUi) -> Unit,
     modifier: Modifier = Modifier,
-    rowModifier: (index: Int, media: MediaCardUi) -> Modifier = { _, _ -> Modifier },
+    cellModifier: (index: Int, id: String) -> Modifier = { _, _ -> Modifier },
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
     onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {}
 ) {
@@ -930,63 +1129,51 @@ internal fun SearchResultsList(
     val visibleSeries = remember(query, searchInProgress, series) {
         if (query.isBlank() || searchInProgress) emptyList() else series
     }
-    // Paginação infinita: dispara ao aproximar do fim da lista.
-    val shouldLoadMore by remember(visibleResults.size) {
+    val totalCovers = visibleSeries.size + visibleResults.size
+    // Paginação infinita: dispara ao aproximar do fim da grade.
+    val shouldLoadMore by remember(totalCovers) {
         androidx.compose.runtime.derivedStateOf {
             val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            visibleResults.isNotEmpty() && last >= visibleResults.size - 3
+            totalCovers > 0 && last >= totalCovers - 6
         }
     }
     LaunchedEffect(shouldLoadMore, hasMore, loadingMore) {
         if (shouldLoadMore && hasMore && !loadingMore) onLoadMore()
     }
 
-    // Feedback de busca fica só no centro (spinner "Pesquisando…" / "Nenhum resultado"),
-    // sem duplicar um status no topo. Lista com paginação infinita.
-    androidx.compose.foundation.lazy.LazyColumn(
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
         state = listState,
-        modifier = modifier
+        modifier = modifier,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (visibleSeries.isNotEmpty()) {
-            item(key = "series_header") {
-                androidx.compose.material3.Text(
-                    "Séries",
-                    color = Color(0xFF8A8A8A),
-                    style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(start = 24.dp, top = 12.dp, bottom = 4.dp)
-                )
-            }
-            visibleSeries.forEach { s ->
-                item(key = "series_${s.tmdbId}") {
-                    SeriesResultRow(series = s, onClick = { onSeriesSelect(s) })
-                }
-            }
+        itemsIndexed(visibleSeries, key = { _, s -> "series_${s.tmdbId}" }) { i, s ->
+            TvCoverCell(
+                cover = s.posterUrl ?: s.backdropUrl,
+                title = s.title,
+                modifier = cellModifier(i, "series_${s.tmdbId}"),
+                onClick = { onSeriesSelect(s) }
+            )
         }
-        visibleResults.forEachIndexed { index, media ->
-            item(key = media.mediaId) {
-                SearchResultRow(
-                    media = media,
-                    modifier = rowModifier(index, media),
-                    onClick = { onSelect(media) }
-                )
-            }
+        itemsIndexed(visibleResults, key = { _, m -> m.mediaId }) { j, media ->
+            TvCoverCell(
+                cover = media.posterPath ?: media.thumbnailPath,
+                title = media.title,
+                modifier = cellModifier(visibleSeries.size + j, media.mediaId),
+                onClick = { onSelect(media) }
+            )
         }
-        // Rodapé: spinner ao carregar mais; "Fim da lista" discreto quando acabou.
-        if (visibleResults.isNotEmpty()) {
-            item {
+        if (totalCovers > 0 && (loadingMore || !hasMore)) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 18.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     if (loadingMore) {
-                        CircularProgressIndicator(
-                            color = BRAND_GREEN,
-                            strokeWidth = 3.dp,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    } else if (!hasMore) {
+                        CircularProgressIndicator(color = BRAND_GREEN, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
+                    } else {
                         androidx.compose.material3.Text(
                             "Fim da lista",
                             color = Color(0xFF6E6E6E),
@@ -997,22 +1184,16 @@ internal fun SearchResultsList(
             }
         }
         if (searchInProgress && query.isNotBlank()) {
-            item {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Box(
-                    modifier = Modifier
-                        .fillParentMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 34.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 34.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(
-                            color = BRAND_GREEN,
-                            strokeWidth = 3.dp,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        CircularProgressIndicator(color = BRAND_GREEN, strokeWidth = 3.dp, modifier = Modifier.size(24.dp))
                         androidx.compose.material3.Text(
                             "Pesquisando…",
                             color = Color.White,
@@ -1021,12 +1202,10 @@ internal fun SearchResultsList(
                     }
                 }
             }
-        } else if (visibleResults.isEmpty() && visibleSeries.isEmpty() && query.isNotBlank()) {
-            item {
+        } else if (totalCovers == 0 && query.isNotBlank()) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Box(
-                    modifier = Modifier
-                        .fillParentMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 28.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.material3.Text(
@@ -1036,6 +1215,49 @@ internal fun SearchResultsList(
                     )
                 }
             }
+        }
+    }
+}
+
+/** Capa focável da grade da TV: borda branca e leve zoom no foco; sem capa, mostra o título. */
+@Composable
+private fun TvCoverCell(
+    cover: String?,
+    title: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(2f / 3f)
+            .graphicsLayer { val s = if (focused) 1.05f else 1f; scaleX = s; scaleY = s }
+            .clip(shape)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .background(Color(0xFF222222))
+            .border(if (focused) 3.dp else 0.dp, if (focused) Color.White else Color.Transparent, shape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (cover != null) {
+            com.ntv2.app.core.ui.CoverWithLoading(
+                cover = cover,
+                contentDescription = title,
+                style = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT,
+                animationsEnabled = true,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                title,
+                color = Color(0xFFB0B0B0),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(8.dp)
+            )
         }
     }
 }

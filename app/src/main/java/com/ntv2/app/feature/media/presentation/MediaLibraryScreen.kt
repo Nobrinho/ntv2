@@ -804,6 +804,9 @@ fun MediaLibraryScreen(
                     series = if (searchHidden) emptyList() else state.searchSeries,
                     onSeriesSelect = { s -> seriesFromSearch = true; openSeriesTmdbId = s.tmdbId; searching = false },
                     textEnabled = state.searchFilters.actor == null,
+                    filters = state.searchFilters,
+                    filterOptions = state.searchFilterOptions,
+                    onFiltersChange = { viewModel.onAction(MediaLibraryAction.SetSearchFilters(it)) },
                     onKey = { c ->
                         if (state.searchFilters.actor == null) {
                             viewModel.onAction(MediaLibraryAction.SearchChanged(state.searchQuery + c))

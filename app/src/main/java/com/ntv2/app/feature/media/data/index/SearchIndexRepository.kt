@@ -29,6 +29,7 @@ data class IndexMovie(
     val videoMessageId: Long
 ) {
     val searchKey: String = normalizeForIndex(listOfNotNull(title, originalTitle).joinToString(" "))
+    val searchWords: Set<String> by lazy { wordsOf(searchKey) }
 }
 
 /** Um episódio do índice (schema v2). Unidade reproduzível: resolve o vídeo por [videoMessageId]. */
@@ -81,6 +82,7 @@ data class IndexSeries(
             }
         }
     )
+    val searchWords: Set<String> by lazy { wordsOf(searchKey) }
 }
 
 private data class LoadedIndex(
@@ -307,10 +309,11 @@ class SearchIndexRepository(
         if (idx.channelId != channelId) return emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
         if (tokens.isEmpty()) return emptyList()
-        return idx.series.asSequence()
-            .filter { s -> tokens.all { s.searchKey.contains(it) } }
+        fun hits(fuzzy: Boolean) = idx.series.asSequence()
+            .filter { s -> matchesTokens(s.searchKey, s.searchWords, tokens, fuzzy) }
             .take(limit)
             .toList()
+        return hits(false).ifEmpty { hits(true) }
     }
 
     /**
@@ -336,18 +339,27 @@ class SearchIndexRepository(
         fun <T> Sequence<T>.cap() = if (tokens.isEmpty()) this else take(limit)
         val actorKey = actor?.let { normalizeForIndex(it).trim() }
         val actorKeys = if (actorKey != null) idx.movieActorKeys else emptyList()
-        val movies = idx.movies.asSequence().withIndex()
-            .filter { (i, _) -> actorKey == null || actorKey in actorKeys[i] }
-            .map { it.value }
-            .filter { m ->
-                tokens.all { m.searchKey.contains(it) } && genreOk(m.genres) &&
-                    (years.isEmpty() || m.year?.take(4)?.toIntOrNull() in years)
-            }.cap().toList()
-        // Séries não trazem elenco no índice: com filtro de ator não entram.
-        val series = (if (actorKey != null) emptySequence() else idx.series.asSequence())
-            .filter { sr -> tokens.all { sr.searchKey.contains(it) } && genreOk(sr.genres) && (years.isEmpty() || sr.year in years) }
-            .cap().toList()
-        return movies to series
+        fun run(fuzzy: Boolean): Pair<List<IndexMovie>, List<IndexSeries>> {
+            val movies = idx.movies.asSequence().withIndex()
+                .filter { (i, _) -> actorKey == null || actorKey in actorKeys[i] }
+                .map { it.value }
+                .filter { m ->
+                    matchesTokens(m.searchKey, m.searchWords, tokens, fuzzy) && genreOk(m.genres) &&
+                        (years.isEmpty() || m.year?.take(4)?.toIntOrNull() in years)
+                }.cap().toList()
+            // Séries não trazem elenco no índice: com filtro de ator não entram.
+            val series = (if (actorKey != null) emptySequence() else idx.series.asSequence())
+                .filter { sr ->
+                    matchesTokens(sr.searchKey, sr.searchWords, tokens, fuzzy) && genreOk(sr.genres) &&
+                        (years.isEmpty() || sr.year in years)
+                }
+                .cap().toList()
+            return movies to series
+        }
+        val exact = run(fuzzy = false)
+        // Nada casou exato: tenta de novo tolerando erro de digitação (ex.: "eletric" → "electric").
+        if (tokens.isEmpty() || exact.first.isNotEmpty() || exact.second.isNotEmpty()) return exact
+        return run(fuzzy = true)
     }
 
     /** Quantos filmes do canal têm [actor] no elenco. */
@@ -383,10 +395,11 @@ class SearchIndexRepository(
         if (idx.channelId != channelId) return emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
         if (tokens.isEmpty()) return emptyList()
-        return idx.movies.asSequence()
-            .filter { m -> tokens.all { m.searchKey.contains(it) } }
+        fun hits(fuzzy: Boolean) = idx.movies.asSequence()
+            .filter { m -> matchesTokens(m.searchKey, m.searchWords, tokens, fuzzy) }
             .take(limit)
             .toList()
+        return hits(false).ifEmpty { hits(true) }
     }
 }
 
@@ -401,6 +414,52 @@ internal fun parseGeneratedAt(raw: String?): Long? {
 /** optString tratando vazio e o literal "null"/"None" (comum em índices) como ausente. */
 private fun JSONObject.cleanString(key: String): String? =
     optString(key).trim().ifBlank { null }?.takeUnless { it.equals("null", true) || it.equals("None", true) }
+
+/** Palavras (só letras/dígitos) de uma chave de busca já normalizada. */
+internal fun wordsOf(key: String): Set<String> =
+    key.split(Regex("[^a-z0-9]+")).filterTo(HashSet()) { it.isNotEmpty() }
+
+/**
+ * Todas as palavras da busca precisam casar. Exato: trecho da chave. [fuzzy]: se não for trecho,
+ * aceita uma palavra do título com poucas letras trocadas/faltando/sobrando/invertidas.
+ */
+internal fun matchesTokens(key: String, words: Set<String>, tokens: List<String>, fuzzy: Boolean): Boolean =
+    tokens.all { t ->
+        key.contains(t) || (fuzzy && words.any { w -> isTypoOf(t, w) })
+    }
+
+/** Palavras curtas (<5) exigem acerto exato; 5–8 letras toleram 1 erro; 9+ toleram 2. */
+internal fun isTypoOf(token: String, word: String): Boolean {
+    val max = when {
+        token.length < 5 -> return false
+        token.length < 9 -> 1
+        else -> 2
+    }
+    if (kotlin.math.abs(token.length - word.length) > max) return false
+    return editDistanceAtMost(token, word, max)
+}
+
+/** Distância de edição (inserção/remoção/troca/transposição de vizinhas) limitada a [max]. */
+private fun editDistanceAtMost(a: String, b: String, max: Int): Boolean {
+    var prev2 = IntArray(b.length + 1)
+    var prev = IntArray(b.length + 1) { it }
+    for (i in 1..a.length) {
+        val cur = IntArray(b.length + 1)
+        cur[0] = i
+        var rowMin = cur[0]
+        for (j in 1..b.length) {
+            val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+            var v = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+            if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) v = minOf(v, prev2[j - 2] + 1)
+            cur[j] = v
+            if (v < rowMin) rowMin = v
+        }
+        if (rowMin > max) return false
+        prev2 = prev
+        prev = cur
+    }
+    return prev[b.length] <= max
+}
 
 internal fun normalizeForIndex(s: String): String =
     Normalizer.normalize(s, Normalizer.Form.NFD)

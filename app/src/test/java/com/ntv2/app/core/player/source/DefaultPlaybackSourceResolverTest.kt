@@ -1,5 +1,7 @@
 package com.ntv2.app.core.player.source
 
+import com.ntv2.app.core.multipart.MultiPartRegistry
+import com.ntv2.app.core.multipart.PartRef
 import com.ntv2.app.core.player.telegram.PlaybackFileHandle
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
 import com.ntv2.app.core.telegram.media.TdlibPlaybackFileState
@@ -120,5 +122,62 @@ class DefaultPlaybackSourceResolverTest {
         assertTrue(result is PlaybackSourceResolution.Available)
         val source = (result as PlaybackSourceResolution.Available).source as PlaybackSource.TelegramFile
         assertEquals("tgfile://video/7", source.playbackUri)
+    }
+
+    @Test
+    fun `filme dividido abre a uri multi com o tamanho total das partes`() = runTest {
+        val f = temp.newFile("p1.partial").apply { writeBytes(ByteArray(8 * 1024 * 1024)) }
+        val handle = PlaybackFileHandle(
+            fileId = 11,
+            localPath = f.absolutePath,
+            downloadedBytes = 8L * 1024 * 1024,
+            expectedBytes = 1_900L,
+            isDownloadComplete = false
+        )
+        val registry = MultiPartRegistry().apply {
+            register(listOf(PartRef(11, 1_900), PartRef(12, 1_900), PartRef(13, 700)))
+        }
+        val resolver = DefaultPlaybackSourceResolver(FakeDataSource(handle), registry)
+
+        val result = resolver.resolve(PlaybackSourceRequest(mediaId = "m", fileId = 11))
+
+        val available = result as PlaybackSourceResolution.Available
+        val source = available.source as PlaybackSource.TelegramFile
+        assertEquals("tgfile://multi/11", source.playbackUri)
+        assertEquals(4_500L, source.expectedBytes)
+        assertEquals(4_500L, available.availability.expectedBytes)
+        assertEquals(11, source.fileId)
+    }
+
+    @Test
+    fun `filme dividido nunca e dado como completo mesmo com a parte 1 completa`() = runTest {
+        val f = temp.newFile("p1c.partial").apply { writeBytes(ByteArray(1024)) }
+        val handle = PlaybackFileHandle(
+            fileId = 11, localPath = f.absolutePath, downloadedBytes = 1024,
+            expectedBytes = 1024, isDownloadComplete = true
+        )
+        val registry = MultiPartRegistry().apply { register(listOf(PartRef(11, 1_024), PartRef(12, 1_024))) }
+        val resolver = DefaultPlaybackSourceResolver(FakeDataSource(handle), registry)
+
+        val result = resolver.resolve(PlaybackSourceRequest(mediaId = "m", fileId = 11)) as PlaybackSourceResolution.Available
+
+        assertEquals(false, (result.source as PlaybackSource.TelegramFile).isDownloadComplete)
+        assertEquals(false, result.availability.isDownloadComplete)
+    }
+
+    @Test
+    fun `arquivo unico fora do registro continua usando a uri de video`() = runTest {
+        val f = temp.newFile("u.partial").apply { writeBytes(ByteArray(1024)) }
+        val handle = PlaybackFileHandle(
+            fileId = 9, localPath = f.absolutePath, downloadedBytes = 1024,
+            expectedBytes = 1024, isDownloadComplete = true
+        )
+        val registry = MultiPartRegistry().apply { register(listOf(PartRef(11, 10), PartRef(12, 10))) }
+        val resolver = DefaultPlaybackSourceResolver(FakeDataSource(handle), registry)
+
+        val result = resolver.resolve(PlaybackSourceRequest(mediaId = "m", fileId = 9)) as PlaybackSourceResolution.Available
+
+        assertEquals("tgfile://video/9", (result.source as PlaybackSource.TelegramFile).playbackUri)
+        assertEquals(true, result.availability.isDownloadComplete)
     }
 }

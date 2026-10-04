@@ -45,7 +45,9 @@ data class MediaItemSummary(
     val seriesTitle: String? = null,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
-    val airDate: String? = null
+    val airDate: String? = null,
+    /** Filme dividido em partes no Telegram: total de partes (>= 2). 1 = arquivo único. */
+    val partCount: Int = 1
 ) {
     /**
      * Chave estável de deduplicação/biblioteca:
@@ -115,4 +117,24 @@ interface MediaRepository {
         channelTitle: String,
         messageId: Long
     ): MediaItemSummary?
+}
+
+/** Resultado de preparar um filme dividido em partes para tocar. */
+sealed interface MultiPartPrepareResult {
+    /** Todas as partes foram achadas e registradas: dá para tocar. */
+    data object Ready : MultiPartPrepareResult
+
+    /** Faltam partes no canal (índices de 1) — o filme não toca inteiro. */
+    data class Incomplete(val missing: List<Int>, val total: Int) : MultiPartPrepareResult
+
+    /** Não foi possível localizar as partes (rede, mensagem apagada, tamanho desconhecido). */
+    data object Failed : MultiPartPrepareResult
+}
+
+/**
+ * Antes de tocar um filme dividido: acha todas as partes no canal e as registra para o player
+ * (que passa a abrir o filme como um arquivo só). [messageId] é a mensagem de qualquer parte.
+ */
+interface MultiPartPreparer {
+    suspend fun prepare(channelId: Long, messageId: Long): MultiPartPrepareResult
 }

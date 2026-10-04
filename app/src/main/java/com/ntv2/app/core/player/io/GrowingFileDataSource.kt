@@ -10,6 +10,7 @@ import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import com.ntv2.app.core.multipart.PartsLookup
 import com.ntv2.app.core.player.config.StreamProfile
 import com.ntv2.app.core.player.telegram.PartialFileAccessor
 import com.ntv2.app.core.storage.LowStorageException
@@ -30,7 +31,9 @@ class GrowingFileDataSourceFactory(
     /** Janela deslizante no disco; null desativa (o arquivo cresce até o tamanho do vídeo). */
     private val diskWindow: DiskWindowPolicy? = null,
     /** false enquanto o TDLib reconecta: esse tempo não conta como download travado. */
-    private val isNetworkReady: () -> Boolean = { true }
+    private val isNetworkReady: () -> Boolean = { true },
+    /** Filmes divididos em partes: quando presente, `tgfile://multi/<id>` toca as partes como um arquivo só. */
+    private val partsLookup: PartsLookup? = null
 ) : DataSource.Factory {
 
     // Dimensionamento por vídeo (bitrate), definido pelo coordinator ao preparar.
@@ -45,11 +48,25 @@ class GrowingFileDataSourceFactory(
     }
 
     override fun createDataSource(): DataSource {
-        return GrowingFileDataSource(
-            partialFileAccessor, stallTimeoutMs, readAheadBytes, onLowStorage, diskWindow,
-            isNetworkReady, profiles::get
+        val single = newSingleFileDataSource()
+        val lookup = partsLookup ?: return single
+        return MultiPartRoutingDataSource(
+            single = single,
+            multi = MultiPartDataSource(
+                partsLookup = lookup,
+                accessor = partialFileAccessor,
+                openPart = ::newSingleFileDataSource,
+                prefetchAheadBytes = { firstFileId -> (profiles[firstFileId]?.aheadWindowBytes ?: readAheadBytes) }
+            )
         )
     }
+
+    // Cada parte de um filme dividido é lida por um GrowingFileDataSource comum (mesma janela,
+    // mesma liberação de disco, mesmos reabrires); o composto só decide qual parte abrir.
+    private fun newSingleFileDataSource(): DataSource = GrowingFileDataSource(
+        partialFileAccessor, stallTimeoutMs, readAheadBytes, onLowStorage, diskWindow,
+        isNetworkReady, profiles::get, partsLookup?.let { it::sizeOfPart } ?: { null }
+    )
 }
 
 private const val NUDGE_INTERVAL_MS = 1_000L
@@ -71,7 +88,9 @@ private class GrowingFileDataSource(
     private val onLowStorage: () -> Unit,
     private val defaultDiskWindow: DiskWindowPolicy?,
     private val isNetworkReady: () -> Boolean,
-    private val profileFor: (Int) -> StreamProfile?
+    private val profileFor: (Int) -> StreamProfile?,
+    /** Tamanho exato do arquivo quando se sabe de antemão (parte de filme dividido); null = só o TDLib sabe. */
+    private val knownSizeFor: (Int) -> Long? = { null }
 ) : BaseDataSource(false) {
 
     private var dataSpec: DataSpec? = null
@@ -121,6 +140,8 @@ private class GrowingFileDataSource(
         // Seek para trás, num trecho já liberado do disco: baixa de novo a partir daqui.
         if (isEvicted(readPosition)) resetLocalCopyAt(readPosition)
 
+        // Parte de filme dividido recém-aberta (emenda ou pulo): o arquivo pode ainda não existir.
+        if (knownSizeFor(fileId) != null) awaitLocalFile()
         val filePath = partialFileAccessor.resolvePath(fileId)
             ?: throw IOException("Arquivo local ainda não disponível para fileId=$fileId")
         val file = File(filePath)
@@ -171,6 +192,9 @@ private class GrowingFileDataSource(
         }
 
         while (true) {
+            // Fim da parte (tamanho exato conhecido): não espera o TDLib marcar o arquivo completo,
+            // o que nunca acontece numa cópia recriada só a partir do meio.
+            knownSizeFor(fileId)?.let { size -> if (readPosition >= size) return C.RESULT_END_OF_INPUT }
             // Leitura avançou (a partir do início fixado) para dentro do trecho liberado: reabre
             // sobre uma cópia nova, baixada a partir da posição atual.
             if (isEvicted(readPosition)) reopenAfterReset(readPosition)
@@ -227,6 +251,19 @@ private class GrowingFileDataSource(
                     }
                 }
             }
+        }
+    }
+
+    /** Espera (até o limite de travamento) o TDLib criar o arquivo local de uma parte recém-aberta. */
+    private fun awaitLocalFile() {
+        val deadline = SystemClock.elapsedRealtime() + stallTimeoutMs
+        while (true) {
+            val path = partialFileAccessor.resolvePath(fileId)
+            if (!path.isNullOrEmpty() && File(path).exists()) return
+            if (SystemClock.elapsedRealtime() > deadline) {
+                throw IOException("Timeout aguardando o arquivo local da parte (fileId=$fileId)")
+            }
+            Thread.sleep(COVERAGE_POLL_MS)
         }
     }
 

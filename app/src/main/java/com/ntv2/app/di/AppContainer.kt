@@ -93,6 +93,8 @@ interface AppContainer {
     val settingsRepository: SettingsRepository
     val mediaDetailsCache: MediaDetailsCache
     val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue
+    val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer
+    val partsLookup: com.ntv2.app.core.multipart.PartsLookup
     val searchIndexRepository: SearchIndexRepository
     val updateRepository: UpdateRepository
     val updateDownloadManager: ApkDownloadManager
@@ -185,8 +187,18 @@ class DefaultAppContainer(
         DefaultExoPlayerProvider(appContext, playbackTuning.ramBufferBytes, videoDecoderPolicy)
     }
 
+    // Partes dos filmes divididos que o usuário abriu (preenchido ao abrir; lido pelo player).
+    private val multiPartRegistry = com.ntv2.app.core.multipart.MultiPartRegistry()
+
+    override val partsLookup: com.ntv2.app.core.multipart.PartsLookup get() = multiPartRegistry
+
+    override val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer by lazy {
+        com.ntv2.app.feature.media.data.parts.DefaultMultiPartPreparer(tdlibMediaGateway, multiPartRegistry)
+    }
+
     private val growingFileDataSourceFactory: GrowingFileDataSourceFactory by lazy {
         GrowingFileDataSourceFactory(
+            partsLookup = multiPartRegistry,
             partialFileAccessor = telegramPlaybackDataSource,
             stallTimeoutMs = playbackTuning.ioStallTimeoutMs,
             readAheadBytes = playbackTuning.aheadWindowBytes,
@@ -219,12 +231,13 @@ class DefaultAppContainer(
             ramBufferBytes = playbackTuning.ramBufferBytes.toLong(),
             refreshNetwork = { tdlibPlaybackGateway.refreshNetwork() },
             videoDecoderPolicy = videoDecoderPolicy,
-            decoderTroubleMemory = com.ntv2.app.core.player.exoplayer.SharedPrefsDecoderTroubleMemory(appContext)
+            decoderTroubleMemory = com.ntv2.app.core.player.exoplayer.SharedPrefsDecoderTroubleMemory(appContext),
+            partsLookup = multiPartRegistry
         )
     }
 
     override val playbackSourceResolver: PlaybackSourceResolver by lazy {
-        DefaultPlaybackSourceResolver(telegramPlaybackDataSource)
+        DefaultPlaybackSourceResolver(telegramPlaybackDataSource, multiPartRegistry)
     }
 
     override val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher by lazy {

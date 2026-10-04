@@ -44,8 +44,31 @@ data class TelegramVideoMessage(
     val seriesTitle: String? = null,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
-    val airDate: String? = null
+    val airDate: String? = null,
+    /**
+     * Filme dividido em partes: total de partes (>= 2). A mensagem é a parte 1 e o card representa o
+     * filme todo; [fileId]/[fileName] são da parte 1/do arquivo original. 1 = arquivo único.
+     */
+    val partCount: Int = 1
 )
+
+/** Uma parte de um filme dividido (mensagem + arquivo no TDLib). [index] começa em 1. */
+data class TelegramVideoPartRef(
+    val index: Int,
+    val messageId: Long,
+    val fileId: Int,
+    val sizeBytes: Long
+)
+
+/** Partes de um filme dividido encontradas no chat; [missing] lista os índices que faltam. */
+data class TelegramVideoParts(
+    val baseName: String,
+    val total: Int,
+    val parts: List<TelegramVideoPartRef>,
+    val missing: List<Int>
+) {
+    val isComplete: Boolean get() = missing.isEmpty() && parts.size == total
+}
 
 data class TelegramVideoPage(
     val videos: List<TelegramVideoMessage>,
@@ -61,6 +84,12 @@ interface TdlibMediaGateway {
         TelegramVideoPage(emptyList(), 0L)
     /** Resolve o vídeo de uma mensagem específica (para a busca via índice obter o fileId do TDLib). */
     suspend fun getVideoByMessage(chatId: Long, messageId: Long): TelegramVideoMessage? = null
+
+    /**
+     * Acha todas as partes do filme dividido a que a mensagem [messageId] pertence (qualquer parte
+     * serve de ponto de partida). null se a mensagem não for parte de um filme dividido.
+     */
+    suspend fun resolveVideoParts(chatId: Long, messageId: Long): TelegramVideoParts? = null
 
     /**
      * Envia [text] da conta logada para @[username] e apaga a cópia do lado do usuário (o destinatário

@@ -39,6 +39,22 @@ interface PartialFileAccessor {
      * de onde o player precisar — usado ao voltar para um trecho já liberado.
      */
     suspend fun resetLocalCopy(fileId: Int) = Unit
+
+    /**
+     * Filme dividido: abre no TDLib uma parte que o player ainda não tocou (registra o estado e
+     * começa o download do início). Sem isso [resolvePath] daria null para as partes 2 em diante.
+     * Não faz nada se a parte já está aberta.
+     */
+    suspend fun ensureOpen(fileId: Int) = Unit
+
+    /**
+     * Filme dividido: começa a baixar o início de [fileId] em segundo plano (~[bytes]), para a
+     * emenda entre partes não travar esperando o começo da parte seguinte.
+     */
+    fun prefetchHead(fileId: Int, bytes: Long) = Unit
+
+    /** Filme dividido: apaga a parte [fileId] já assistida, em segundo plano (libera armazenamento). */
+    fun discardFile(fileId: Int) = Unit
 }
 
 data class PlaybackFileHandle(

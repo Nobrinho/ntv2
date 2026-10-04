@@ -79,6 +79,7 @@ class TdlibTelegramMediaDataSource(
         seriesTitle = seriesTitle,
         seasonNumber = seasonNumber,
         episodeNumber = episodeNumber,
-        airDate = airDate
+        airDate = airDate,
+        partCount = partCount
     )
 }

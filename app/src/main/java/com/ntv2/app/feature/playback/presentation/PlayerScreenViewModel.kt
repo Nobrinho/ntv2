@@ -123,7 +123,9 @@ class PlayerScreenViewModel(
     private val castManager: com.ntv2.app.core.cast.CastManager? = null,
     private val streamServer: com.ntv2.app.core.cast.LocalStreamServer? = null,
     private val progressStore: com.ntv2.app.core.player.progress.PlaybackProgressStore? = null,
-    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null
+    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null,
+    /** Filmes divididos em partes: o Cast serve o filme todo, não só a parte 1. */
+    private val partsLookup: com.ntv2.app.core.multipart.PartsLookup? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlayerScreenUiState())
@@ -250,13 +252,22 @@ class PlayerScreenViewModel(
             _uiState.update { it.copy(castMessage = "Aguarde o vídeo começar para transmitir.") }
             return
         }
-        val totalBytes = playbackController.snapshot.value.expectedBytes?.takeIf { it > 0L } ?: run {
-            _uiState.update { it.copy(castMessage = "Não foi possível transmitir: tamanho do vídeo desconhecido.") }
-            return
+        // Filme dividido: a URI e o tamanho são do filme todo (o snapshot só tem os da parte 1).
+        val parts = partsLookup?.partsOf(request.fileId)
+        val totalBytes = parts?.sumOf { it.sizeBytes }
+            ?: playbackController.snapshot.value.expectedBytes?.takeIf { it > 0L }
+            ?: run {
+                _uiState.update { it.copy(castMessage = "Não foi possível transmitir: tamanho do vídeo desconhecido.") }
+                return
+            }
+        val sourceUri = if (parts != null) {
+            com.ntv2.app.core.multipart.MultiPartUris.forFirstFileId(request.fileId)
+        } else {
+            "tgfile://video/${request.fileId}"
         }
         val position = playbackController.player?.currentPosition ?: uiState.value.snapshot.currentPositionMs
         val mime = mimeTypeFor(castFileName)
-        val url = server.serve(request.fileId, "tgfile://video/${request.fileId}", totalBytes, mime) ?: run {
+        val url = server.serve(request.fileId, sourceUri, totalBytes, mime) ?: run {
             _uiState.update { it.copy(castMessage = "Conecte o celular ao mesmo Wi-Fi do Chromecast para transmitir.") }
             return
         }
@@ -690,12 +701,13 @@ class PlayerScreenViewModelFactory(
     private val castManager: com.ntv2.app.core.cast.CastManager? = null,
     private val streamServer: com.ntv2.app.core.cast.LocalStreamServer? = null,
     private val progressStore: com.ntv2.app.core.player.progress.PlaybackProgressStore? = null,
-    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null
+    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null,
+    private val partsLookup: com.ntv2.app.core.multipart.PartsLookup? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(PlayerScreenViewModel::class.java)) {
-            return PlayerScreenViewModel(playbackController, mediaDetailsCache, networkReady, castManager, streamServer, progressStore, upNextQueue) as T
+            return PlayerScreenViewModel(playbackController, mediaDetailsCache, networkReady, castManager, streamServer, progressStore, upNextQueue, partsLookup) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

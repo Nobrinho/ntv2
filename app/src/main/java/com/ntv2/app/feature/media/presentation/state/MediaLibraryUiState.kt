@@ -17,7 +17,9 @@ data class MediaCardUi(
     /** Altura do vídeo (px) para exibir a resolução (4K/1080p/...); 0 se desconhecida. */
     val videoHeight: Int = 0,
     /** Fração assistida (0f..1f) para o indicador de progresso; 0 se não houver. */
-    val progress: Float = 0f
+    val progress: Float = 0f,
+    /** Filme dividido em partes no Telegram: total (>= 2). 1 = arquivo único. */
+    val partCount: Int = 1
 )
 
 /** Uma linha do Histórico: card + se foi concluído + quando foi atualizado (para agrupar por dia). */

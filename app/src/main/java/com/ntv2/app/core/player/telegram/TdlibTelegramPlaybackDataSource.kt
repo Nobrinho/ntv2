@@ -133,6 +133,24 @@ class TdlibTelegramPlaybackDataSource(
         startObserving(fileId)
     }
 
+    override suspend fun ensureOpen(fileId: Int) {
+        if (!resolvePath(fileId).isNullOrEmpty()) return
+        open(fileId)
+    }
+
+    override fun prefetchHead(fileId: Int, bytes: Long) {
+        scope.launch {
+            runCatching {
+                ensureOpen(fileId)
+                requestRange(fileId, 0L, bytes, priority = 32)
+            }
+        }
+    }
+
+    override fun discardFile(fileId: Int) {
+        scope.launch { runCatching { deleteFile(fileId) } }
+    }
+
     override fun resolvePath(fileId: Int): String? = states[fileId]?.value?.localPath
 
     override fun downloadedBytes(fileId: Int): Long = states[fileId]?.value?.downloadedBytes ?: 0L

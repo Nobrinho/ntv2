@@ -107,7 +107,9 @@ class MediaLibraryViewModel(
     private val maxRetainedItems: Int = MAX_RETAINED_ITEMS,
     private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null,
     // Fila "próximo episódio" para o autoplay no player (null em testes/sem séries).
-    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null
+    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null,
+    // Filmes divididos em partes: acha e registra as partes antes de abrir o player (null = sem suporte).
+    private val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer? = null
 ) : ViewModel() {
 
     // Gosto do usuário para recomendações (gêneros crus de favoritos/histórico) + ids a excluir.
@@ -587,6 +589,11 @@ class MediaLibraryViewModel(
 
     private fun openVideo(media: MediaCardUi) {
         recordOpened(media)
+        // Filme dividido em partes: acha e registra as partes antes de abrir o player.
+        if (media.fileId != 0 && media.partCount >= 2) {
+            openMultiPartVideo(media)
+            return
+        }
         // Card normal (já tem fileId do TDLib): navega direto.
         if (media.fileId != 0) {
             _uiState.update {
@@ -627,6 +634,11 @@ class MediaLibraryViewModel(
                 _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = true) }
                 return@launch
             }
+            // O índice aponta para uma parte de filme dividido: acha as outras antes de tocar.
+            if (!withContext(ioDispatcher) { partsReady(media.channelId, messageId, resolved.partCount) }) {
+                _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = true) }
+                return@launch
+            }
             _uiState.update {
                 it.copy(
                     isOpeningVideo = false,
@@ -639,6 +651,55 @@ class MediaLibraryViewModel(
                         durationSeconds = resolved.durationSeconds,
                         fileName = resolved.fileName,
                         thumbnailPath = media.posterPath ?: media.thumbnailPath
+                    )
+                )
+            }
+        }
+    }
+
+    /**
+     * Filme dividido em partes: localiza e registra todas as partes para o player abri-las como um
+     * arquivo só. true = pode tocar (arquivo único, ou partes completas); false = faltam partes ou
+     * não foi possível localizá-las. Sem [multiPartPreparer] (testes) não bloqueia nada.
+     */
+    private suspend fun partsReady(channelId: Long, messageId: Long, partCount: Int): Boolean {
+        if (partCount < 2) return true
+        val preparer = multiPartPreparer ?: return true
+        return preparer.prepare(channelId, messageId) is com.ntv2.app.feature.media.domain.MultiPartPrepareResult.Ready
+    }
+
+    /** Abre um card de filme dividido (já com fileId da parte 1): prepara as partes e navega. */
+    private fun openMultiPartVideo(media: MediaCardUi) {
+        val messageId = media.mediaId.substringAfterLast('_').toLongOrNull()
+        _uiState.update {
+            it.copy(
+                isOpeningVideo = true,
+                openVideoFailed = false,
+                lastFocusedMediaId = media.mediaId,
+                returnToDetailsMediaId = media.mediaId,
+                returnToDetailsMedia = media
+            )
+        }
+        openVideoJob?.cancel()
+        openVideoJob = viewModelScope.launch {
+            val ready = messageId != null &&
+                withContext(ioDispatcher) { partsReady(media.channelId, messageId, media.partCount) }
+            if (!ready) {
+                _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = true) }
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    isOpeningVideo = false,
+                    openVideoFailed = false,
+                    pendingNavigation = MediaNavigationPayload(
+                        mediaId = media.mediaId,
+                        fileId = media.fileId,
+                        title = media.title,
+                        channelName = media.channelName,
+                        durationSeconds = media.durationSeconds,
+                        fileName = media.fileName,
+                        thumbnailPath = media.thumbnailPath
                     )
                 )
             }
@@ -659,6 +720,9 @@ class MediaLibraryViewModel(
                 runCatching { mediaRepository.getVideoByMessage(next.channelId, next.channelTitle, messageId) }.getOrNull()
             } ?: return@launch
             if (resolved.fileId == 0) return@launch
+            // Episódio dividido em partes: sem as partes registradas o autoplay tocaria só a 1ª.
+            val nextMessageId = next.mediaId.substringAfterLast('_').toLongOrNull() ?: return@launch
+            if (!withContext(ioDispatcher) { partsReady(next.channelId, nextMessageId, resolved.partCount) }) return@launch
             resolvedVideos[next.mediaId] = resolved
             queue.put(
                 currentMediaId,
@@ -1451,7 +1515,8 @@ class MediaLibraryViewModel(
             coverAspectRatio = coverAspectRatio,
             fileId = fileId,
             videoHeight = height,
-            progress = progress
+            progress = progress,
+            partCount = partCount
         )
     }
 }
@@ -1468,7 +1533,8 @@ class MediaLibraryViewModelFactory(
     private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null,
     private val maxRetainedItems: Int = MAX_RETAINED_ITEMS,
     private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null,
-    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null
+    private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null,
+    private val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1485,7 +1551,8 @@ class MediaLibraryViewModelFactory(
                 videoPrefetcher = videoPrefetcher,
                 mediaReporter = mediaReporter,
                 maxRetainedItems = maxRetainedItems,
-                upNextQueue = upNextQueue
+                upNextQueue = upNextQueue,
+                multiPartPreparer = multiPartPreparer
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

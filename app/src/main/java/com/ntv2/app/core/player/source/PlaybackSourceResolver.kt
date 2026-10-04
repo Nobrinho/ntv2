@@ -1,5 +1,7 @@
 package com.ntv2.app.core.player.source
 
+import com.ntv2.app.core.multipart.MultiPartUris
+import com.ntv2.app.core.multipart.PartsLookup
 import com.ntv2.app.core.player.telegram.TelegramPlaybackDataSource
 import java.io.File
 
@@ -56,7 +58,9 @@ interface PlaybackSourceResolver {
 }
 
 class DefaultPlaybackSourceResolver(
-    private val telegramPlaybackDataSource: TelegramPlaybackDataSource
+    private val telegramPlaybackDataSource: TelegramPlaybackDataSource,
+    /** Filmes divididos em partes: o `fileId` da parte 1 identifica o filme. */
+    private val partsLookup: PartsLookup? = null
 ) : PlaybackSourceResolver {
 
     private val minBytesForPlayback = 4L * 1024L * 1024L
@@ -102,11 +106,21 @@ class DefaultPlaybackSourceResolver(
             )
         }
 
+        // Filme dividido: o que o player abre é o filme todo, não a parte 1 (que só o começa).
+        val parts = partsLookup?.partsOf(request.fileId)
+        val expectedBytes = parts?.sumOf { it.sizeBytes } ?: handle.expectedBytes
+        val playbackUri = if (parts != null) {
+            MultiPartUris.forFirstFileId(request.fileId)
+        } else {
+            "tgfile://video/${request.fileId}"
+        }
+
         val ready = MediaAvailability.Ready(
             localPath = handle.localPath,
             downloadedBytes = handle.downloadedBytes,
-            expectedBytes = handle.expectedBytes,
-            isDownloadComplete = handle.isDownloadComplete
+            expectedBytes = expectedBytes,
+            // Completa só se for arquivo único: o filme dividido nunca "termina de baixar" de uma vez.
+            isDownloadComplete = handle.isDownloadComplete && parts == null
         )
 
         return PlaybackSourceResolution.Available(
@@ -114,10 +128,10 @@ class DefaultPlaybackSourceResolver(
                 mediaId = request.mediaId,
                 fileId = request.fileId,
                 localPath = handle.localPath,
-                playbackUri = "tgfile://video/${request.fileId}",
+                playbackUri = playbackUri,
                 downloadedBytes = currentBytes,
-                expectedBytes = handle.expectedBytes,
-                isDownloadComplete = handle.isDownloadComplete
+                expectedBytes = expectedBytes,
+                isDownloadComplete = handle.isDownloadComplete && parts == null
             ),
             availability = ready
         )

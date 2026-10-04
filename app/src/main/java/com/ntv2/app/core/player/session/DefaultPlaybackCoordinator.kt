@@ -13,6 +13,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
+import com.ntv2.app.core.multipart.PartsLookup
+import com.ntv2.app.core.multipart.allFileIds
 import com.ntv2.app.core.player.MediaTrackOption
 import com.ntv2.app.core.player.MediaTracksInfo
 import java.util.Locale
@@ -62,7 +64,9 @@ class DefaultPlaybackCoordinator(
     private val refreshNetwork: () -> Unit = {},
     private val videoDecoderPolicy: VideoDecoderPolicy = VideoDecoderPolicy(),
     /** Onde o hardware falhou em cada vídeo: software só em volta desses pontos (ver DecoderWindows). */
-    private val decoderTroubleMemory: DecoderTroubleMemory? = null
+    private val decoderTroubleMemory: DecoderTroubleMemory? = null,
+    /** Filmes divididos em partes: o `fileId` da parte 1 identifica o filme (ver MultiPartRegistry). */
+    private val partsLookup: PartsLookup? = null
 ) : PlaybackCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -211,7 +215,9 @@ class DefaultPlaybackCoordinator(
         videoDecoderPolicy.preferSoftware = recovery.softwareWanted(media.startPositionMs, videoHeight = 0)
         currentMedia = media
         val handle = playbackDataSource.open(media.fileId)
-        applyStreamProfile(media, handle.expectedBytes, handle.localPath)
+        // Filme dividido: o bitrate vem do tamanho TOTAL (a parte 1 é só uma fatia).
+        val totalBytes = partsLookup?.partsOf(media.fileId)?.sumOf { it.sizeBytes } ?: handle.expectedBytes
+        applyStreamProfile(media, totalBytes, handle.localPath)
         snapshotState.update {
             it.copy(
                 downloadedBytes = handle.downloadedBytes,
@@ -262,7 +268,8 @@ class DefaultPlaybackCoordinator(
             freeBytes = free,
             downloadFloor = StorageBudget.downloadFloor(total)
         )
-        dataSourceFactory.setProfile(media.fileId, profile)
+        // Cada parte de um filme dividido é lida como um arquivo: todas usam o perfil do filme.
+        partsLookup.allFileIds(media.fileId).forEach { dataSourceFactory.setProfile(it, profile) }
         android.util.Log.i(
             "NtvPlayer",
             "perfil fileId=${media.fileId} ~${profile.bytesPerSecond * 8 / 1_000_000}Mbps " +
@@ -540,12 +547,12 @@ class DefaultPlaybackCoordinator(
 
     override suspend fun restartDownload(fileId: Int) {
         if (fileId <= 0) return
-        runCatching { playbackDataSource.close(fileId) }
+        partsLookup.allFileIds(fileId).forEach { runCatching { playbackDataSource.close(it) } }
     }
 
     override fun discardMedia(fileId: Int) {
         if (fileId <= 0) return
-        scope.launch { playbackDataSource.deleteFile(fileId) }
+        scope.launch { partsLookup.allFileIds(fileId).forEach { playbackDataSource.deleteFile(it) } }
     }
 
     override fun release() {
@@ -672,14 +679,17 @@ class DefaultPlaybackCoordinator(
         exoPlayer?.stop()
 
         if (closeSession && media != null) {
-            val fileId = media.fileId
+            // Filme dividido: todas as partes (as já descartadas na emenda não custam nada).
+            val fileIds = partsLookup.allFileIds(media.fileId)
             cleanupJob = scope.launch {
                 // Ao sair da reprodução, remove o arquivo do TDLib para não acumular no
                 // armazenamento (o Fire TV tem pouco espaço). Nas demais paradas, apenas fecha.
-                if (deleteFile) {
-                    playbackDataSource.deleteFile(fileId)
-                } else {
-                    playbackDataSource.close(fileId)
+                fileIds.forEach { fileId ->
+                    if (deleteFile) {
+                        playbackDataSource.deleteFile(fileId)
+                    } else {
+                        playbackDataSource.close(fileId)
+                    }
                 }
             }
             currentMedia = null

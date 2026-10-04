@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import com.ntv2.app.BuildConfig
+import com.ntv2.app.core.multipart.PartResolver
 import com.ntv2.app.core.telegram.auth.TdAuthorizationState
 import com.ntv2.app.core.telegram.auth.TdlibAuthGateway
 import com.ntv2.app.core.telegram.channels.TelegramChatSummary
@@ -12,6 +13,8 @@ import com.ntv2.app.core.telegram.channels.TdlibChannelsGateway
 import com.ntv2.app.core.telegram.media.MovieMetadataParser
 import com.ntv2.app.core.telegram.media.TelegramVideoMessage
 import com.ntv2.app.core.telegram.media.TelegramVideoPage
+import com.ntv2.app.core.telegram.media.TelegramVideoPartRef
+import com.ntv2.app.core.telegram.media.TelegramVideoParts
 import com.ntv2.app.core.telegram.media.TdlibMediaGateway
 import com.ntv2.app.core.telegram.media.TdlibPlaybackFileState
 import com.ntv2.app.core.telegram.media.TdlibPlaybackGateway
@@ -574,9 +577,11 @@ class RealTdlibGateway(
         // Se vier um id "pequeno" (server id), converte para o formato do TDLib.
         val tdMessageId = if (messageId in 1..0xFFFFF) messageId shl 20 else messageId
         val direct = send(TdApi.GetMessage(chatId, tdMessageId)) as? TdApi.Message
-        val videoMsg = direct?.takeIf { isVideoMessage(it.content) }
+        val found = direct?.takeIf { isVideoMessage(it.content) }
             ?: findVideoNearPoster(chatId, tdMessageId)
             ?: return null
+        // Filme dividido: o índice pode apontar para qualquer parte; o filme é representado pela 1ª.
+        val videoMsg = firstPartMessage(found) ?: return null
         val video = videoFileOf(videoMsg.content) ?: return null
         return TelegramVideoMessage(
             mediaId = "${videoMsg.chatId}_${videoMsg.id}",
@@ -584,13 +589,86 @@ class RealTdlibGateway(
             messageId = videoMsg.id,
             title = video.caption?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: "Video ${videoMsg.id}",
             caption = video.caption,
-            fileName = video.fileName.ifBlank { null },
+            fileName = video.logicalFileName.ifBlank { null },
             durationSeconds = video.durationSeconds,
             thumbnailPath = null,
             fileId = video.file.id,
             width = video.width,
-            height = video.height
+            height = video.height,
+            partCount = video.part?.total ?: 1
         )
+    }
+
+    /**
+     * Todas as partes do filme dividido a que [messageId] pertence. As partes são subidas em
+     * sequência, então ficam perto umas das outras: varre as mensagens ao redor (não depende da
+     * ordem de upload). Se ainda faltar parte, busca pelo nome do arquivo no chat.
+     */
+    override suspend fun resolveVideoParts(chatId: Long, messageId: Long): TelegramVideoParts? {
+        ensureConfigured()
+        runCatching { send(TdApi.GetChat(chatId)) }
+        val tdMessageId = if (messageId in 1..0xFFFFF) messageId shl 20 else messageId
+        val anchor = send(TdApi.GetMessage(chatId, tdMessageId)) as? TdApi.Message ?: return null
+        return resolvePartsOf(anchor)
+    }
+
+    private suspend fun resolvePartsOf(anchor: TdApi.Message): TelegramVideoParts? {
+        val name = videoFileOf(anchor.content)?.part ?: return null
+        val candidates = LinkedHashMap<Long, PartResolver.Candidate>()
+        fun collect(messages: List<TdApi.Message>) {
+            for (m in messages) {
+                val v = videoFileOf(m.content) ?: continue
+                candidates[m.id] = PartResolver.Candidate(
+                    messageId = m.id,
+                    fileId = v.file.id,
+                    fileName = v.fileName,
+                    sizeBytes = v.file.size.takeIf { it > 0L } ?: v.file.expectedSize
+                )
+            }
+        }
+        fun group() = PartResolver.resolve(name, anchor.id, candidates.values.toList())
+        collect(listOf(anchor))
+
+        // Janela ao redor da âncora (mais novas e mais antigas). GetChatHistory pode voltar vazio
+        // na 1ª chamada enquanto carrega do servidor — 1 retry.
+        val half = minOf(name.total + 10, 49)
+        for (attempt in 0 until 2) {
+            if (group().isComplete) break
+            val res = send(TdApi.GetChatHistory(anchor.chatId, anchor.id, -half, half * 2 + 1, false)) as? TdApi.Messages
+            collect(res?.messages?.filterNotNull().orEmpty())
+        }
+        // Partes mais distantes (upload intercalado com outras mensagens): busca pelo nome.
+        if (!group().isComplete) {
+            val res = send(
+                TdApi.SearchChatMessages(
+                    anchor.chatId, null, name.baseName, null, 0L, 0, 100, TdApi.SearchMessagesFilterDocument()
+                )
+            ) as? TdApi.FoundChatMessages
+            collect(res?.messages?.filterNotNull().orEmpty())
+        }
+
+        val found = group()
+        return TelegramVideoParts(
+            baseName = found.baseName,
+            total = found.total,
+            parts = found.partsByIndex.toSortedMap().map { (index, c) ->
+                TelegramVideoPartRef(index, c.messageId, c.fileId, c.sizeBytes)
+            },
+            missing = found.missing
+        )
+    }
+
+    /**
+     * A mensagem que representa o filme: a própria, se for arquivo único ou parte 1; se for outra
+     * parte, a parte 1 (null se não achar). Usado onde um vídeo é resolvido a partir de uma
+     * mensagem qualquer (busca, índice).
+     */
+    private suspend fun firstPartMessage(msg: TdApi.Message): TdApi.Message? {
+        val name = videoFileOf(msg.content)?.part ?: return msg
+        if (name.index == 1) return msg
+        val first = resolvePartsOf(msg)?.parts?.firstOrNull { it.index == 1 } ?: return null
+        return if (first.messageId == msg.id) msg
+        else send(TdApi.GetMessage(msg.chatId, first.messageId)) as? TdApi.Message
     }
 
     // Envios aguardando confirmação do servidor: id temporário → id definitivo (null = falhou).
@@ -657,8 +735,11 @@ class RealTdlibGateway(
                 MessagePageMerge.older(pages, limit)
             }
             val byId = found.filterNotNull().flatMap { it.messages.orEmpty().filterNotNull() }.associateBy { it.id }
-            // Documentos que não são vídeo (pdf, zip, legenda) ficam de fora aqui.
-            videoMessages = selection.ids.mapNotNull { byId[it] }.filter { isVideoMessage(it.content) }
+            // Documentos que não são vídeo (pdf, zip, legenda) ficam de fora aqui. Filme dividido:
+            // só a parte 1 vira card (representa o filme); as demais ficam ocultas — a parte 1 é a
+            // mais antiga do grupo, então aparece nesta página ou na seguinte.
+            videoMessages = selection.ids.mapNotNull { byId[it] }
+                .filter { isVideoMessage(it.content) && !isContinuationPart(it.content) }
             nextFromMessageId = selection.nextFromMessageId
         } else {
             // Busca por texto: SEM filtro, para varrer também as mensagens de PÔSTER/TEXTO — o título
@@ -669,10 +750,11 @@ class RealTdlibGateway(
             videoMessages = coroutineScope {
                 result.messages.orEmpty().filterNotNull().map { msg ->
                     async {
+                        // Parte de filme dividido → a parte 1 (o card é do filme, não da parte).
                         when {
-                            isVideoMessage(msg.content) -> msg
+                            isVideoMessage(msg.content) -> firstPartMessage(msg)
                             msg.content is TdApi.MessagePhoto || msg.content is TdApi.MessageText ->
-                                findVideoNearPoster(chatId, msg.id)
+                                findVideoNearPoster(chatId, msg.id)?.let { firstPartMessage(it) }
                             else -> null
                         }
                     }
@@ -692,7 +774,7 @@ class RealTdlibGateway(
                     // Nome do PRÓPRIO vídeo (fonte da verdade p/ casar com o pôster): título da
                     // legenda → fileName limpo → 1ª linha da legenda.
                     val videoName = videoMeta.title
-                        ?: video.fileName.ifBlank { null }?.let { cleanDisplayName(it).ifBlank { it } }
+                        ?: video.logicalFileName.ifBlank { null }?.let { cleanDisplayName(it).ifBlank { it } }
                         ?: videoCaption?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
 
                     // 1) Dados COMPLETOS na própria legenda do vídeo (mensagem única) → usa direto,
@@ -770,7 +852,7 @@ class RealTdlibGateway(
                         messageId = msg.id,
                         title = displayTitle,
                         caption = metaCaption ?: videoCaption,
-                        fileName = video.fileName.ifBlank { null },
+                        fileName = video.logicalFileName.ifBlank { null },
                         // Documento (MKV) não traz duração: usa a da legenda/pôster, se houver.
                         durationSeconds = video.durationSeconds.takeIf { it > 0 }
                             ?: ((posterMeta?.durationMin ?: videoMeta.durationMin)?.times(60) ?: 0),
@@ -809,7 +891,8 @@ class RealTdlibGateway(
                         seriesTitle = epMeta?.seriesTitle ?: (if (isSeriesEpisode) posterMeta?.title else null),
                         seasonNumber = epMeta?.seasonNumber,
                         episodeNumber = epMeta?.episodeNumber,
-                        airDate = epMeta?.airDate
+                        airDate = epMeta?.airDate,
+                        partCount = video.part?.total ?: 1
                     )
                 }
             }.awaitAll()

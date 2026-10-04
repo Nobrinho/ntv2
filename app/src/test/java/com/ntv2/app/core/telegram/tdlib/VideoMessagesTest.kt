@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.drinkless.tdlib.TdApi
 
 class VideoMessagesTest {
 
@@ -25,6 +26,62 @@ class VideoMessagesTest {
     fun `mime explicito de outro tipo vence a extensao`() {
         assertFalse(isVideoDocument("pacote.mkv", "application/zip"))
         assertFalse(isVideoDocument("capa.jpg", "image/jpeg"))
+    }
+
+    @Test
+    fun `parte de filme dividido e video pela extensao do arquivo original`() {
+        assertTrue(isVideoDocument("Filme.2020.mkv.part01of11", "application/octet-stream"))
+        assertTrue(isVideoDocument("Filme.2020.mp4.part03of11", ""))
+        assertTrue(isVideoDocument("Filme.mkv.part01of02", null))
+    }
+
+    @Test
+    fun `parte de arquivo que nao e video continua fora`() {
+        assertFalse(isVideoDocument("backup.zip.part01of02", "application/octet-stream"))
+        assertFalse(isVideoDocument("dados.part01of02", ""))
+        // mime explícito de outro tipo ainda vence
+        assertFalse(isVideoDocument("Filme.mkv.part01of02", "application/zip"))
+    }
+
+    private fun docMessage(fileName: String, mime: String = "application/octet-stream"): TdApi.MessageDocument =
+        TdApi.MessageDocument().apply {
+            document = TdApi.Document().apply {
+                this.fileName = fileName
+                mimeType = mime
+                document = TdApi.File()
+            }
+        }
+
+    @Test
+    fun `so a parte 1 vira card, as continuacoes ficam ocultas`() {
+        assertFalse(isContinuationPart(docMessage("Filme.mkv.part01of03")))
+        assertTrue(isContinuationPart(docMessage("Filme.mkv.part02of03")))
+        assertTrue(isContinuationPart(docMessage("Filme.mkv.part03of03")))
+        // arquivo único e não-vídeo não são continuação
+        assertFalse(isContinuationPart(docMessage("Filme.mkv")))
+        assertFalse(isContinuationPart(docMessage("legenda.srt")))
+        assertFalse(isContinuationPart(null))
+    }
+
+    @Test
+    fun `parte de filme dividido e reconhecida como mensagem de video`() {
+        assertTrue(isVideoMessage(docMessage("Filme.mkv.part02of03")))
+    }
+
+    @Test
+    fun `nome logico remove o sufixo de parte`() {
+        val info = videoFileOf(docMessage("Filme.2020.mkv.part02of03"))!!
+        assertEquals("Filme.2020.mkv", info.logicalFileName)
+        assertEquals(3, info.part?.total)
+        val single = videoFileOf(docMessage("Filme.2020.mkv"))!!
+        assertEquals("Filme.2020.mkv", single.logicalFileName)
+        assertEquals(null, single.part)
+    }
+
+    @Test
+    fun `titulo derivado do nome logico nao carrega o sufixo de parte`() {
+        val info = videoFileOf(docMessage("Filme.2020.1080p.mkv.part01of04"))!!
+        assertEquals("Filme 2020", cleanDisplayName(info.logicalFileName))
     }
 
     @Test

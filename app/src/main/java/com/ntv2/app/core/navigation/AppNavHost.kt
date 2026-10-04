@@ -253,7 +253,8 @@ fun AppNavHost(
                     searchIndexRepository = appContainer.searchIndexRepository,
                     videoPrefetcher = appContainer.videoPrefetcher,
                     mediaReporter = com.ntv2.app.feature.media.data.report.MediaReporter(appContainer.tdlibMediaGateway),
-                    upNextQueue = appContainer.upNextQueue
+                    upNextQueue = appContainer.upNextQueue,
+                    multiPartPreparer = appContainer.multiPartPreparer
                 )
             )
             MediaLibraryScreen(
@@ -402,7 +403,8 @@ fun AppNavHost(
                     castManager = appContainer.castManager,
                     streamServer = appContainer.localStreamServer,
                     progressStore = appContainer.playbackProgressStore,
-                    upNextQueue = appContainer.upNextQueue
+                    upNextQueue = appContainer.upNextQueue,
+                    partsLookup = appContainer.partsLookup
                 )
             )
             val playerAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)

@@ -1,5 +1,6 @@
 package com.ntv2.app.core.telegram.tdlib
 
+import com.ntv2.app.core.multipart.PartName
 import org.drinkless.tdlib.TdApi
 
 /**
@@ -19,7 +20,13 @@ internal data class VideoFileInfo(
     val height: Int,
     val thumbnail: TdApi.Thumbnail?,
     val caption: String?
-)
+) {
+    /** Preenchido quando o arquivo é uma parte de um filme dividido (`Filme.mkv.part03of11`). */
+    val part: PartName? get() = PartName.parse(fileName)
+
+    /** Nome do arquivo inteiro: sem o sufixo de parte. Para quem exibe/deriva título do nome. */
+    val logicalFileName: String get() = part?.baseName ?: fileName
+}
 
 internal fun videoFileOf(content: TdApi.MessageContent?): VideoFileInfo? = when (content) {
     is TdApi.MessageVideo -> content.video?.let { video ->
@@ -56,14 +63,24 @@ internal fun videoFileOf(content: TdApi.MessageContent?): VideoFileInfo? = when 
 internal fun isVideoMessage(content: TdApi.MessageContent?): Boolean = videoFileOf(content) != null
 
 /**
+ * Parte 2 em diante de um filme dividido: não vira card na biblioteca (o card é da parte 1, que
+ * representa o filme todo). Ver [PartName].
+ */
+internal fun isContinuationPart(content: TdApi.MessageContent?): Boolean =
+    videoFileOf(content)?.part?.let { it.index > 1 } ?: false
+
+/**
  * Documento que é vídeo: mime "video/…" (ou matroska), ou extensão de vídeo quando o mime é genérico.
- * Um mime explícito de outro tipo (zip, pdf, texto) vence a extensão.
+ * Um mime explícito de outro tipo (zip, pdf, texto) vence a extensão. Parte de filme dividido
+ * (`Filme.mkv.part01of11`) vale pela extensão do arquivo original.
  */
 internal fun isVideoDocument(fileName: String?, mimeType: String?): Boolean {
     val mime = mimeType.orEmpty().trim().lowercase()
     if (mime.startsWith("video/") || mime.contains("matroska")) return true
     val genericMime = mime.isEmpty() || mime == "application/octet-stream"
-    return genericMime && VIDEO_EXTENSION_REGEX.containsMatchIn(fileName.orEmpty().trim())
+    val name = fileName.orEmpty().trim()
+    val logicalName = PartName.parse(name)?.baseName ?: name
+    return genericMime && VIDEO_EXTENSION_REGEX.containsMatchIn(logicalName)
 }
 
 /**

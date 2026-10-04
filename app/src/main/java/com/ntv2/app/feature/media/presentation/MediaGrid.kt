@@ -69,8 +69,14 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import com.ntv2.app.core.ui.FocusGlideRing
+import com.ntv2.app.core.ui.LocalFocusGlide
+import com.ntv2.app.core.ui.drawFocusRing
+import com.ntv2.app.core.ui.focusGlideHost
+import com.ntv2.app.core.ui.focusGlideTarget
+import com.ntv2.app.core.ui.rememberFocusGlide
 import com.ntv2.app.core.ui.CardLoadingStyle
 import com.ntv2.app.core.ui.CardLoadingPlaceholder
 import androidx.tv.material3.Icon
@@ -185,7 +191,11 @@ internal fun LazyMediaGrid(
         }
         return true
     }
-    BoxWithConstraints(modifier = modifier) {
+    // Com o anel da tela (rail + grade juntos) usa o dela; senão, um próprio só da grade.
+    val screenGlide = LocalFocusGlide.current
+    val ownGlide = rememberFocusGlide(animationsEnabled && screenGlide == null)
+    val glide = screenGlide ?: ownGlide
+    BoxWithConstraints(modifier = modifier.focusGlideHost(ownGlide)) {
         val columns = columnsForWidthDp(maxWidth.value)
         LazyVerticalStaggeredGrid(
             columns = StaggeredGridCells.Fixed(columns),
@@ -215,6 +225,7 @@ internal fun LazyMediaGrid(
                     showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning(),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .focusGlideTarget(media.mediaId, glide)
                         .focusRequester(requester)
                         .onFocusChanged { if (it.isFocused) onCardFocused(media.mediaId) }
                         .onPreviewKeyEvent { e ->
@@ -249,6 +260,7 @@ internal fun LazyMediaGrid(
                 }
             }
         }
+        FocusGlideRing(ownGlide)
     }
 }
 
@@ -362,6 +374,19 @@ internal fun MediaGridSkeleton(
 
 private val FOCUS_ACCENT = Color(0xFF2BEE34)
 
+/** Borda neutra do card sem foco (some conforme o foco chega). */
+private fun DrawScope.drawIdleBorder(fraction: Float) {
+    if (fraction >= 1f) return
+    val line = 1.dp.toPx()
+    drawRoundRect(
+        color = Color(0x33FFFFFF).copy(alpha = 0x33 / 255f * (1f - fraction)),
+        topLeft = androidx.compose.ui.geometry.Offset(line / 2, line / 2),
+        size = androidx.compose.ui.geometry.Size(size.width - line, size.height - line),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx() - line / 2),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(line)
+    )
+}
+
 @Composable
 internal fun MediaCard(
     media: MediaCardUi,
@@ -377,42 +402,31 @@ internal fun MediaCard(
     val cover = if (showCover) (media.posterPath ?: media.thumbnailPath) else null
     val showTitle = !showCover || media.posterPath == null
     // Foco: aro verde (cor de destaque do app) com contorno escuro por dentro, desenhado POR CIMA
-    // da capa e com leve zoom. Só a borda branca sumia em pôsteres claros e o usuário se perdia.
-    val scale by animateFloatAsState(
-        targetValue = if (focused) 1.05f else 1f,
+    // da capa. Só a borda branca sumia em pôsteres claros e o usuário se perdia.
+    // Tudo que muda com o foco (aro, fundo) segue UMA fração animada 0..1. Antes o aro e o
+    // fundo trocavam de uma vez: ao passar de um card para o outro havia
+    // um instante com nenhum card em destaque (e o zIndex caía antes da hora),
+    // o que dava a impressão de a grade tremer.
+    val focusFraction by animateFloatAsState(
+        targetValue = if (focused) 1f else 0f,
         animationSpec = tween(if (animationsEnabled) 140 else 0),
-        label = "card-focus-scale"
+        label = "card-focus"
     )
     Box(
         modifier = modifier
-            .zIndex(if (focused) 1f else 0f)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            // Contínuo: sem "salto" de camada ao trocar o foco.
+            .zIndex(focusFraction)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color(0x22FFFFFF) else Color(0x0FFFFFFF))
-            .then(
-                if (focused) Modifier.drawWithContent {
-                    drawContent()
-                    val outer = 4.dp.toPx()
-                    val inner = 2.dp.toPx()
-                    val radius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx())
-                    drawRoundRect(
-                        color = FOCUS_ACCENT,
-                        topLeft = androidx.compose.ui.geometry.Offset(outer / 2, outer / 2),
-                        size = androidx.compose.ui.geometry.Size(size.width - outer, size.height - outer),
-                        cornerRadius = radius,
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(outer)
-                    )
-                    drawRoundRect(
-                        color = Color(0xE6000000),
-                        topLeft = androidx.compose.ui.geometry.Offset(outer + inner / 2, outer + inner / 2),
-                        size = androidx.compose.ui.geometry.Size(size.width - 2 * outer - inner, size.height - 2 * outer - inner),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius((10.dp.toPx() - outer).coerceAtLeast(0f)),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(inner)
-                    )
-                } else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
-            )
+            .background(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), Color(0x22FFFFFF), focusFraction))
+            .drawWithContent {
+                drawContent()
+                drawIdleBorder(focusFraction)
+                // Com animações ligadas o aro é o anel único que desliza pela grade (FocusGlideRing);
+                // desligadas, cada card desenha o seu, na hora.
+                if (!animationsEnabled && focusFraction > 0f) drawFocusRing(size, focusFraction)
+            }
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Capa (proporção da imagem) com barra de progresso e alerta opcional de reprodução.
@@ -552,7 +566,11 @@ internal fun LazySeriesGrid(
     animationsEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    BoxWithConstraints(modifier = modifier) {
+    // Com o anel da tela (rail + grade juntos) usa o dela; senão, um próprio só da grade.
+    val screenGlide = LocalFocusGlide.current
+    val ownGlide = rememberFocusGlide(animationsEnabled && screenGlide == null)
+    val glide = screenGlide ?: ownGlide
+    BoxWithConstraints(modifier = modifier.focusGlideHost(ownGlide)) {
         val columns = columnsForWidthDp(maxWidth.value)
         LazyVerticalStaggeredGrid(
             columns = StaggeredGridCells.Fixed(columns),
@@ -571,12 +589,14 @@ internal fun LazySeriesGrid(
                     animationsEnabled = animationsEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .focusGlideTarget(id, glide)
                         .focusRequester(focusRequesterFor(id))
                         .onFocusChanged { if (it.isFocused) onCardFocused(id) },
                     onClick = { onSeriesClick(s) }
                 )
             }
         }
+        FocusGlideRing(ownGlide)
     }
 }
 
@@ -591,17 +611,24 @@ private fun SeriesGridCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val cover = if (showCover) series.posterUrl else null
+    val focusFraction by animateFloatAsState(
+        targetValue = if (focused) 1f else 0f,
+        animationSpec = tween(if (animationsEnabled) 140 else 0),
+        label = "series-card-focus"
+    )
     Box(
         modifier = modifier
-            .zIndex(if (focused) 1f else 0f)
+            .zIndex(focusFraction)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0x0FFFFFFF))
-            .then(
-                if (focused) Modifier.border(3.dp, FOCUS_ACCENT, RoundedCornerShape(10.dp))
-                else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
-            )
+            .drawWithContent {
+                drawContent()
+                drawIdleBorder(focusFraction)
+                // Animações ligadas: o aro é o anel único que desliza (FocusGlideRing).
+                if (!animationsEnabled && focusFraction > 0f) drawFocusRing(size, focusFraction)
+            }
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Box(
@@ -618,7 +645,31 @@ private fun SeriesGridCard(
                         animationsEnabled = animationsEnabled,
                         modifier = Modifier.fillMaxSize()
                     )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Filled.Movie,
+                            contentDescription = null,
+                            tint = Color(0x66FFFFFF),
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
                 }
+            }
+            // Sem capa (opção desligada ou série sem pôster), o nome aparece sob o placeholder,
+            // igual ao card de filmes.
+            if (series.posterUrl == null || !showCover) {
+                Text(
+                    series.title,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(CARD_TITLE_H)
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                )
             }
         }
     }

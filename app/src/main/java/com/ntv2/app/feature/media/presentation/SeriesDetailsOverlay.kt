@@ -59,6 +59,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.ntv2.app.core.ui.FocusGlideScope
+import com.ntv2.app.core.ui.glideActive
+import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.feature.media.domain.MediaItemSummary
 import com.ntv2.app.feature.media.domain.SeasonSummary
@@ -110,6 +113,7 @@ internal fun SeriesDetailsOverlay(
         }
     }
 
+    FocusGlideScope(Modifier.fillMaxSize()) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -231,6 +235,7 @@ internal fun SeriesDetailsOverlay(
             }
         }
     }
+    }
 }
 
 /**
@@ -300,14 +305,16 @@ private fun PlayButton(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     Row(
         modifier = modifier
+            .glideTarget(8.dp)
             .clip(RoundedCornerShape(8.dp))
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(BRAND_GREEN)
-            .then(if (focused) Modifier.border(3.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
             .padding(horizontal = 22.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -336,6 +343,7 @@ private fun SeasonSelector(
         seasons.forEachIndexed { index, s ->
             val isSel = s.number == selected
             var focused by remember { mutableStateOf(false) }
+            val gliding = glideActive()
             val isLast = index == seasons.lastIndex
             // 1º chip: alvo do ↓ do Assistir + ↑ volta ao Assistir. Último chip: → entra na lista.
             val chipMod = Modifier
@@ -349,11 +357,12 @@ private fun SeasonSelector(
                 color = if (isSel) Color.Black else Color(0xFFCFCFCF),
                 style = MaterialTheme.typography.labelLarge,
                 modifier = chipMod
+                    .glideTarget(20.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .onFocusChanged { focused = it.isFocused }
                     .clickable { onSelect(s.number) }
                     .background(if (isSel) BRAND_GREEN else Color(0x22FFFFFF))
-                    .then(if (focused && !isSel) Modifier.border(2.dp, Color.White, RoundedCornerShape(20.dp)) else Modifier)
+                    .then(if (focused && !isSel && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(20.dp)) else Modifier)
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
         }
@@ -369,15 +378,17 @@ private fun EpisodeRow(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 4.dp)
+            .glideTarget(10.dp)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x26FFFFFF) else Color.Transparent)
-            .then(if (focused) Modifier.border(2.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(2.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -448,14 +459,16 @@ private fun EpisodeRow(
 @Composable
 internal fun BackChip(onClose: () -> Unit, modifier: Modifier) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     Box(
         modifier = modifier
             .size(44.dp)
+            .glideTarget(22.dp)
             .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClose)
             .background(if (focused) Color(0x33FFFFFF) else Color(0x1AFFFFFF))
-            .then(if (focused) Modifier.border(2.dp, Color.White, CircleShape) else Modifier),
+            .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, CircleShape) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = Color.White, modifier = Modifier.size(26.dp))

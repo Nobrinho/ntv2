@@ -393,6 +393,7 @@ fun MediaLibraryScreen(
         }
     }
 
+    com.ntv2.app.core.ui.FocusGlideScope(Modifier.fillMaxSize()) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
         Row(modifier = Modifier.fillMaxSize()) {
@@ -669,6 +670,7 @@ fun MediaLibraryScreen(
                 media = media,
                 details = viewModel.detailsFor(media.mediaId),
                 showCastPhotos = state.castPhotos,
+                showCovers = state.showCovers,
                 lowRamPlaybackWarnings = lowRamPlaybackWarnings,
                 animationsEnabled = state.animationsEnabled,
                 onPlay = {
@@ -783,6 +785,7 @@ fun MediaLibraryScreen(
             val resultCount = if (searchHidden) 0 else state.searchResults.size
             if (useTvLayout) {
                 TvSearchOverlay(
+                    showCovers = state.showCovers,
                     query = state.searchQuery.ifBlank { state.searchFilters.label },
                     resultCount = resultCount,
                     searchInProgress = searchInProgress,
@@ -831,6 +834,7 @@ fun MediaLibraryScreen(
                 )
             } else {
                 TouchSearchOverlay(
+                    showCovers = state.showCovers,
                     query = state.searchQuery,
                     searchInProgress = searchInProgress,
                     suggestions = if (searchHidden) emptyList() else state.searchResults,
@@ -889,6 +893,7 @@ fun MediaLibraryScreen(
                 }
             )
         }
+    }
     }
 }
 

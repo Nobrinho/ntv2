@@ -100,6 +100,7 @@ fun RailButton(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     val active = focused || highlighted
     val cta = primary && enabled // botão de ação em destaque
     val onCta = Color(0xFF0E0E0E) // conteúdo escuro sobre o verde
@@ -117,13 +118,14 @@ fun RailButton(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .glideTarget(10.dp)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .then(if (enabled && interactive) Modifier.clickable(onClick = onClick) else Modifier)
             .background(background)
             // Foco sobre o CTA verde: borda branca para não "sumir" o realce de foco.
             .then(
-                if (cta && focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp))
+                if (cta && focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp))
                 else Modifier
             )
             .padding(vertical = 7.dp),

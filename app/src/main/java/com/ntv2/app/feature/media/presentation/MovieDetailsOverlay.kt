@@ -37,6 +37,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import com.ntv2.app.core.ui.trapFocus
+import com.ntv2.app.core.ui.FocusGlideScope
+import com.ntv2.app.core.ui.glideActive
+import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.core.ui.tmdbAtWidth
 import com.ntv2.app.core.ui.imageTiming
 import com.ntv2.app.core.ui.fadeInUpStaggered
@@ -99,6 +102,7 @@ internal fun MovieDetailsOverlay(
     animationsEnabled: Boolean,
     onPlay: () -> Unit,
     onDismiss: () -> Unit,
+    showCovers: Boolean = true,
     playLoading: Boolean = false,
     playFailed: Boolean = false,
     onRestart: () -> Unit = {},
@@ -115,7 +119,8 @@ internal fun MovieDetailsOverlay(
     val playFocus = remember { FocusRequester() }
 
     // O fundo é o banner do filme (nunca o pôster): só cai para a capa do card se não houver banner.
-    val backdrop = details?.backdropPath?.let { tmdbAtWidth(it, "w780") }
+    // Com "Capas" desligadas nas configurações, a tela não exibe nenhuma imagem de capa/banner.
+    val backdrop = if (!showCovers) null else details?.backdropPath?.let { tmdbAtWidth(it, "w780") }
         ?: media.posterPath ?: media.thumbnailPath
     // Entrada nº 4 (slide da direita): a arte de fundo entra quando termina de carregar, em vez de
     // simplesmente aparecer de um quadro para o outro.
@@ -142,6 +147,7 @@ internal fun MovieDetailsOverlay(
     }
 
     // trapFocus: a grade continua composta por trás — o foco não pode escapar para ela.
+    FocusGlideScope(Modifier.fillMaxSize()) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF050505)).trapFocus()) {
         val portrait = maxHeight > maxWidth
         val compactLandscape = !portrait && maxHeight < 520.dp
@@ -177,6 +183,7 @@ internal fun MovieDetailsOverlay(
                     isFavorite = isFavorite,
                     onToggleFavorite = onToggleFavorite,
                     recommendations = recommendations,
+                    showCovers = showCovers,
                     onRecommendationClick = onRecommendationClick,
                     onFilterClick = onFilterClick
                 )
@@ -240,7 +247,7 @@ internal fun MovieDetailsOverlay(
                     PosterTrackRow(
                         label = recommendationsHeading(details?.title ?: media.title),
                         items = recommendations,
-                        showCovers = true,
+                        showCovers = showCovers,
                         useTvLayout = true,
                         onCardClick = onRecommendationClick,
                         modifier = Modifier
@@ -300,6 +307,7 @@ internal fun MovieDetailsOverlay(
             )
         }
     }
+    }
 }
 
 @Composable
@@ -341,6 +349,7 @@ internal fun DetailsInfo(
     recommendations: List<MediaCardUi> = emptyList(),
     onRecommendationClick: (MediaCardUi) -> Unit = {},
     showInlineRecommendations: Boolean = true,
+    showCovers: Boolean = true,
     onFilterClick: (SearchFilter) -> Unit = {}
 ) {
     val title = details?.title ?: media.title
@@ -393,14 +402,16 @@ internal fun DetailsInfo(
                     LaunchedEffect(cast) { castVisible = true }
                     cast.forEachIndexed { index, c ->
                         var actorFocused by remember { mutableStateOf(false) }
+                        val gliding = glideActive()
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.width(76.dp)
                                 .fadeInUpStaggered(castVisible, index, animationsEnabled)
+                                .glideTarget(10.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .onFocusChanged { actorFocused = it.isFocused }
                                 .clickable { onFilterClick(SearchFilter(SearchFilterKind.ACTOR, c.name)) }
-                                .then(if (actorFocused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
+                                .then(if (actorFocused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
                                 .padding(2.dp)
                         ) {
                             if (c.photoUrl != null) {
@@ -448,6 +459,7 @@ internal fun DetailsInfo(
             RecommendationsRow(
                 seedTitle = title,
                 items = recommendations,
+                showCovers = showCovers,
                 onClick = onRecommendationClick
             )
         }
@@ -481,6 +493,7 @@ private fun recommendationsHeading(seedTitle: String) = buildAnnotatedString {
 internal fun RecommendationsRow(
     seedTitle: String,
     items: List<MediaCardUi>,
+    showCovers: Boolean,
     onClick: (MediaCardUi) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -490,25 +503,27 @@ internal fun RecommendationsRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items.forEach { rec ->
-                RecommendationPoster(media = rec, onClick = { onClick(rec) })
+                RecommendationPoster(media = rec, showCovers = showCovers, onClick = { onClick(rec) })
             }
         }
     }
 }
 
 @Composable
-private fun RecommendationPoster(media: MediaCardUi, onClick: () -> Unit) {
+private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val cover = media.posterPath ?: media.thumbnailPath
+    val gliding = glideActive()
+    val cover = if (showCovers) media.posterPath ?: media.thumbnailPath else null
     Box(
         modifier = Modifier
             .width(104.dp)
             .aspectRatio(2f / 3f)
+            .glideTarget(10.dp)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0xFF1C1C20))
-            .then(if (focused) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
     ) {
         if (cover != null) {
             AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -531,6 +546,7 @@ internal fun ReportLink(onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
+            .glideTarget(8.dp)
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
@@ -550,13 +566,15 @@ internal fun ReportLink(onClick: () -> Unit) {
 internal fun SynopsisText(text: String) {
     var expanded by remember(text) { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     Column(
         modifier = Modifier
+            .glideTarget(8.dp)
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable { expanded = !expanded }
             .background(if (focused) Color(0x1FFFFFFF) else Color.Transparent)
-            .then(if (focused) Modifier.border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp)) else Modifier)
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -710,15 +728,17 @@ private fun MetaText(text: String, onClick: (() -> Unit)? = null) {
         return
     }
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     Text(
         text,
         color = if (focused) Color.White else Color(0xFF8A8A8A),
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier
+            .glideTarget(8.dp)
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .then(if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
             .padding(horizontal = 4.dp, vertical = 2.dp)
     )
 }
@@ -727,14 +747,17 @@ private fun MetaText(text: String, onClick: (() -> Unit)? = null) {
 @Composable
 internal fun MetaChip(text: String, onClick: (() -> Unit)? = null) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
+    val ring = focused && !gliding
     Text(
         text,
         color = if (focused) Color.White else Color(0xFFCFCFCF),
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier
+            .then(if (onClick != null) Modifier.glideTarget(20.dp) else Modifier)
             .clip(RoundedCornerShape(20.dp))
             .then(if (onClick != null) Modifier.onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick) else Modifier)
-            .border(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0xFF33343A), RoundedCornerShape(20.dp))
+            .border(if (ring) 2.dp else 1.dp, if (ring) Color.White else Color(0xFF33343A), RoundedCornerShape(20.dp))
             .padding(horizontal = 12.dp, vertical = 4.dp)
     )
 }
@@ -759,15 +782,17 @@ internal fun DetailIconButton(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     Box(
         modifier = Modifier
             .size(48.dp)
+            .glideTarget(10.dp)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0x1FFFFFFF))
             .then(
-                if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp))
+                if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp))
                 else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
             ),
         contentAlignment = Alignment.Center
@@ -780,17 +805,19 @@ internal fun DetailIconButton(
 @Composable
 internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     val border = if (isFavorite) BRAND_GREEN else Color(0x33FFFFFF)
     Box(
         modifier = Modifier
             .size(48.dp)
+            .glideTarget(10.dp)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (isFavorite) Color(0x242BEE34) else Color(0x1FFFFFFF))
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else border,
+                width = if (focused && !gliding) 2.dp else 1.dp,
+                color = if (focused && !gliding) Color.White else border,
                 shape = RoundedCornerShape(10.dp)
             ),
         contentAlignment = Alignment.Center
@@ -814,6 +841,7 @@ internal fun DetailButton(
     loading: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     val bg = when {
         primary -> BRAND_GREEN
         focused -> Color(0x33FFFFFF)
@@ -822,12 +850,13 @@ internal fun DetailButton(
     val content = if (primary) Color(0xFF0B0B0B) else Color.White
     Row(
         modifier = modifier
+            .glideTarget(10.dp)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             // Enquanto carrega, ignora novos toques (evita disparos duplicados).
             .clickable(enabled = !loading, onClick = onClick)
             .background(bg)
-            .then(if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
             .padding(horizontal = 24.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically

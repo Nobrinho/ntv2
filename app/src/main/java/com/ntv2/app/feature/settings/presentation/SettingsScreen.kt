@@ -68,6 +68,9 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.core.ui.ConfirmDialog
+import com.ntv2.app.core.ui.FocusGlideScope
+import com.ntv2.app.core.ui.glideActive
+import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.core.ui.MainBottomNav
 import com.ntv2.app.core.ui.MainTab
 import com.ntv2.app.core.ui.NavRail
@@ -140,6 +143,7 @@ fun SettingsScreen(
         }
     }
 
+    FocusGlideScope(Modifier.fillMaxSize()) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF0E0E0E))) {
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
         Row(modifier = Modifier.fillMaxSize()) {
@@ -331,6 +335,7 @@ fun SettingsScreen(
             )
         }
     }
+    }
 }
 
 @Composable
@@ -430,9 +435,11 @@ private fun StepperSettingCard(
     onIncrease: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
+            .glideTarget(12.dp)
             .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .onKeyEvent { e ->
@@ -447,8 +454,8 @@ private fun StepperSettingCard(
             .focusable()
             .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else Color(0x33FFFFFF),
+                width = if (focused && !gliding) 2.dp else 1.dp,
+                color = if (focused && !gliding) Color.White else Color(0x33FFFFFF),
                 shape = RoundedCornerShape(12.dp)
             )
             .padding(horizontal = 18.dp, vertical = 16.dp)
@@ -597,16 +604,18 @@ private fun SettingCardShell(
     trailing: @Composable () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .glideTarget(12.dp)
             .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else Color(0x33FFFFFF),
+                width = if (focused && !gliding) 2.dp else 1.dp,
+                color = if (focused && !gliding) Color.White else Color(0x33FFFFFF),
                 shape = RoundedCornerShape(12.dp)
             )
             .padding(horizontal = 20.dp, vertical = 18.dp),
@@ -821,17 +830,19 @@ private fun CardLoadingOption(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     Column(
         modifier = modifier
             .width(150.dp)
+            .glideTarget(12.dp)
             .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
             .border(
-                width = if (focused || selected) 2.dp else 1.dp,
+                width = if ((focused && !gliding) || selected) 2.dp else 1.dp,
                 color = when {
-                    focused -> Color.White
+                    focused && !gliding -> Color.White
                     selected -> BRAND
                     else -> Color(0x33FFFFFF)
                 },

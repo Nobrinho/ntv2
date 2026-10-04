@@ -61,6 +61,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.ntv2.app.core.ui.ConfirmDialog
+import com.ntv2.app.core.ui.FocusGlideScope
+import com.ntv2.app.core.ui.glideActive
+import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.ui.RailButton
 import com.ntv2.app.core.ui.RailColumn
@@ -129,6 +132,7 @@ fun ChannelSelectionScreen(
     }
 
     val adaptive = rememberAdaptiveLayoutInfo()
+    FocusGlideScope(Modifier.fillMaxSize()) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
         if (useTvLayout) {
@@ -196,6 +200,7 @@ fun ChannelSelectionScreen(
                 onDismiss = { confirmLogout = false }
             )
         }
+    }
     }
 }
 
@@ -301,6 +306,7 @@ private fun ChannelIconAction(
     Box(
         modifier = modifier
             .size(44.dp)
+            .glideTarget(22.dp)
             .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
@@ -333,6 +339,7 @@ private fun CompactActionChip(
     val content = if (primary && enabled) Color.Black else Color.White
     Box(
         modifier = modifier
+            .then(if (enabled) Modifier.glideTarget(24.dp) else Modifier)
             .clip(RoundedCornerShape(24.dp))
             .background(background)
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
@@ -480,11 +487,13 @@ private fun ChannelCard(
     onToggle: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     val selected = item.isSelected
     val accent = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .glideTarget(10.dp)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onToggle)
@@ -496,9 +505,9 @@ private fun ChannelCard(
                 }
             )
             .border(
-                width = if (focused || selected) 2.dp else 1.dp,
+                width = if ((focused && !gliding) || selected) 2.dp else 1.dp,
                 color = when {
-                    focused -> Color.White
+                    focused && !gliding -> Color.White
                     selected -> accent
                     else -> Color(0x44FFFFFF)
                 },

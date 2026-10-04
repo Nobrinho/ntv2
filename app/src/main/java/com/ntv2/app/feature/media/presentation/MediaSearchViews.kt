@@ -145,6 +145,7 @@ internal fun TvSearchOverlay(
     onClose: () -> Unit,
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
     onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {},
+    showCovers: Boolean = true,
     // false na busca por elenco: teclado e campo ficam esmaecidos (o screen ignora as teclas).
     textEnabled: Boolean = true,
     filters: SearchFilters = SearchFilters(),
@@ -437,6 +438,7 @@ internal fun TvSearchOverlay(
                 onSelect = onSelect,
                 series = series,
                 onSeriesSelect = onSeriesSelect,
+                showCovers = showCovers,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -651,6 +653,7 @@ internal fun TouchSearchOverlay(
     onSelect: (MediaCardUi) -> Unit,
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
     onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {},
+    showCovers: Boolean = true,
     cardLoadingStyle: com.ntv2.app.core.ui.CardLoadingStyle = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT,
     animationsEnabled: Boolean = true,
     filters: SearchFilters = SearchFilters(),
@@ -785,6 +788,7 @@ internal fun TouchSearchOverlay(
             onSelect = onSelect,
             series = series,
             onSeriesSelect = onSeriesSelect,
+            showCovers = showCovers,
             cardLoadingStyle = cardLoadingStyle,
             animationsEnabled = animationsEnabled,
             filtersActive = filters.hasAttribute,
@@ -967,6 +971,7 @@ internal fun TouchSearchResultsGrid(
     modifier: Modifier = Modifier,
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
     onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {},
+    showCovers: Boolean = true,
     cardLoadingStyle: com.ntv2.app.core.ui.CardLoadingStyle = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT,
     animationsEnabled: Boolean = true,
     // Gênero/ano ativos listam mídias mesmo sem texto digitado.
@@ -996,7 +1001,7 @@ internal fun TouchSearchResultsGrid(
     ) {
         items(visibleSeries, key = { "series_${it.tmdbId}" }) { s ->
             SearchCoverCell(
-                cover = s.posterUrl ?: s.backdropUrl,
+                cover = if (showCovers) s.posterUrl ?: s.backdropUrl else null,
                 description = s.title,
                 cardLoadingStyle = cardLoadingStyle,
                 animationsEnabled = animationsEnabled,
@@ -1005,7 +1010,7 @@ internal fun TouchSearchResultsGrid(
         }
         items(visibleResults, key = { it.mediaId }) { media ->
             SearchCoverCell(
-                cover = media.posterPath ?: media.thumbnailPath,
+                cover = if (showCovers) media.posterPath ?: media.thumbnailPath else null,
                 description = media.title,
                 cardLoadingStyle = cardLoadingStyle,
                 animationsEnabled = animationsEnabled,
@@ -1098,6 +1103,16 @@ private fun SearchCoverCell(
                 animationsEnabled = animationsEnabled,
                 modifier = Modifier.fillMaxSize()
             )
+        } else {
+            // Sem capa (opção desligada ou sem arte): mostra o nome, como na grade da TV.
+            Text(
+                description,
+                color = Color(0xFFB0B0B0),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.Center).padding(8.dp)
+            )
         }
     }
 }
@@ -1121,7 +1136,8 @@ internal fun SearchResultsList(
     modifier: Modifier = Modifier,
     cellModifier: (index: Int, id: String) -> Modifier = { _, _ -> Modifier },
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
-    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {}
+    onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {},
+    showCovers: Boolean = true
 ) {
     val visibleResults = remember(query, searchInProgress, results) {
         if (query.isBlank() || searchInProgress) emptyList() else results
@@ -1151,7 +1167,7 @@ internal fun SearchResultsList(
     ) {
         itemsIndexed(visibleSeries, key = { _, s -> "series_${s.tmdbId}" }) { i, s ->
             TvCoverCell(
-                cover = s.posterUrl ?: s.backdropUrl,
+                cover = if (showCovers) s.posterUrl ?: s.backdropUrl else null,
                 title = s.title,
                 modifier = cellModifier(i, "series_${s.tmdbId}"),
                 onClick = { onSeriesSelect(s) }
@@ -1159,7 +1175,7 @@ internal fun SearchResultsList(
         }
         itemsIndexed(visibleResults, key = { _, m -> m.mediaId }) { j, media ->
             TvCoverCell(
-                cover = media.posterPath ?: media.thumbnailPath,
+                cover = if (showCovers) media.posterPath ?: media.thumbnailPath else null,
                 title = media.title,
                 modifier = cellModifier(visibleSeries.size + j, media.mediaId),
                 onClick = { onSelect(media) }

@@ -158,9 +158,12 @@ fun AppNavHost(
         }
     }
 
+  // "Animações" (Configurações) para qualquer tela: liga o anel de foco deslizante.
+  val globalAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)
   Box(modifier = Modifier.fillMaxSize()) {
    androidx.compose.runtime.CompositionLocalProvider(
-       com.ntv2.app.core.ui.LocalFocusRestoreSignal provides focusRestoreSignal
+       com.ntv2.app.core.ui.LocalFocusRestoreSignal provides focusRestoreSignal,
+       com.ntv2.app.core.ui.LocalAnimationsEnabled provides globalAnimations
    ) {
     NavHost(
         navController = navController,

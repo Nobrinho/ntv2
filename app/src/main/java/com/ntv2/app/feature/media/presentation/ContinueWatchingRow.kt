@@ -37,6 +37,8 @@ import coil.compose.AsyncImage
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.glideActive
+import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 
 /**
@@ -87,18 +89,20 @@ private fun ContinueCard(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     val cover = media.posterPath ?: media.thumbnailPath
     Column(modifier = Modifier.width(width)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(height)
+                .glideTarget(12.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .onFocusChanged { focused = it.isFocused }
                 .clickable(onClick = onClick)
                 .background(Color(0xFF1C1C20))
                 .then(
-                    if (focused) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(12.dp))
+                    if (focused && !gliding) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(12.dp))
                     else Modifier
                 )
         ) {
@@ -207,16 +211,18 @@ internal fun PosterCard(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
     val cover = media.posterPath ?: media.thumbnailPath
     Box(
         modifier = modifier
             .width(width)
             .height(width * 3 / 2)
+            .glideTarget(10.dp)
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0xFF1C1C20))
-            .then(if (focused) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
     ) {
         if (showCovers && cover != null) {
             AsyncImage(

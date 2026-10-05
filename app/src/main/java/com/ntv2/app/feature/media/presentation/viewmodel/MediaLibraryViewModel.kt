@@ -1423,6 +1423,26 @@ class MediaLibraryViewModel(
         }
     }
 
+    /** Contagens para explicar na tela por que o canal ativo não mostra filmes. */
+    fun diagnoseEmpty(): com.ntv2.app.feature.media.presentation.state.EmptyDiagnostics {
+        val state = _uiState.value
+        val id = state.activeChannelId
+        val items = id?.let { channelItems[it] }.orEmpty()
+        val minSeconds = state.minDurationMinutes * 60
+        val episodes = items.count { it.mediaType == com.ntv2.app.feature.media.domain.MediaType.EPISODE }
+        val movies = items.filter { it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
+        val hidden = movies.count { it.durationSeconds in 1 until minSeconds }
+        return com.ntv2.app.feature.media.presentation.state.EmptyDiagnostics(
+            channelName = state.activeChannelName,
+            loaded = items.size,
+            hiddenByDuration = hidden,
+            episodes = episodes,
+            minDurationMinutes = state.minDurationMinutes,
+            hasMore = id != null && (channelCursors[id] ?: 0L) != 0L,
+            seriesCount = state.series.size
+        )
+    }
+
     private fun emptyStateFor(sections: List<ChannelMediaSectionUi>): MediaLibraryEmptyState? = when {
         currentChannelsCount == 0 -> MediaLibraryEmptyState.NoChannelsSelected
         sections.isEmpty() -> MediaLibraryEmptyState.NoVideosFound

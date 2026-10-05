@@ -41,6 +41,21 @@ data class ChannelMediaSectionUi(
 /** Aba de tipo de conteúdo da biblioteca (canal ativo). */
 enum class LibraryTab { MOVIES, SERIES }
 
+/** Por que a biblioteca do canal ativo está vazia (contagens do que foi carregado e do que foi filtrado). */
+data class EmptyDiagnostics(
+    val channelName: String,
+    /** Mídias que o canal devolveu (antes de qualquer filtro). */
+    val loaded: Int,
+    /** Escondidas pelo filtro de duração mínima. */
+    val hiddenByDuration: Int,
+    /** Episódios de série (ficam na aba Séries, não na grade de Filmes). */
+    val episodes: Int,
+    val minDurationMinutes: Int,
+    /** Ainda há páginas a carregar no canal. */
+    val hasMore: Boolean,
+    val seriesCount: Int
+)
+
 sealed interface MediaLibraryEmptyState {
     data object NoChannelsSelected : MediaLibraryEmptyState
     data object NoVideosFound : MediaLibraryEmptyState

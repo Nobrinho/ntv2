@@ -184,7 +184,7 @@ internal fun SeriesDetailsOverlay(
                 }
             }
             // Voltar (canto): focável, mas o foco inicial fica no Assistir.
-            BackChip(onClose, Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp))
+            BackChip(onClose, Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp))
         } else {
             // ── Celular: coluna única rolável ──
             LazyColumn(modifier = Modifier.fillMaxSize()) {

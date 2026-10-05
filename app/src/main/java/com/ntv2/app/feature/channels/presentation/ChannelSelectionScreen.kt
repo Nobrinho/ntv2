@@ -404,10 +404,10 @@ private fun ChannelsGrid(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(state.channels, key = { it.id }) { item ->
-            val first = firstCardFocus != null && item.id == state.channels.first().id
+            val first = item.id == state.channels.first().id
             ChannelCard(
                 item = item,
-                modifier = if (first) Modifier.focusRequester(firstCardFocus!!) else Modifier,
+                modifier = if (first && firstCardFocus != null) Modifier.focusRequester(firstCardFocus) else Modifier,
                 onToggle = { onToggle(item.id) }
             )
         }

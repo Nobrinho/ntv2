@@ -687,7 +687,9 @@ fun MediaLibraryScreen(
                 isTv = adaptive.isTv,
                 isFavorite = state.favoriteIds.contains(media.mediaId),
                 onToggleFavorite = { viewModel.onAction(MediaLibraryAction.ToggleFavorite(media)) },
-                recommendations = remember(media.mediaId, state.items.size) { viewModel.recommendationsFor(media.mediaId, limit = 20) },
+                recommendations = androidx.compose.runtime.produceState(emptyList<MediaCardUi>(), media.mediaId, state.items.size) {
+                    value = viewModel.recommendationsFor(media.mediaId, limit = 20)
+                }.value,
                 onRecommendationClick = { rec ->
                     viewModel.onAction(MediaLibraryAction.DetailsOpened(rec))
                     detailsMedia = rec

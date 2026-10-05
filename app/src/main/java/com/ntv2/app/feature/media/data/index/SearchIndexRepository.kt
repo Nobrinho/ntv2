@@ -124,6 +124,8 @@ class SearchIndexRepository(
     private val mutex = Mutex()
     @Volatile private var cached: LoadedIndex? = null
     @Volatile private var loadedAt = 0L
+    // Falha recente sem cópia em memória: evita refazer o download (e segurar o mutex) a cada busca.
+    @Volatile private var lastFailureAt = 0L
 
     private val _status = MutableStateFlow(SearchIndexStatus())
     /** Data do índice em uso e se há download manual em andamento. */
@@ -132,11 +134,13 @@ class SearchIndexRepository(
     private suspend fun ensureLoaded(): LoadedIndex? {
         val now = System.currentTimeMillis()
         cached?.let { if (now - loadedAt < ttlMillis) return it }
+        if (cached == null && now - lastFailureAt < FAILURE_BACKOFF_MS) return null
         return mutex.withLock {
             val fresh = cached
             if (fresh != null && System.currentTimeMillis() - loadedAt < ttlMillis) return fresh
+            if (fresh == null && System.currentTimeMillis() - lastFailureAt < FAILURE_BACKOFF_MS) return null
             val loaded = runCatching { fetch() }.getOrNull()
-            if (loaded != null) store(loaded)
+            if (loaded != null) store(loaded) else lastFailureAt = System.currentTimeMillis()
             loaded ?: cached // se falhar o fetch, mantém o que tiver
         }
     }
@@ -153,6 +157,7 @@ class SearchIndexRepository(
                 val loaded = runCatching { fetch(forceNetwork = true) }.getOrNull()
                 if (loaded != null) {
                     store(loaded)
+                    lastFailureAt = 0L
                     ok = true
                 }
             }
@@ -401,6 +406,8 @@ class SearchIndexRepository(
         return hits(false).ifEmpty { hits(true) }
     }
 }
+
+private const val FAILURE_BACKOFF_MS = 60_000L
 
 /** "generated_at" do índice (ISO-8601 com fuso, ex.: 2026-09-29T05:00:21+00:00) em ms; null se inválido. */
 internal fun parseGeneratedAt(raw: String?): Long? {

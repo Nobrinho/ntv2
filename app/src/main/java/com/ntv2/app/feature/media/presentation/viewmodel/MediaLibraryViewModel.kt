@@ -1229,6 +1229,8 @@ class MediaLibraryViewModel(
     }
 
     /** Recalcula "Recomendados para você": gosto (fav+histórico) × catálogo do canal, sem repetir. */
+    private var recommendJob: kotlinx.coroutines.Job? = null
+
     private fun recomputeRecommendations() {
         val taste = RecommendationEngine.buildTaste(favoriteGenresRaw, historyGenresRaw)
         if (taste.isEmpty()) {
@@ -1243,20 +1245,25 @@ class MediaLibraryViewModel(
             if (_uiState.value.recommendations.isNotEmpty()) _uiState.update { it.copy(recommendations = emptyList()) }
             return
         }
-        val movieCandidates = movies.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
-        val seriesCandidates = series.map {
-            RecommendationEngine.Candidate("series_${it.tmdbId}", it.genres.map { g -> g.trim().lowercase() }.toSet())
+        val exclude = favoriteIdsSet + watchedIds
+        val day = java.time.LocalDate.now().toEpochDay() // varia por dia, estável durante o dia
+        recommendJob?.cancel()
+        recommendJob = viewModelScope.launch {
+            // Pontuar todo o catálogo é trabalho pesado (parse de gêneros + ordenação): fora da Main.
+            val ids = withContext(Dispatchers.Default) {
+                val movieCandidates = movies.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
+                val seriesCandidates = series.map {
+                    RecommendationEngine.Candidate("series_${it.tmdbId}", it.genres.map { g -> g.trim().lowercase() }.toSet())
+                }
+                RecommendationEngine.recommend(taste, movieCandidates + seriesCandidates, exclude = exclude, limit = 20, seed = day)
+            }
+            val movieById = movies.associateBy { it.mediaId }
+            val seriesById = series.associateBy { "series_${it.tmdbId}" }
+            val cards = ids.mapNotNull { id ->
+                seriesById[id]?.toRecommendationCard() ?: movieById[id]?.toCard(0L)
+            }
+            _uiState.update { it.copy(recommendations = cards) }
         }
-        val ids = RecommendationEngine.recommend(
-            taste, movieCandidates + seriesCandidates, exclude = favoriteIdsSet + watchedIds, limit = 20,
-            seed = java.time.LocalDate.now().toEpochDay() // varia por dia, estável durante o dia
-        )
-        val movieById = movies.associateBy { it.mediaId }
-        val seriesById = series.associateBy { "series_${it.tmdbId}" }
-        val cards = ids.mapNotNull { id ->
-            seriesById[id]?.toRecommendationCard() ?: movieById[id]?.toCard(0L)
-        }
-        _uiState.update { it.copy(recommendations = cards) }
     }
 
     /** Série como card de recomendação: pôster único (2:3), não reproduzível. O clique é roteado
@@ -1438,15 +1445,18 @@ class MediaLibraryViewModel(
     fun detailsFor(mediaId: String): MovieDetails? = mediaDetailsCache.get(mediaId)
 
     /** "Porque você viu X": recomendações pelos gêneros DESTE título, dentro do catálogo do canal. */
-    fun recommendationsFor(mediaId: String, limit: Int = 12): List<MediaCardUi> {
+    suspend fun recommendationsFor(mediaId: String, limit: Int = 12): List<MediaCardUi> {
         val seedGenres = RecommendationEngine.parseGenres(mediaDetailsCache.get(mediaId)?.genres)
         if (seedGenres.isEmpty()) return emptyList()
         val taste = seedGenres.associateWith { 1 }
+        // Copia na thread de quem chama (os mapas são da Main); a pontuação roda em Default.
         val summaries = channelOrder.flatMap { channelItems[it].orEmpty() }
             .filter { it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
         if (summaries.isEmpty()) return emptyList()
-        val candidates = summaries.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
-        val ids = RecommendationEngine.recommend(taste, candidates, exclude = setOf(mediaId), limit = limit)
+        val ids = withContext(Dispatchers.Default) {
+            val candidates = summaries.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
+            RecommendationEngine.recommend(taste, candidates, exclude = setOf(mediaId), limit = limit)
+        }
         val byId = summaries.associateBy { it.mediaId }
         return ids.mapNotNull { byId[it]?.toCard(0L) }
     }

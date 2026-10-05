@@ -792,11 +792,12 @@ class RealTdlibGateway(
 
                     // Episódio de série (só no modo foto): pareou com um pôster cujo título NÃO é o
                     // nome do vídeo → nome do episódio + sinopse do episódio, herdando pôster/metadados.
-                    val isSeriesEpisode = !richText && posterMeta?.title != null && videoName != null &&
-                        !titlesMatch(videoName, posterMeta.title!!)
+                    val posterTitle = posterMeta?.title
+                    val isSeriesEpisode = !richText && posterTitle != null && videoName != null &&
+                        !titlesMatch(videoName, posterTitle)
                     val displayTitle = when {
                         richText -> posterMeta?.title ?: videoName ?: "Video ${msg.id}"
-                        isSeriesEpisode -> videoName!!.trim()
+                        isSeriesEpisode -> videoName.orEmpty().trim()
                         else -> ((posterMeta ?: videoMeta).title ?: videoName)
                             ?.let { cleanDisplayName(it).ifBlank { it } } ?: "Video ${msg.id}"
                     }

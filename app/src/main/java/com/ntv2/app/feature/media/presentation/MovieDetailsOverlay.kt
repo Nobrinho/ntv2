@@ -353,7 +353,7 @@ internal fun DetailsInfo(
     onFilterClick: (SearchFilter) -> Unit = {}
 ) {
     val title = details?.title ?: media.title
-    val durationSecs = if ((details?.durationSeconds ?: 0) > 0) details!!.durationSeconds else media.durationSeconds
+    val durationSecs = details?.durationSeconds?.takeIf { it > 0 } ?: media.durationSeconds
     val showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning()
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(title, color = Color.White, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -548,27 +548,6 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
                 modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
             )
         }
-    }
-}
-
-/** Ação discreta abaixo dos botões: abre o reporte de problema da mídia. */
-@Composable
-internal fun ReportLink(onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    Row(
-        modifier = Modifier
-            .glideTarget(8.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color.Transparent)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val tint = if (focused) Color.Black else Color(0xFFB0B0B0)
-        Icon(Icons.Filled.Flag, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Text("Reportar problema", color = tint, style = MaterialTheme.typography.labelLarge)
     }
 }
 

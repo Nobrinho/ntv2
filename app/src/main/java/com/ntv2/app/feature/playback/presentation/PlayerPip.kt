@@ -25,13 +25,13 @@ object PlayerPip {
     fun update(activity: Activity?, armed: Boolean, videoWidth: Int, videoHeight: Int) {
         this.armed = armed
         if (videoWidth > 0 && videoHeight > 0) aspect = clampAspect(videoWidth, videoHeight)
-        if (!isSupported(activity)) return
-        runCatching { activity!!.setPictureInPictureParams(params(autoEnter = armed)) }
+        if (activity == null || !isSupported(activity)) return
+        runCatching { activity.setPictureInPictureParams(params(autoEnter = armed)) }
     }
 
     fun enter(activity: Activity?): Boolean {
-        if (!isSupported(activity)) return false
-        return runCatching { activity!!.enterPictureInPictureMode(params(autoEnter = armed)) }.getOrDefault(false)
+        if (activity == null || !isSupported(activity)) return false
+        return runCatching { activity.enterPictureInPictureMode(params(autoEnter = armed)) }.getOrDefault(false)
     }
 
     /** Android 8–11 não têm auto-entrada: a Activity chama isto no onUserLeaveHint. */

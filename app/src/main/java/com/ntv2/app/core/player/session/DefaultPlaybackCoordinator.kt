@@ -19,6 +19,8 @@ import com.ntv2.app.core.player.MediaTrackOption
 import com.ntv2.app.core.player.MediaTracksInfo
 import java.util.Locale
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.extractor.DefaultExtractorsFactory
+import com.ntv2.app.core.player.exoplayer.DolbyVisionFallbackExtractorsFactory
 import com.ntv2.app.core.player.PlaybackCoordinator
 import com.ntv2.app.core.player.PlaybackMedia
 import com.ntv2.app.core.player.PlaybackSnapshot
@@ -241,8 +243,11 @@ class DefaultPlaybackCoordinator(
             .setUri(Uri.parse(media.sourceUri))
             .build()
 
-        val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(mediaItem)
+        // DV perfil 7 sem decodificador DV no aparelho vira HEVC (camada base); senão tocava só o áudio.
+        val mediaSource = ProgressiveMediaSource.Factory(
+            dataSourceFactory,
+            DolbyVisionFallbackExtractorsFactory(DefaultExtractorsFactory())
+        ).createMediaSource(mediaItem)
 
         playerInstance.setMediaSource(mediaSource)
         playerInstance.prepare()
@@ -582,6 +587,7 @@ class DefaultPlaybackCoordinator(
         var videoHeight = 0
         var videoFrameRate = 0f
         var videoMimeType: String? = null
+        val videoSupport = mutableListOf<Boolean>()
         val audios = mutableListOf<MediaTrackOption>()
         val subtitles = mutableListOf<MediaTrackOption>()
 
@@ -590,11 +596,14 @@ class DefaultPlaybackCoordinator(
                 val format = group.getTrackFormat(trackIndex)
                 val selected = group.isTrackSelected(trackIndex)
                 when (group.type) {
-                    C.TRACK_TYPE_VIDEO -> if (selected || videoHeight == 0) {
-                        if (format.width > 0) videoWidth = format.width
-                        if (format.height > 0) videoHeight = format.height
-                        if (format.frameRate > 0f) videoFrameRate = format.frameRate
-                        videoMimeType = format.sampleMimeType
+                    C.TRACK_TYPE_VIDEO -> {
+                        videoSupport += group.isTrackSupported(trackIndex, true)
+                        if (selected || videoHeight == 0) {
+                            if (format.width > 0) videoWidth = format.width
+                            if (format.height > 0) videoHeight = format.height
+                            if (format.frameRate > 0f) videoFrameRate = format.frameRate
+                            videoMimeType = format.sampleMimeType
+                        }
                     }
                     // Sem filtro de suporte: lista todas as faixas de áudio do container
                     // (ex.: 2º áudio/dublagem), como a versão anterior fazia. A reprodução
@@ -619,6 +628,7 @@ class DefaultPlaybackCoordinator(
             videoHeight = videoHeight,
             videoFrameRate = videoFrameRate,
             videoMimeType = videoMimeType,
+            videoUnsupported = MediaTracksInfo.isVideoUnsupported(videoSupport),
             audios = audios,
             subtitles = subtitles
         )

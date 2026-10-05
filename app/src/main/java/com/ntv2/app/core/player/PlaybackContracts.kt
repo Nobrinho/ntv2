@@ -41,9 +41,39 @@ data class MediaTracksInfo(
     val videoHeight: Int = 0,
     val videoFrameRate: Float = 0f,
     val videoMimeType: String? = null,
+    /** O arquivo tem vídeo, mas nenhuma trilha dele pode ser decodificada neste aparelho (toca só o áudio). */
+    val videoUnsupported: Boolean = false,
     val audios: List<MediaTrackOption> = emptyList(),
     val subtitles: List<MediaTrackOption> = emptyList()
-)
+) {
+    /** Nome curto do formato do vídeo para mensagens ("Dolby Vision 4K"), ou null se desconhecido. */
+    val videoFormatLabel: String?
+        get() {
+            val codec = when (videoMimeType) {
+                "video/dolby-vision" -> "Dolby Vision"
+                "video/hevc" -> "HEVC"
+                "video/avc" -> "H.264"
+                "video/av01" -> "AV1"
+                "video/x-vnd.on2.vp9" -> "VP9"
+                "video/mpeg2" -> "MPEG-2"
+                null -> null
+                else -> videoMimeType.substringAfter('/')
+            }
+            val resolution = when {
+                videoHeight >= 2000 -> "4K"
+                videoHeight >= 1000 -> "1080p"
+                videoHeight > 0 -> "${videoHeight}p"
+                else -> null
+            }
+            return listOfNotNull(codec, resolution).joinToString(" ").ifEmpty { null }
+        }
+
+    companion object {
+        /** [videoTrackSupport]: uma entrada por trilha de vídeo (aceita, mesmo que acima da capacidade). */
+        fun isVideoUnsupported(videoTrackSupport: List<Boolean>): Boolean =
+            videoTrackSupport.isNotEmpty() && videoTrackSupport.none { it }
+    }
+}
 
 data class PlaybackSnapshot(
     val state: PlaybackState = PlaybackState.Idle,

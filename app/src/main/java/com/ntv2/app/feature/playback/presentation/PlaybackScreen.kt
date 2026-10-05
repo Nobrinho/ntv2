@@ -689,6 +689,10 @@ fun PlaybackScreen(
             )
         }
 
+        if (tracks.videoUnsupported) {
+            UnsupportedVideoBanner(tracks.videoFormatLabel)
+        }
+
         state.loadError?.let { error ->
             LoadErrorOverlay(
                 error = error,

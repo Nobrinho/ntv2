@@ -424,7 +424,8 @@ class SearchIndexRepository(
     suspend fun movieByMessage(channelId: Long, messageId: Long): IndexMovie? {
         val idx = ensureLoaded() ?: return null
         if (idx.channelId != channelId) return null
-        return idx.movies.firstOrNull { it.videoMessageId == messageId }
+        // Aceita o id do Bot API (como no índice) ou o do TDLib (deslocado 20 bits, usado nos mediaId).
+        return idx.movies.firstOrNull { it.videoMessageId == messageId || (it.videoMessageId shl 20) == messageId }
     }
 
     /** Busca local por título/título original (sem acento/caixa). Vazio se não cobrir o canal. */

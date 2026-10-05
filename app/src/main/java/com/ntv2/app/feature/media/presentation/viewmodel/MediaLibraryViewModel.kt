@@ -739,11 +739,18 @@ class MediaLibraryViewModel(
         }
     }
 
+    /**
+     * O índice guarda o message_id do Bot API (pequeno); a grade do canal usa o id do TDLib (deslocado 20
+     * bits). O mediaId é a chave de favoritos/progresso: os dois caminhos precisam gerar o MESMO id, senão o
+     * filme favoritado na grade aparece sem o favorito quando aberto por busca/elenco.
+     */
+    private fun tdlibMessageId(messageId: Long): Long = if (messageId in 1..0xFFFFF) messageId shl 20 else messageId
+
     private fun com.ntv2.app.feature.media.data.index.IndexMovie.toSummary(
         channelId: Long,
         channelTitle: String
     ): MediaItemSummary = MediaItemSummary(
-        mediaId = "${channelId}_$videoMessageId",
+        mediaId = "${channelId}_${tdlibMessageId(videoMessageId)}",
         channelId = channelId,
         channelTitle = channelTitle,
         title = title,

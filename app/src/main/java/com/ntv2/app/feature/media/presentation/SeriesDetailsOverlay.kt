@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.ntv2.app.core.ui.FocusGlideScope
+import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.core.ui.glideActive
 import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
@@ -120,6 +121,8 @@ internal fun SeriesDetailsOverlay(
             .background(Color(0xFF0B0B0B))
             .statusBarsPadding()
             .navigationBarsPadding()
+            // A biblioteca continua composta por trás: o foco não pode escapar para ela.
+            .trapFocus()
     ) {
         if (isTv) {
             // ── TV: duas colunas com handshake de foco entre painéis (→ entra na lista, ← volta) ──
@@ -184,7 +187,17 @@ internal fun SeriesDetailsOverlay(
                 }
             }
             // Voltar (canto): focável, mas o foco inicial fica no Assistir.
-            BackChip(onClose, Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp))
+            BackChip(
+                onClose,
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 16.dp, end = 16.dp)
+                    // ↓ vai à lista de episódios (ou ao Assistir) e ← ao Assistir, sem depender da busca de foco.
+                    .focusProperties {
+                        down = if (episodes.isNotEmpty()) listFocus else playFocus
+                        left = playFocus
+                    }
+            )
         } else {
             // ── Celular: coluna única rolável ──
             LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -395,7 +408,9 @@ private fun EpisodeRow(
     ) {
         val thumb = episode.backdropPath ?: episode.posterPath
         if (showCovers && thumb != null) {
-            Box {
+            // Largura fixa: o overlay de progresso usa fillMaxWidth e, sem isso, esticava a caixa até a
+            // linha toda, empurrando o texto do episódio para fora (linhas com progresso ficavam sem título).
+            Box(modifier = Modifier.width(132.dp)) {
                 AsyncImage(
                     model = thumb,
                     contentDescription = null,

@@ -667,7 +667,7 @@ fun PlaybackScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 48.dp)
-                    .background(Color(0xCC000000), RoundedCornerShape(12.dp))
+                    .background(Color(0xCC000000), RoundedCornerShape(6.dp))
                     .padding(horizontal = 20.dp, vertical = 12.dp)
             )
         }
@@ -684,7 +684,7 @@ fun PlaybackScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 72.dp, start = 16.dp, end = 16.dp)
-                    .background(Color(0xE6000000), RoundedCornerShape(12.dp))
+                    .background(Color(0xE6000000), RoundedCornerShape(6.dp))
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             )
         }
@@ -794,7 +794,7 @@ private fun UpNextOverlay(
         ) {
             Text(
                 "Próximo episódio",
-                color = Color(0xFFB0B0B0),
+                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                 style = MaterialTheme.typography.titleSmall
             )
             Text(
@@ -824,7 +824,7 @@ private fun UpNextOverlay(
                     .clickable { onCancel() }
                     .padding(horizontal = 20.dp, vertical = 10.dp)
             ) {
-                Text("Cancelar", color = Color(0xFFCFCFCF), style = MaterialTheme.typography.bodyMedium)
+                Text("Cancelar", color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -932,7 +932,7 @@ internal fun VideoSurface(
                 val label = if (seekFeedbackMs < 0L) "◀◀  ${seconds}s" else "${seconds}s  ▶▶"
                 Box(
                     modifier = Modifier
-                        .background(Color(0xB3000000), RoundedCornerShape(12.dp))
+                        .background(Color(0xB3000000), RoundedCornerShape(6.dp))
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
                     Text(label, color = Color.White, style = MaterialTheme.typography.titleLarge)

@@ -74,7 +74,7 @@ internal fun MyStuffOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF2050505))
+            .background(Color(0xF2090B0F))
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 16.dp)
@@ -140,8 +140,8 @@ private fun SegmentedControl(selected: MyStuffTab, onSelect: (MyStuffTab) -> Uni
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF141417))
+            .clip(RoundedCornerShape(6.dp))
+            .background(com.ntv2.app.core.ui.BrandColors.Surface)
             .padding(5.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -155,7 +155,7 @@ private fun SegmentedControl(selected: MyStuffTab, onSelect: (MyStuffTab) -> Uni
 private fun Segment(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(9.dp))
+            .clip(RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
             .background(if (selected) BRAND_ACCENT else Color.Transparent)
             .padding(vertical = 9.dp),
@@ -163,7 +163,7 @@ private fun Segment(label: String, selected: Boolean, modifier: Modifier, onClic
     ) {
         Text(
             label,
-            color = if (selected) Color(0xFF0E0E0E) else Color(0xFF9A9A9A),
+            color = if (selected) com.ntv2.app.core.ui.BrandColors.OnCta else Color(0xFF8E98A8),
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1
         )
@@ -222,7 +222,7 @@ private fun HistoryList(
                     trailing = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             if (entry.completed) {
-                                Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(0x24B8C8E0)), contentAlignment = Alignment.Center) {
+                                Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(0x2466D9FF)), contentAlignment = Alignment.Center) {
                                     Icon(Icons.Filled.Check, contentDescription = "Assistido", tint = BRAND_ACCENT, modifier = Modifier.size(16.dp))
                                 }
                             } else {
@@ -249,14 +249,14 @@ private fun ThumbRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
-            .background(Color(0xFF141417))
+            .background(com.ntv2.app.core.ui.BrandColors.Surface)
             .padding(9.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.width(104.dp).height(59.dp).clip(RoundedCornerShape(7.dp)).background(Color(0xFF1C1C20))) {
+        Box(modifier = Modifier.width(104.dp).height(59.dp).clip(RoundedCornerShape(6.dp)).background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)) {
             if (showCovers && cover != null) {
                 AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
@@ -268,7 +268,7 @@ private fun ThumbRow(
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(media.title, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            subtitle?.let { Text(it, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            subtitle?.let { Text(it, color = Color(0xFF8E98A8), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         trailing()
     }
@@ -296,9 +296,9 @@ private fun PosterGrid(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(246.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .clickable(onClick = { onCardClick(media) })
-                    .background(Color(0xFF1C1C20))
+                    .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
             ) {
                 if (showCovers && cover != null) {
                     AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -313,17 +313,17 @@ private fun PosterGrid(
 @Composable
 private fun EmptyState(message: String) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(message, color = Color(0xFF9A9A9A), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 24.dp))
+        Text(message, color = Color(0xFF8E98A8), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 24.dp))
     }
 }
 
 @Composable
 private fun PlayPill(onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).background(BRAND_ACCENT),
+        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).background(BRAND_ACCENT),
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.Filled.PlayArrow, contentDescription = "Continuar", tint = Color(0xFF0E0E0E), modifier = Modifier.size(18.dp))
+        Icon(Icons.Filled.PlayArrow, contentDescription = "Continuar", tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -331,7 +331,7 @@ private fun PlayPill(onClick: () -> Unit) {
 private fun TextPill(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, destructive: Boolean, onClick: () -> Unit) {
     val content = if (destructive) Color(0xFFFF7A7A) else Color.White
     Row(
-        modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).background(Color(0x1FFFFFFF)).padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).background(Color(0x1FFFFFFF)).padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -346,7 +346,7 @@ private fun CircleIconButton(icon: androidx.compose.ui.graphics.vector.ImageVect
         modifier = Modifier.size(40.dp).clip(CircleShape).clickable(onClick = onClick).background(Color(0x1FFFFFFF)),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = description, tint = Color(0xFFCFCFCF), modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = description, tint = com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(20.dp))
     }
 }
 

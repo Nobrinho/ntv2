@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -101,6 +102,11 @@ fun RailButton(
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
     val active = focused || highlighted
+    val focusScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (focused && enabled && interactive) BRAND_FOCUS_SCALE else 1f,
+        animationSpec = androidx.compose.animation.core.tween(140),
+        label = "rail-focus-scale"
+    )
     val cta = primary && enabled // botão de ação em destaque
     val onCta = com.ntv2.app.core.ui.BrandColors.OnCta // conteúdo escuro sobre o CTA branco
     val tint = when {
@@ -111,20 +117,21 @@ fun RailButton(
     }
     val background = when {
         cta -> com.ntv2.app.core.ui.BrandColors.Cta
-        focused -> Color(0x33B8C8E0)
+        focused -> Color(0x3366D9FF)
         else -> Color.Transparent
     }
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp, scale = BRAND_FOCUS_SCALE)
             .onFocusChanged { focused = it.isFocused }
             .then(if (enabled && interactive) Modifier.clickable(onClick = onClick) else Modifier)
+            .graphicsLayer { scaleX = focusScale; scaleY = focusScale }
+            .clip(RoundedCornerShape(6.dp))
             .background(background)
             // Foco sobre o CTA verde: borda branca para não "sumir" o realce de foco.
             .then(
-                if (cta && focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(12.dp))
+                if (cta && focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp))
                 else Modifier
             )
             .padding(vertical = 7.dp),
@@ -138,7 +145,7 @@ fun RailButton(
                 !enabled -> Color(0x44FFFFFF)
                 cta -> onCta
                 active -> BRAND
-                else -> Color(0xFFB0B0B0)
+                else -> com.ntv2.app.core.ui.BrandColors.TextSecondary
             },
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1

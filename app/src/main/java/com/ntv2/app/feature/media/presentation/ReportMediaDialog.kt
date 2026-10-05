@@ -82,9 +82,9 @@ internal fun ReportMediaDialog(
                 .padding(16.dp)
                 .widthIn(max = 480.dp)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF141414))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
                 // Absorve o toque: clicar dentro do cartão não fecha.
                 .clickable(enabled = false) {}
                 .padding(20.dp),
@@ -97,7 +97,7 @@ internal fun ReportMediaDialog(
                         Text("Obrigado!", color = Color.White, style = MaterialTheme.typography.titleLarge)
                         Text(
                             "Seu reporte foi registrado e vai nos ajudar a corrigir este vídeo.",
-                            color = Color(0xFFBDBDBD),
+                            color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -106,7 +106,7 @@ internal fun ReportMediaDialog(
                 Text("Reportar problema", color = Color.White, style = MaterialTheme.typography.titleLarge)
                 Text(
                     title,
-                    color = Color(0xFF9A9A9A),
+                    color = Color(0xFF8E98A8),
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -137,7 +137,7 @@ private fun ReportReasonRow(reason: MediaReportReason, modifier: Modifier, onCli
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color.White else Color(0x14FFFFFF))
@@ -148,7 +148,7 @@ private fun ReportReasonRow(reason: MediaReportReason, modifier: Modifier, onCli
             Text(reason.label, color = if (focused) Color.Black else Color.White, style = MaterialTheme.typography.titleMedium)
             Text(
                 reason.hint,
-                color = if (focused) Color(0xFF404040) else Color(0xFF9A9A9A),
+                color = if (focused) Color(0xFF404040) else Color(0xFF8E98A8),
                 style = MaterialTheme.typography.bodySmall
             )
         }

@@ -304,7 +304,7 @@ private fun SeriesHero(series: SeriesSummary, showCovers: Boolean) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF1A1A1A))
         )
     }
@@ -321,13 +321,13 @@ private fun PlayButton(
     val gliding = glideActive()
     Row(
         modifier = modifier
-            .glideTarget(8.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(BRAND_ACCENT)
-            .then(if (focused && !gliding) Modifier.border(3.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
             .padding(horizontal = 22.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -367,15 +367,15 @@ private fun SeasonSelector(
                 }
             Text(
                 "Temp. ${s.number}",
-                color = if (isSel) Color.Black else Color(0xFFCFCFCF),
+                color = if (isSel) Color.Black else com.ntv2.app.core.ui.BrandColors.TextSecondary,
                 style = MaterialTheme.typography.labelLarge,
                 modifier = chipMod
-                    .glideTarget(20.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .glideTarget(4.dp)
+                    .clip(RoundedCornerShape(4.dp))
                     .onFocusChanged { focused = it.isFocused }
                     .clickable { onSelect(s.number) }
                     .background(if (isSel) BRAND_ACCENT else Color(0x22FFFFFF))
-                    .then(if (focused && !isSel && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(20.dp)) else Modifier)
+                    .then(if (focused && !isSel && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
         }
@@ -396,12 +396,12 @@ private fun EpisodeRow(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 4.dp)
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x26FFFFFF) else Color.Transparent)
-            .then(if (focused && !gliding) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(12.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(6.dp)) else Modifier)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -419,7 +419,7 @@ private fun EpisodeRow(
                         .width(132.dp)
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF1E1E1E))
+                        .background(com.ntv2.app.core.ui.BrandColors.Surface)
                 )
                 if (progress > 0f) {
                     Box(
@@ -453,14 +453,14 @@ private fun EpisodeRow(
             if (episode.durationSeconds > 0) {
                 Text(
                     durationLabel(episode.durationSeconds),
-                    color = Color(0xFF8A8A8A),
+                    color = Color(0xFF8E98A8),
                     style = MaterialTheme.typography.labelMedium
                 )
             }
             episode.synopsis?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     it,
-                    color = Color(0xFFB0B0B0),
+                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis

@@ -95,9 +95,9 @@ internal fun ChannelPickerOverlay(
                 .widthIn(max = 680.dp)
                 .padding(vertical = 24.dp)
                 .trapFocus()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF1E1E1E))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(6.dp))
+                .background(com.ntv2.app.core.ui.BrandColors.Surface)
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -124,13 +124,13 @@ internal fun ChannelPickerOverlay(
                     Row(
                         modifier = mod
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .onFocusChanged { focused = it.isFocused }
                             .clickable { onSelect(ch.id) }
                             .background(
                                 when {
                                     focused -> Color(0x33FFFFFF)
-                                    selected -> Color(0x1FB8C8E0)
+                                    selected -> Color(0x1F66D9FF)
                                     else -> Color(0x14FFFFFF)
                                 }
                             )
@@ -141,7 +141,7 @@ internal fun ChannelPickerOverlay(
                                     selected -> accent
                                     else -> Color(0x33FFFFFF)
                                 },
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(6.dp)
                             )
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -187,14 +187,14 @@ internal fun ChannelPickerOverlay(
             Row(
                 modifier = Modifier
                     .align(Alignment.End)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .onFocusChanged { closeFocused = it.isFocused }
                     .clickable(onClick = onDismiss)
                     .background(if (closeFocused) Color(0x33FFFFFF) else Color(0x1FFFFFFF))
                     .border(
                         width = if (closeFocused) 2.dp else 1.dp,
                         color = if (closeFocused) Color.White else Color(0x33FFFFFF),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(6.dp)
                     )
                     .padding(horizontal = 18.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

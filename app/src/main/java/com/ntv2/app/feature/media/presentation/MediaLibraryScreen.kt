@@ -1,5 +1,10 @@
 package com.ntv2.app.feature.media.presentation
 
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import com.ntv2.app.core.ui.BrandBackdrop
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -52,7 +57,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.DisposableEffect
-import androidx.tv.material3.Button
+import com.ntv2.app.core.ui.BrandButton
+import com.ntv2.app.core.ui.BrandButtonLabel
+import com.ntv2.app.core.ui.BrandButtonStyle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -90,6 +97,8 @@ fun MediaLibraryScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val initialActionsFocus = remember { FocusRequester() }
+    // Botão principal do painel de vazio/erro: alvo do → no rail (sem grade, não há outro destino).
+    val statusFocus = remember { FocusRequester() }
     val cardFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     // Teclado de busca próprio (D-pad) e picker de canal ativo — overlays na tela.
     var searching by remember { mutableStateOf(false) }
@@ -401,7 +410,16 @@ fun MediaLibraryScreen(
         Row(modifier = Modifier.fillMaxSize()) {
             // Rail lateral de navegação (logo + ações), estilo TV.
             if (useTvLayout) {
-                Box(modifier = Modifier.onFocusChanged { if (it.hasFocus) focusInRail[0] = true }) {
+                val showingStatus = !state.isLoading && (state.errorMessage != null || state.emptyState != null)
+                Box(
+                    modifier = Modifier
+                        .onFocusChanged { if (it.hasFocus) focusInRail[0] = true }
+                        .onPreviewKeyEvent { e ->
+                            if (showingStatus && e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight) {
+                                runCatching { statusFocus.requestFocus() }.isSuccess
+                            } else false
+                        }
+                ) {
                     NavRail(
                         firstItemFocus = initialActionsFocus,
                         channelsFocus = railChannelsFocus,
@@ -546,7 +564,9 @@ fun MediaLibraryScreen(
                         primaryLabel = "Tentar novamente",
                         onPrimary = { viewModel.onAction(MediaLibraryAction.Refresh) },
                         secondaryLabel = "Fechar",
-                        onSecondary = { viewModel.onAction(MediaLibraryAction.ClearError) }
+                        onSecondary = { viewModel.onAction(MediaLibraryAction.ClearError) },
+                        primaryFocus = statusFocus,
+                        onLeft = if (useTvLayout) ({ runCatching { initialActionsFocus.requestFocus() } }) else null
                     )
 
                     state.emptyState != null -> {
@@ -585,7 +605,9 @@ fun MediaLibraryScreen(
                             title = title,
                             lines = lines,
                             primaryLabel = "Tentar novamente",
-                            onPrimary = { viewModel.onAction(MediaLibraryAction.Refresh) }
+                            onPrimary = { viewModel.onAction(MediaLibraryAction.Refresh) },
+                            primaryFocus = statusFocus,
+                            onLeft = if (useTvLayout) ({ runCatching { initialActionsFocus.requestFocus() } }) else null
                         )
                     }
 

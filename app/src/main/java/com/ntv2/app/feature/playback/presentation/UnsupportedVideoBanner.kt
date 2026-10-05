@@ -30,7 +30,7 @@ internal fun BoxScope.UnsupportedVideoBanner(formatLabel: String?) {
         modifier = Modifier
             .align(Alignment.Center)
             .padding(horizontal = 32.dp)
-            .background(Color(0xE6000000), RoundedCornerShape(12.dp))
+            .background(Color(0xE6000000), RoundedCornerShape(6.dp))
             .padding(horizontal = 20.dp, vertical = 14.dp)
     )
 }

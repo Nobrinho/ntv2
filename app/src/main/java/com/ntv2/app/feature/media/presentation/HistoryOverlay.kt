@@ -107,7 +107,7 @@ internal fun MyListHistoryOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF2050505))
+            .background(Color(0xF2090B0F))
             .statusBarsPadding()
             .navigationBarsPadding()
             .trapFocus()
@@ -147,7 +147,7 @@ internal fun MyListHistoryOverlay(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         "Nada por aqui ainda. Os títulos que você assistir aparecem no histórico.",
-                        color = Color(0xFF9A9A9A),
+                        color = Color(0xFF8E98A8),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -202,14 +202,14 @@ private fun ShelfTabPill(label: String, selected: Boolean, modifier: Modifier, o
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(4.dp))
             .onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused && !selected) onSelect()
             }
             .clickable(onClick = onSelect)
             .background(if (selected) Color.White else Color(0x1FFFFFFF))
-            .then(if (focused) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(22.dp)) else Modifier)
+            .then(if (focused) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(4.dp)) else Modifier)
             .padding(horizontal = 20.dp, vertical = 10.dp)
     ) {
         Text(label, color = if (selected) Color.Black else Color.White, style = MaterialTheme.typography.titleMedium)
@@ -228,7 +228,7 @@ private fun MyListGrid(
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 "Sua lista está vazia. Use o coração nos detalhes de um filme para salvá-lo.",
-                color = Color(0xFF9A9A9A),
+                color = Color(0xFF8E98A8),
                 style = MaterialTheme.typography.bodyLarge
             )
         }
@@ -266,8 +266,8 @@ private fun HistoryRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF141417))
+            .clip(RoundedCornerShape(6.dp))
+            .background(com.ntv2.app.core.ui.BrandColors.Surface)
             .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -277,7 +277,7 @@ private fun HistoryRow(
                 .width(132.dp)
                 .height(74.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF1C1C20))
+                .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
         ) {
             if (showCovers && cover != null) {
                 AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -290,7 +290,7 @@ private fun HistoryRow(
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(media.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(historySubtitle(entry), color = Color(0xFF8A8A8A), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(historySubtitle(entry), color = Color(0xFF8E98A8), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (entry.completed) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -332,11 +332,11 @@ private fun HistoryTextButton(
     }
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x33FFFFFF) else Color(0x1FFFFFFF))
-            .then(if (focused) Modifier.border(2.dp, Color.White, RoundedCornerShape(12.dp)) else Modifier)
+            .then(if (focused) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
             .padding(horizontal = 14.dp, vertical = 9.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -363,7 +363,7 @@ private fun HistoryIconButton(
             .background(if (focused) Color.White else Color(0x1FFFFFFF)),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = description, tint = if (focused) Color.Black else Color(0xFFCFCFCF), modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = description, tint = if (focused) Color.Black else com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(20.dp))
     }
 }
 

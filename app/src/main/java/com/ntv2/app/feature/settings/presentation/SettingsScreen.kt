@@ -352,7 +352,7 @@ private fun ToggleCard(
     SettingCardShell(icon = icon, title = title, subtitle = subtitle, modifier = modifier, onClick = onToggle) {
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .background(if (value) BRAND else Color(0x33FFFFFF))
                 .padding(horizontal = 16.dp, vertical = 6.dp)
         ) {
@@ -441,8 +441,8 @@ private fun StepperSettingCard(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .onKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
@@ -458,7 +458,7 @@ private fun StepperSettingCard(
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
                 color = if (focused && !gliding) Color.White else Color(0x33FFFFFF),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(6.dp)
             )
             .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
@@ -511,7 +511,7 @@ private fun StepperSettingText(
         Icon(icon, contentDescription = null, tint = BRAND, modifier = Modifier.size(28.dp))
         Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.weight(1f)) {
             Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = Color(0xFFB0B0B0), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -528,9 +528,9 @@ private fun StepperControl(
 ) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(Color(0x16000000))
-            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(24.dp))
+            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -558,7 +558,7 @@ private fun StepTouchButton(
     Box(
         modifier = Modifier
             .size(40.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(8.dp))
             // Só toque: no D-pad quem ajusta é o card (← / →); o botão não recebe foco.
             .focusProperties { canFocus = false }
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
@@ -583,13 +583,13 @@ private fun NavCard(
         title = title,
         subtitle = subtitle,
         modifier = modifier,
-        titleColor = if (destructive) Color(0xFFFF6B6B) else Color.White,
+        titleColor = if (destructive) Color(0xFFFF626D) else Color.White,
         onClick = onClick
     ) {
         Icon(
             Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = Color(0xFFB0B0B0),
+            tint = com.ntv2.app.core.ui.BrandColors.TextSecondary,
             modifier = Modifier.size(28.dp)
         )
     }
@@ -610,15 +610,15 @@ private fun SettingCardShell(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
                 color = if (focused && !gliding) Color.White else Color(0x33FFFFFF),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(6.dp)
             )
             .padding(horizontal = 20.dp, vertical = 18.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -627,7 +627,7 @@ private fun SettingCardShell(
         Icon(icon, contentDescription = null, tint = BRAND, modifier = Modifier.size(28.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, color = titleColor, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = Color(0xFFB0B0B0), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         trailing()
     }
@@ -673,8 +673,8 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(6.dp))
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
                     .focusRequester(focus)
                     .focusable()
                     .onKeyEvent { e ->
@@ -694,13 +694,13 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
             ) {
                 Text(
                     PRIVACY_POLICY_TEXT,
-                    color = Color(0xFFCFCFCF),
+                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
             Text(
                 if (compact) "Deslize para rolar · toque no X para fechar" else "Use ↑ / ↓ para rolar · ↑ no topo vai ao X · Voltar para fechar",
-                color = Color(0xFF9A9A9A),
+                color = Color(0xFF8E98A8),
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -713,7 +713,7 @@ private fun PrivacyCloseButton(onClose: () -> Unit) {
     Box(
         modifier = Modifier
             .size(40.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClose)
             .background(if (focused) Color.White else Color(0x1FFFFFFF)),
@@ -722,7 +722,7 @@ private fun PrivacyCloseButton(onClose: () -> Unit) {
         Icon(
             Icons.Filled.Close,
             contentDescription = "Fechar",
-            tint = if (focused) Color.Black else Color(0xFFCFCFCF),
+            tint = if (focused) Color.Black else com.ntv2.app.core.ui.BrandColors.TextSecondary,
             modifier = Modifier.size(22.dp)
         )
     }
@@ -787,7 +787,7 @@ private fun CardLoadingPickerOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF2050505))
+            .background(Color(0xF2090B0F))
             .onPreviewKeyEvent { e ->
                 e.type == KeyEventType.KeyUp && (e.key == Key.Back || e.key == Key.Escape) &&
                     run { onDismiss(); true }
@@ -802,7 +802,7 @@ private fun CardLoadingPickerOverlay(
             Text("Animação dos cards", color = Color.White, style = MaterialTheme.typography.titleLarge)
             Text(
                 "Prévia de como o card aparece enquanto a capa carrega.",
-                color = Color(0xFFB0B0B0),
+                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                 style = MaterialTheme.typography.bodyMedium
             )
             LazyRow(
@@ -836,8 +836,8 @@ private fun CardLoadingOption(
     Column(
         modifier = modifier
             .width(150.dp)
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
@@ -848,7 +848,7 @@ private fun CardLoadingOption(
                     selected -> BRAND
                     else -> Color(0x33FFFFFF)
                 },
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(6.dp)
             )
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -871,7 +871,7 @@ private fun CardLoadingOption(
         )
         Text(
             style.description,
-            color = Color(0xFF9A9A9A),
+            color = Color(0xFF8E98A8),
             style = MaterialTheme.typography.labelSmall,
             maxLines = 3
         )

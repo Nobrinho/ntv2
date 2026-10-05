@@ -134,9 +134,9 @@ internal fun GestureAdjustmentOverlay(
         Column(
             modifier = Modifier
                 .width(48.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xB3000000))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
                 .padding(vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -698,7 +698,7 @@ internal fun PortraitTopIcon(
     Box(
         modifier = modifier
             .size(44.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
             .background(if (focused) Color.White else Color.Transparent),
@@ -718,7 +718,7 @@ internal fun FullscreenControlButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(40.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -788,11 +788,11 @@ internal fun OverlayChip(
         else -> Color(0x22000000)
     }
     val baseModifier = Modifier
-        .clip(RoundedCornerShape(22.dp))
+        .clip(RoundedCornerShape(4.dp))
         .onFocusChanged { focused = it.isFocused }
         .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
         .background(background)
-        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(22.dp))
+        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(4.dp))
 
     if (!showLabel) {
         Box(
@@ -943,7 +943,7 @@ internal fun PlayerSettingsOverlay(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .widthIn(max = 580.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF1B1E22))
                 .clickable(onClick = {})
                 .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -960,7 +960,7 @@ internal fun PlayerSettingsOverlay(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFF343434))
                     .padding(vertical = 12.dp)
                     .focusGroup()
@@ -1037,7 +1037,7 @@ internal fun PlayerSettingsRow(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val contentColor = if (enabled) Color.White else Color(0xFF9A9A9A)
+    val contentColor = if (enabled) Color.White else Color(0xFF8E98A8)
 
     Row(
         modifier = modifier
@@ -1062,7 +1062,7 @@ internal fun PlayerSettingsRow(
         )
         Text(
             text = value,
-            color = if (enabled) Color(0xFFBDBDBD) else Color(0xFF8C8C8C),
+            color = if (enabled) com.ntv2.app.core.ui.BrandColors.TextSecondary else Color(0xFF8C8C8C),
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1090,9 +1090,9 @@ internal fun TrackPickerOverlay(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .widthIn(max = 460.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF1E1E1E))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(6.dp))
+                .background(com.ntv2.app.core.ui.BrandColors.Surface)
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
                 .clickable(onClick = {})
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1172,7 +1172,7 @@ internal fun TrackRow(
     ) {
         Text(
             text = if (selected) "● $label" else label,
-            color = if (selected) Color.White else Color(0xFFCFCFCF),
+            color = if (selected) Color.White else com.ntv2.app.core.ui.BrandColors.TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

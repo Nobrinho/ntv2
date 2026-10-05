@@ -57,6 +57,8 @@ internal class FocusGlideState {
     private var liveRadius by mutableFloatStateOf(0f)
     private var prev by mutableStateOf<Rect?>(null)
     private var prevRadius by mutableFloatStateOf(0f)
+    private var liveScale by mutableFloatStateOf(1f)
+    private var prevScale by mutableFloatStateOf(1f)
     var t by mutableFloatStateOf(1f)
     var alpha by mutableFloatStateOf(0f)
     var epoch by mutableIntStateOf(0)
@@ -69,20 +71,31 @@ internal class FocusGlideState {
 
     /** Retângulo e raio de canto atuais do anel (interpolados entre o item anterior e o atual). */
     fun displayed(): Pair<Rect, Float>? {
-        val l = live ?: return null
-        val p = prev ?: return l to liveRadius
-        return lerp(p, l, t) to (prevRadius + (liveRadius - prevRadius) * t)
+        val l0 = live ?: return null
+        val l = inflate(l0, liveScale)
+        val p = prev ?: return l to liveRadius * liveScale
+        val pr = inflate(p, prevScale)
+        return lerp(pr, l, t) to ((prevRadius * prevScale) + (liveRadius * liveScale - prevRadius * prevScale) * t)
     }
 
     fun updateLive(bounds: Rect) {
         live = bounds
     }
 
-    fun onFocus(id: Any, bounds: Rect, radiusPx: Float) {
-        val start = if (live != null && alpha > 0.3f) displayed() else null
-        prev = start?.first
-        prevRadius = start?.second ?: radiusPx
+    private fun inflate(r: Rect, s: Float): Rect {
+        if (s == 1f) return r
+        val dx = r.width * (s - 1f) / 2f
+        val dy = r.height * (s - 1f) / 2f
+        return Rect(r.left - dx, r.top - dy, r.right + dx, r.bottom + dy)
+    }
+
+    fun onFocus(id: Any, bounds: Rect, radiusPx: Float, scale: Float = 1f) {
+        val start = if (live != null && alpha > 0.3f) live else null
+        prev = start
+        prevScale = if (start != null) liveScale else scale
+        prevRadius = if (start != null) liveRadius else radiusPx
         live = bounds
+        liveScale = scale
         liveRadius = radiusPx
         t = if (start != null) 0f else 1f
         focusedId = id
@@ -124,7 +137,7 @@ internal fun Modifier.focusGlideHost(glide: FocusGlideState?): Modifier =
  * ANTES (acima) do `focusRequester`/`clickable` na cadeia, como qualquer `onFocusChanged`.
  */
 @Composable
-internal fun Modifier.focusGlideTarget(id: Any, glide: FocusGlideState?, radius: Dp = 12.dp): Modifier {
+internal fun Modifier.focusGlideTarget(id: Any, glide: FocusGlideState?, radius: Dp = 6.dp, scale: Float = 1f): Modifier {
     if (glide == null) return this
     val radiusPx = with(LocalDensity.current) { radius.toPx() }
     val holder = remember { arrayOfNulls<LayoutCoordinates>(1) }
@@ -134,15 +147,18 @@ internal fun Modifier.focusGlideTarget(id: Any, glide: FocusGlideState?, radius:
             if (glide.focusedId == id) glide.boundsOf(c)?.let { glide.updateLive(it) }
         }
         .onFocusChanged { s ->
-            if (s.isFocused) holder[0]?.let { c -> glide.boundsOf(c)?.let { glide.onFocus(id, it, radiusPx) } }
+            if (s.isFocused) holder[0]?.let { c -> glide.boundsOf(c)?.let { glide.onFocus(id, it, radiusPx, scale) } }
             else glide.onBlur(id)
         }
 }
 
 /** Atalho: participa do anel da tela (se houver), com id próprio. */
 @Composable
-fun Modifier.glideTarget(radius: Dp = 12.dp): Modifier =
-    focusGlideTarget(remember { Any() }, LocalFocusGlide.current, radius)
+fun Modifier.glideTarget(radius: Dp = 6.dp, scale: Float = 1f): Modifier =
+    focusGlideTarget(remember { Any() }, LocalFocusGlide.current, radius, scale)
+
+/** Escala de foco da TV (brand kit v2.1: ~1,07). */
+const val BRAND_FOCUS_SCALE = 1.07f
 
 /** true quando a tela tem o anel deslizante: o item não deve desenhar o próprio aro de foco. */
 @Composable
@@ -152,10 +168,9 @@ fun glideActive(): Boolean = LocalFocusGlide.current != null
 @Composable
 internal fun FocusGlideRing(glide: FocusGlideState?) {
     if (glide == null) return
-    // Manual da marca: anel de 3 px + afastamento de 4 px; na TV, 4 px + 6 px.
-    val tv = rememberAdaptiveLayoutInfo().isTv
-    val strokeDp = if (tv) 4.dp else 3.dp
-    val gapDp = if (tv) 6.dp else 4.dp
+    // Brand kit v2.1: foco com contorno de 3 px (azul NBR) e glow contido; mantém o raio do componente.
+    val strokeDp = 3.dp
+    val gapDp = 2.dp
     Spacer(
         modifier = Modifier.fillMaxSize().drawBehind {
             val (r, radius) = glide.displayed() ?: return@drawBehind
@@ -187,6 +202,15 @@ fun FocusGlideScope(modifier: Modifier = Modifier, content: @Composable () -> Un
 /** Anel do manual da marca: um traço único no acento, afastado do item (o chamador infla a área pelo afastamento). */
 internal fun DrawScope.drawSpacedFocusRing(size: Size, alpha: Float, cornerRadiusPx: Float, strokePx: Float) {
     val radius = min(cornerRadiusPx, min(size.width, size.height) / 2f)
+    // Glow contido: traço largo e translúcido por baixo do contorno.
+    val glow = strokePx * 2.5f
+    drawRoundRect(
+        color = FOCUS_ACCENT.copy(alpha = 0.22f * alpha),
+        topLeft = Offset(strokePx / 2 - glow / 2, strokePx / 2 - glow / 2),
+        size = Size(size.width - strokePx + glow, size.height - strokePx + glow),
+        cornerRadius = CornerRadius(radius + glow / 2),
+        style = Stroke(glow)
+    )
     drawRoundRect(
         color = FOCUS_ACCENT.copy(alpha = alpha),
         topLeft = Offset(strokePx / 2, strokePx / 2),
@@ -197,7 +221,7 @@ internal fun DrawScope.drawSpacedFocusRing(size: Size, alpha: Float, cornerRadiu
 }
 
 /** Aro de foco do app: verde com contorno escuro por dentro. A espessura acompanha o tamanho do item. */
-internal fun DrawScope.drawFocusRing(size: Size, alpha: Float, cornerRadiusPx: Float = 12.dp.toPx()) {
+internal fun DrawScope.drawFocusRing(size: Size, alpha: Float, cornerRadiusPx: Float = 6.dp.toPx()) {
     val outer = (min(size.width, size.height) * 0.07f).coerceIn(2.dp.toPx(), 4.dp.toPx())
     val inner = outer / 2f
     val radius = min(cornerRadiusPx, min(size.width, size.height) / 2f)

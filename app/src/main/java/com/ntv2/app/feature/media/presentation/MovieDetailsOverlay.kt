@@ -150,7 +150,7 @@ internal fun MovieDetailsOverlay(
 
     // trapFocus: a grade continua composta por trás — o foco não pode escapar para ela.
     FocusGlideScope(Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF050505)).trapFocus()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(com.ntv2.app.core.ui.BrandColors.Background).trapFocus()) {
         val portrait = maxHeight > maxWidth
         val compactLandscape = !portrait && maxHeight < 520.dp
         // Capturado aqui porque dentro do Column o receiver implícito passa a ser o ColumnScope.
@@ -168,7 +168,7 @@ internal fun MovieDetailsOverlay(
                     }
                     Box(
                         modifier = Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(0f to Color(0x00050505), 0.7f to Color(0x99050505), 1f to Color(0xFF050505))
+                            Brush.verticalGradient(0f to Color(0x00090B0F), 0.7f to Color(0x99090B0F), 1f to com.ntv2.app.core.ui.BrandColors.Background)
                         )
                     )
                 }
@@ -221,10 +221,10 @@ internal fun MovieDetailsOverlay(
                     Box(modifier = Modifier.matchParentSize().background(
                         // Escurece até onde vai a coluna de informações (80% da largura), para o texto
                         // continuar legível sobre o banner.
-                        Brush.horizontalGradient(0f to Color(0xF2050505), 0.6f to Color(0xB3050505), 0.95f to Color(0x00050505))
+                        Brush.horizontalGradient(0f to Color(0xF2090B0F), 0.6f to Color(0xB3090B0F), 0.95f to Color(0x00090B0F))
                     ))
                     Box(modifier = Modifier.matchParentSize().background(
-                        Brush.verticalGradient(0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505))
+                        Brush.verticalGradient(0f to Color(0x00090B0F), 0.55f to Color(0x66090B0F), 1f to Color(0xF2090B0F))
                     ))
                     // Pista de que há mais abaixo: some quando a rolagem desce até as recomendações.
                     if (showRecommendations) {
@@ -277,7 +277,7 @@ internal fun MovieDetailsOverlay(
                                 }
                             }
                             .focusGroup()
-                            .background(Color(0xFF050505))
+                            .background(com.ntv2.app.core.ui.BrandColors.Background)
                             .padding(start = 48.dp, end = 32.dp, top = 6.dp, bottom = 44.dp)
                     )
                 }
@@ -425,11 +425,11 @@ internal fun DetailsInfo(
                             // Tamanho único para todos: foto 64dp + nome em exatamente 2 linhas.
                             modifier = Modifier.width(92.dp)
                                 .fadeInUpStaggered(castVisible, index, animationsEnabled)
-                                .glideTarget(12.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .glideTarget(6.dp)
+                                .clip(RoundedCornerShape(6.dp))
                                 .onFocusChanged { actorFocused = it.isFocused }
                                 .clickable { onFilterClick(SearchFilter(SearchFilterKind.ACTOR, c.name)) }
-                                .then(if (actorFocused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(12.dp)) else Modifier)
+                                .then(if (actorFocused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
                                 .padding(horizontal = 6.dp, vertical = 6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
@@ -549,12 +549,12 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
         modifier = Modifier
             .width(104.dp)
             .aspectRatio(2f / 3f)
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(Color(0xFF1C1C20))
-            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(12.dp)) else Modifier)
+            .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
+            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(6.dp)) else Modifier)
     ) {
         if (cover != null) {
             AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -599,7 +599,7 @@ internal fun SynopsisText(text: String) {
         // composição, a altura do conteúdo mudava a cada foco e o fundo (Crop) dava zoom junto.
         Text(
             if (expanded) "OK para recolher" else "OK para ler tudo",
-            color = if (focused) Color(0xFF9A9A9A) else Color.Transparent,
+            color = if (focused) Color(0xFF8E98A8) else Color.Transparent,
             style = MaterialTheme.typography.labelSmall
         )
     }
@@ -734,21 +734,21 @@ private fun DetailMetaRow(details: MovieDetails?, durationSecs: Int, onFilterCli
 @Composable
 private fun MetaText(text: String, onClick: (() -> Unit)? = null) {
     if (onClick == null) {
-        Text(text, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.titleSmall)
+        Text(text, color = Color(0xFF8E98A8), style = MaterialTheme.typography.titleSmall)
         return
     }
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
     Text(
         text,
-        color = if (focused) Color.White else Color(0xFF8A8A8A),
+        color = if (focused) Color.White else Color(0xFF8E98A8),
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier
-            .glideTarget(8.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .glideTarget(4.dp)
+            .clip(RoundedCornerShape(4.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
             .padding(horizontal = 4.dp, vertical = 2.dp)
     )
 }
@@ -761,13 +761,13 @@ internal fun MetaChip(text: String, onClick: (() -> Unit)? = null) {
     val ring = focused && !gliding
     Text(
         text,
-        color = if (focused) Color.White else Color(0xFFCFCFCF),
+        color = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.TextSecondary,
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier
-            .then(if (onClick != null) Modifier.glideTarget(20.dp) else Modifier)
-            .clip(RoundedCornerShape(20.dp))
+            .then(if (onClick != null) Modifier.glideTarget(4.dp) else Modifier)
+            .clip(RoundedCornerShape(4.dp))
             .then(if (onClick != null) Modifier.onFocusChanged { focused = it.isFocused }.clickable(onClick = onClick) else Modifier)
-            .border(if (ring) 2.dp else 1.dp, if (ring) Color.White else Color(0xFF33343A), RoundedCornerShape(20.dp))
+            .border(if (ring) 2.dp else 1.dp, if (ring) Color.White else Color(0xFF33343A), RoundedCornerShape(4.dp))
             .padding(horizontal = 12.dp, vertical = 4.dp)
     )
 }
@@ -796,18 +796,18 @@ internal fun DetailIconButton(
     Box(
         modifier = Modifier
             .size(48.dp)
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0x1FFFFFFF))
             .then(
-                if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(12.dp))
-                else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp))
+                else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
             ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = description, tint = if (focused) Color.White else Color(0xFFB0B0B0), modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = description, tint = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -820,15 +820,15 @@ internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(48.dp)
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (isFavorite) Color(0x24B8C8E0) else Color(0x1FFFFFFF))
+            .background(if (isFavorite) Color(0x2466D9FF) else Color(0x1FFFFFFF))
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
                 color = if (focused && !gliding) Color.White else border,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(6.dp)
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -860,13 +860,13 @@ internal fun DetailButton(
     val content = if (primary) com.ntv2.app.core.ui.BrandColors.OnCta else Color.White
     Row(
         modifier = modifier
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             // Enquanto carrega, ignora novos toques (evita disparos duplicados).
             .clickable(enabled = !loading, onClick = onClick)
             .background(bg)
-            .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(12.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
             .padding(horizontal = 24.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically

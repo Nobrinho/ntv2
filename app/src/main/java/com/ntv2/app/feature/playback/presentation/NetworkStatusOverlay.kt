@@ -83,9 +83,9 @@ internal fun NetworkStatusOverlay(
             modifier = Modifier
                 .fillMaxWidth(0.6f)
                 .widthIn(max = 320.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xF20E1526))
-                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
                 .clickable(onClick = {})
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)

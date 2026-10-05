@@ -43,7 +43,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
 private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
-private val DESTRUCTIVE = Color(0xFFFF6B6B)
+private val DESTRUCTIVE = Color(0xFFFF626D)
 
 /**
  * Diálogo de confirmação padronizado do app.
@@ -93,9 +93,9 @@ fun ConfirmDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .widthIn(max = 420.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF1E1E1E))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(8.dp))
+                .background(BrandColors.Surface)
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
                 .padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -119,7 +119,7 @@ fun ConfirmDialog(
                 Text(
                     message,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFB0B0B0),
+                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                     textAlign = TextAlign.Center
                 )
             }
@@ -159,20 +159,20 @@ private fun DialogButton(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable { onClick() }
             .background(if (focused) accent else Color(0x14FFFFFF))
             .border(
                 width = if (focused) 2.dp else 1.dp,
                 color = if (focused) accent else Color(0x33FFFFFF),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(6.dp)
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val content = if (focused) Color(0xFF101010) else Color.White
+        val content = if (focused) BrandColors.OnCta else Color.White
         Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
         Text(
             label,

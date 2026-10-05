@@ -559,7 +559,7 @@ private fun LogoutOverlay() {
             )
             androidx.compose.material3.Text(
                 text = "Encerrando a sessão do Telegram com segurança",
-                color = Color(0xFFB0B0B0),
+                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                 style = androidx.compose.material3.MaterialTheme.typography.bodySmall
             )
         }

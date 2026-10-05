@@ -108,12 +108,12 @@ private fun MainBottomNavItem(
     val background = if (selected) BRAND else Color(0x22FFFFFF)
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .background(background)
             .then(
                 if (selected) Modifier
-                else Modifier.border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(22.dp))
+                else Modifier.border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
             )
             .padding(horizontal = 10.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.Center,

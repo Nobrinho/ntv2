@@ -110,7 +110,7 @@ internal fun SearchStatusText(
                 searchInProgress -> "Pesquisando…"
                 else -> "$resultCount resultado(s)"
             },
-            color = Color(0xFFB0B0B0),
+            color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
             style = MaterialTheme.typography.bodyMedium
         )
     }
@@ -336,7 +336,7 @@ internal fun TvSearchOverlay(
                                 query.isEmpty() -> "Digite para buscar por título, canal ou arquivo"
                                 else -> "$query|"
                             },
-                            color = if (query.isEmpty() || !textEnabled) Color(0xFF9A9A9A) else Color.White,
+                            color = if (query.isEmpty() || !textEnabled) Color(0xFF8E98A8) else Color.White,
                             style = if (query.isEmpty() || !textEnabled) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleLarge,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -517,7 +517,7 @@ internal fun TvSearchOverlay(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Color(0x0DFFFFFF))
                     .focusGroup()
                     .onFocusChanged { focusInResults = it.hasFocus },
@@ -587,8 +587,8 @@ private fun TvActiveFilters(filters: SearchFilters) {
                 color = Color.White,
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0x33B8C8E0))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x3366D9FF))
                     .padding(horizontal = 12.dp, vertical = 5.dp)
             )
         }
@@ -684,7 +684,7 @@ private fun TvFilterPanel(
 @Composable
 private fun TvFilterSection(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.labelLarge)
+        Text(title, color = Color(0xFF8E98A8), style = MaterialTheme.typography.labelLarge)
         androidx.compose.foundation.layout.FlowRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -700,7 +700,7 @@ private fun TvFilterChip(text: String, selected: Boolean, modifier: Modifier = M
         color = if (focused || selected) Color.Black else Color(0xFFE0E0E0),
         style = MaterialTheme.typography.labelLarge,
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(4.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(
@@ -713,7 +713,7 @@ private fun TvFilterChip(text: String, selected: Boolean, modifier: Modifier = M
             .border(
                 if (focused) 2.dp else 1.dp,
                 if (focused) Color.White else if (selected) BRAND_ACCENT else Color(0xFF3A3A3A),
-                RoundedCornerShape(20.dp)
+                RoundedCornerShape(4.dp)
             )
             .padding(horizontal = 16.dp, vertical = 8.dp)
     )
@@ -747,10 +747,11 @@ internal fun TouchSearchOverlay(
     val keyboard = LocalSoftwareKeyboardController.current
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
 
-    // Busca por elenco (toque num ator): o texto fica desabilitado, o filtro é o ator.
+    // Busca por elenco (toque num ator): o texto fica desabilitado, o filtro é o ator. Com qualquer
+    // filtro de gênero/ano/ator vindo de um chip o teclado não abre sozinho.
     val actorMode = filters.actor != null
     LaunchedEffect(Unit) {
-        if (!actorMode) {
+        if (!filters.hasAttribute) {
             fieldFocus.requestFocus()
             keyboard?.show()
         }
@@ -790,7 +791,7 @@ internal fun TouchSearchOverlay(
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp)
-                    .clip(RoundedCornerShape(25.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF252525))
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -811,7 +812,7 @@ internal fun TouchSearchOverlay(
                             if (query.isEmpty()) {
                                 androidx.compose.material3.Text(
                                     if (actorMode) "Elenco: ${filters.actor}" else "Pesquisar",
-                                    color = Color(0xFF9A9A9A),
+                                    color = Color(0xFF8E98A8),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     style = androidx.compose.material3.MaterialTheme.typography.titleMedium
@@ -917,8 +918,8 @@ private fun ActiveFilterChips(filters: SearchFilters, actorCount: Int, onChange:
 private fun RemovableChip(text: String, onRemove: () -> Unit) {
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0x33B8C8E0))
+            .clip(RoundedCornerShape(4.dp))
+            .background(Color(0x3366D9FF))
             .clickable(onClick = onRemove)
             .padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1015,7 +1016,7 @@ private fun FilterSection(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         androidx.compose.material3.Text(
             title,
-            color = Color(0xFF8A8A8A),
+            color = Color(0xFF8E98A8),
             style = androidx.compose.material3.MaterialTheme.typography.labelLarge
         )
         androidx.compose.foundation.layout.FlowRow(
@@ -1032,7 +1033,7 @@ private fun SelectableChip(text: String, selected: Boolean, onClick: () -> Unit)
         color = if (selected) Color.Black else Color(0xFFE0E0E0),
         style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(4.dp))
             .background(if (selected) BRAND_ACCENT else Color(0xFF2A2A2A))
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 7.dp)
@@ -1152,7 +1153,7 @@ internal fun TouchSearchResultsGrid(
                 ) {
                     androidx.compose.material3.Text(
                         "Nenhum resultado encontrado",
-                        color = Color(0xFFB0B0B0),
+                        color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                         style = androidx.compose.material3.MaterialTheme.typography.titleMedium
                     )
                 }
@@ -1189,7 +1190,7 @@ private fun SearchCoverCell(
             // Sem capa (opção desligada ou sem arte): mostra o nome, como na grade da TV.
             Text(
                 description,
-                color = Color(0xFFB0B0B0),
+                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
@@ -1309,7 +1310,7 @@ internal fun SearchResultsList(
                 ) {
                     androidx.compose.material3.Text(
                         "Nenhum resultado encontrado",
-                        color = Color(0xFFB0B0B0),
+                        color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                         style = androidx.compose.material3.MaterialTheme.typography.titleMedium
                     )
                 }
@@ -1327,17 +1328,17 @@ private fun TvCoverCell(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(6.dp)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(2f / 3f)
-            .graphicsLayer { val s = if (focused) 1.05f else 1f; scaleX = s; scaleY = s }
+            .graphicsLayer { val s = if (focused) com.ntv2.app.core.ui.BRAND_FOCUS_SCALE else 1f; scaleX = s; scaleY = s }
             .clip(shape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0xFF222222))
-            .border(if (focused) 3.dp else 0.dp, if (focused) Color.White else Color.Transparent, shape),
+            .border(if (focused) 3.dp else 0.dp, if (focused) BRAND_ACCENT else Color.Transparent, shape),
         contentAlignment = Alignment.Center
     ) {
         if (cover != null) {
@@ -1351,7 +1352,7 @@ private fun TvCoverCell(
         } else {
             Text(
                 title,
-                color = Color(0xFFB0B0B0),
+                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,

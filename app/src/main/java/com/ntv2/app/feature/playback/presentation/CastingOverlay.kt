@@ -76,15 +76,15 @@ internal fun CastingOverlay(
             )
             Text(
                 "Mantenha o app aberto e o celular no mesmo Wi‑Fi durante o filme.",
-                color = Color(0xFFBDBDBD),
+                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center
             )
             Row(
                 modifier = Modifier
                     .padding(top = 6.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp))
                     .clickable(onClick = onStop)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

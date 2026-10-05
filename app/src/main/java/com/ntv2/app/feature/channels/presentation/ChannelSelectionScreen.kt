@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -56,7 +57,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
+import com.ntv2.app.core.ui.BrandButton
+import com.ntv2.app.core.ui.BrandButtonLabel
+import com.ntv2.app.core.ui.BrandButtonStyle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -168,18 +171,13 @@ fun ChannelSelectionScreen(
                 )
             }
         } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                CompactChannelActions(
-                    state = state,
-                    firstActionFocusRequester = firstActionFocusRequester,
-                    showBack = showBack,
-                    hasSelection = hasSelection,
-                    onClear = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
-                    onRefresh = { viewModel.onAction(ChannelSelectionAction.Retry) },
-                    onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
-                    onBack = onBack,
-                    onLogout = { confirmLogout = true }
-                )
+            // Celular: ações na barra inferior (navbottom); atualizar = puxar a lista para baixo.
+            @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+            androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+                isRefreshing = state.isLoading,
+                onRefresh = { viewModel.onAction(ChannelSelectionAction.Retry) },
+                modifier = Modifier.fillMaxSize().statusBarsPadding()
+            ) {
                 ChannelContent(
                     state = state,
                     compact = true,
@@ -187,8 +185,17 @@ fun ChannelSelectionScreen(
                     onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
                 )
             }
-            // Sem bottom nav aqui: ainda não há biblioteca (nenhum canal escolhido); as ações do
-            // topo (Continuar/Atualizar/Limpar/Sair e Voltar quando aplicável) já bastam.
+            ChannelBottomBar(
+                state = state,
+                logoutFocusRequester = firstActionFocusRequester,
+                showBack = showBack,
+                hasSelection = hasSelection,
+                onClear = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
+                onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
+                onBack = onBack,
+                onLogout = { confirmLogout = true },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
 
         if (confirmLogout) {
@@ -256,75 +263,83 @@ private fun ChannelActionsRail(
 }
 
 @Composable
-private fun CompactChannelActions(
+private fun ChannelBottomBar(
     state: ChannelSelectionUiState,
-    firstActionFocusRequester: FocusRequester,
+    logoutFocusRequester: FocusRequester,
     showBack: Boolean,
     hasSelection: Boolean,
     onClear: () -> Unit,
-    onRefresh: () -> Unit,
     onContinue: () -> Unit,
     onBack: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .statusBarsPadding()
-            .horizontalScroll(rememberScrollState())
-            .background(Color(0xFF0C0C0C))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .background(com.ntv2.app.core.ui.BrandColors.Background.copy(alpha = 0.95f))
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Atualizar e Limpar são só ícone. Limpar só aparece com pelo menos um canal selecionado.
-        ChannelIconAction(
-            icon = Icons.Filled.Refresh,
-            contentDescription = "Atualizar",
-            modifier = Modifier.focusRequester(firstActionFocusRequester),
-            onClick = onRefresh
-        )
-        if (hasSelection) {
-            ChannelIconAction(
-                icon = Icons.Filled.Deselect,
-                contentDescription = "Limpar seleção",
-                onClick = onClear
-            )
-        }
-        CompactActionChip(label = "Continuar", enabled = state.canContinue, primary = state.canContinue, onClick = onContinue)
         if (showBack) {
-            CompactActionChip(label = "Voltar", onClick = onBack)
+            ChannelNavItem(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", Modifier.weight(1f), onClick = onBack)
         }
-        CompactActionChip(label = "Sair", onClick = onLogout)
+        if (hasSelection) {
+            ChannelNavItem(Icons.Filled.Deselect, "Limpar", Modifier.weight(1f), onClick = onClear)
+        }
+        ChannelNavItem(
+            Icons.AutoMirrored.Filled.Logout, "Sair",
+            Modifier.weight(1f).focusRequester(logoutFocusRequester), onClick = onLogout
+        )
+        ChannelNavItem(
+            Icons.AutoMirrored.Filled.ArrowForward, "Continuar",
+            Modifier.weight(if (showBack || hasSelection) 2f else 3f),
+            enabled = state.canContinue, primary = state.canContinue, showLabel = true, onClick = onContinue
+        )
     }
 }
 
-// Ação circular só-ícone (contraste + destaque de foco) para a barra de canais no celular.
+// Item da barra inferior: ícone + rótulo, raio 4dp; "Continuar" em azul NBR quando habilitado.
 @Composable
-private fun ChannelIconAction(
+private fun ChannelNavItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
+    label: String,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    primary: Boolean = false,
+    showLabel: Boolean = false,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    Box(
+    val bg = when {
+        primary -> com.ntv2.app.core.ui.BrandColors.Accent
+        focused -> Color(0x33FFFFFF)
+        else -> Color(0x14FFFFFF)
+    }
+    val fg = when {
+        !enabled -> Color(0x66FFFFFF)
+        primary -> com.ntv2.app.core.ui.BrandColors.OnCta
+        else -> Color.White
+    }
+    Row(
         modifier = modifier
-            .size(44.dp)
-            .glideTarget(22.dp)
-            .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color(0xFF2C2C2E))
-            .border(1.dp, if (focused) Color.White else Color(0x66FFFFFF), CircleShape),
-        contentAlignment = Alignment.Center
+            .clip(RoundedCornerShape(4.dp))
+            .background(bg)
+            .border(
+                if (focused) 2.dp else 1.dp,
+                if (focused) com.ntv2.app.core.ui.BrandColors.Accent else Color(0x1FFFFFFF),
+                RoundedCornerShape(4.dp)
+            )
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 10.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            icon,
-            contentDescription = contentDescription,
-            tint = if (focused) Color.Black else Color.White,
-            modifier = Modifier.size(22.dp)
-        )
+        Icon(icon, contentDescription = label, tint = fg, modifier = Modifier.size(20.dp))
+        if (showLabel) Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
 
@@ -344,8 +359,8 @@ private fun CompactActionChip(
     val content = if (primary && enabled) Color.Black else Color.White
     Box(
         modifier = modifier
-            .then(if (enabled) Modifier.glideTarget(24.dp) else Modifier)
-            .clip(RoundedCornerShape(24.dp))
+            .then(if (enabled) Modifier.glideTarget(4.dp) else Modifier)
+            .clip(RoundedCornerShape(4.dp))
             .background(background)
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 20.dp, vertical = 13.dp),
@@ -376,7 +391,7 @@ private fun ChannelContent(
                 Text(
                     "${state.selectedChannelIds.size} de ${state.channels.size} selecionados",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFB0B0B0)
+                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary
                 )
             }
         }
@@ -385,7 +400,7 @@ private fun ChannelContent(
             state.isLoading -> ChannelsGridSkeleton(compact = compact)
             state.errorMessage != null -> {
                 Text("Erro: ${state.errorMessage}", color = Color.White)
-                Button(onClick = onRetry) { Text("Tentar novamente") }
+                BrandButton(onClick = onRetry) { BrandButtonLabel("Tentar novamente") }
             }
             state.emptyState == ChannelSelectionEmptyState.NoEligibleChannels -> {
                 Text("Nenhum canal elegível encontrado", color = Color.White)
@@ -447,7 +462,7 @@ private fun ChannelsGridSkeleton(compact: Boolean) {
                     Row(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(Color(0x11FFFFFF))
                             .padding(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -498,8 +513,8 @@ private fun ChannelCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onToggle)
             .background(
@@ -516,7 +531,7 @@ private fun ChannelCard(
                     selected -> accent
                     else -> Color(0x44FFFFFF)
                 },
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(6.dp)
             )
             .padding(12.dp)
     ) {
@@ -551,7 +566,7 @@ private fun ChannelCard(
                     }
                     Text(
                         text = if (selected) "Selecionado" else "Selecionar",
-                        color = if (selected) accent else Color(0xFF9A9A9A),
+                        color = if (selected) accent else Color(0xFF8E98A8),
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

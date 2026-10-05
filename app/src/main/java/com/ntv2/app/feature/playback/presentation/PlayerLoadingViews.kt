@@ -94,7 +94,7 @@ internal fun BoxScope.LoadingStatus(
                     scaleY = 0.8f
                     transformOrigin = TransformOrigin(1f, 0f)
                 }
-                .background(Color(0x99000000), RoundedCornerShape(12.dp))
+                .background(Color(0x99000000), RoundedCornerShape(6.dp))
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -263,15 +263,15 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
             modifier = Modifier
                 .fillMaxWidth(0.9f)
                 .widthIn(max = 560.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xF21B1E22))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
                 .padding(horizontal = 20.dp, vertical = 24.dp)
                 .trapFocus(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFFC857), modifier = Modifier.size(40.dp))
+            Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFFBE55), modifier = Modifier.size(40.dp))
             Text(
                 error.title,
                 color = Color.White,
@@ -281,14 +281,14 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
             )
             Text(
                 error.message,
-                color = Color(0xFFCFCFCF),
+                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
             error.detail?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     it,
-                    color = Color(0xFF8A8A8A),
+                    color = Color(0xFF8E98A8),
                     style = MaterialTheme.typography.labelSmall,
                     textAlign = TextAlign.Center,
                     maxLines = 3,
@@ -342,11 +342,11 @@ internal fun ErrorActionButton(
     var focused by remember { mutableStateOf(false) }
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color.White else Color(0x22FFFFFF))
-            .border(1.dp, if (focused) Color.White else Color(0x44FFFFFF), RoundedCornerShape(12.dp))
+            .border(1.dp, if (focused) Color.White else Color(0x44FFFFFF), RoundedCornerShape(6.dp))
             .padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically

@@ -48,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
@@ -98,20 +99,20 @@ internal fun LoadMoreButton(
 ) {
     var focused by remember { mutableStateOf(false) }
     val accent = com.ntv2.app.core.ui.BrandColors.Accent
-    val content = if (focused) Color(0xFF0E0E0E) else Color.White
+    val content = if (focused) com.ntv2.app.core.ui.BrandColors.OnCta else Color.White
     Row(
         modifier = modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .widthIn(min = 320.dp)
             .height(56.dp)
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(enabled = !loading, onClick = onClick)
             .background(if (focused) accent else Color(0x1FFFFFFF))
             .border(
                 width = if (focused) 2.dp else 1.dp,
                 color = if (focused) accent else Color(0x44FFFFFF),
-                shape = RoundedCornerShape(28.dp)
+                shape = RoundedCornerShape(8.dp)
             )
             .padding(horizontal = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
@@ -225,7 +226,7 @@ internal fun LazyMediaGrid(
                     showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning(),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusGlideTarget(media.mediaId, glide)
+                        .focusGlideTarget(media.mediaId, glide, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
                         .focusRequester(requester)
                         .onFocusChanged { if (it.isFocused) onCardFocused(media.mediaId) }
                         .onPreviewKeyEvent { e ->
@@ -312,7 +313,7 @@ internal fun MediaGridSkeleton(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(shimmer)
                     )
                     if (!showCovers) {
@@ -416,9 +417,15 @@ internal fun MediaCard(
         modifier = modifier
             // Contínuo: sem "salto" de camada ao trocar o foco.
             .zIndex(focusFraction)
-            .clip(RoundedCornerShape(12.dp))
+            // O foco/clique vêm ANTES da escala: assim o "bring into view" da grade usa os limites sem
+            // escala e não rola a tela por causa do zoom.
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
+            .graphicsLayer {
+                val sc = 1f + (com.ntv2.app.core.ui.BRAND_FOCUS_SCALE - 1f) * focusFraction
+                scaleX = sc; scaleY = sc
+            }
+            .clip(RoundedCornerShape(6.dp))
             .background(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), Color(0x22FFFFFF), focusFraction))
             .drawWithContent {
                 drawContent()
@@ -434,7 +441,7 @@ internal fun MediaCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(media.gridAspectRatio(showCover))
-                    .background(Color(0xFF1C1C1C))
+                    .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
             ) {
                 if (cover != null) {
                     com.ntv2.app.core.ui.CoverWithLoading(
@@ -489,7 +496,7 @@ internal fun MediaCard(
                         Icon(
                             Icons.Filled.Warning,
                             contentDescription = "Pode não reproduzir vídeo neste aparelho",
-                            tint = Color(0xFFFFC857),
+                            tint = Color(0xFFFFBE55),
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -538,11 +545,11 @@ private fun LibraryTabChip(label: String, active: Boolean, onClick: () -> Unit) 
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(4.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (active) FOCUS_ACCENT else Color(0x22FFFFFF))
-            .then(if (focused && !active) Modifier.border(2.dp, Color.White, RoundedCornerShape(20.dp)) else Modifier)
+            .then(if (focused && !active) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
             .padding(horizontal = 18.dp, vertical = 8.dp)
     ) {
         Text(
@@ -589,7 +596,7 @@ internal fun LazySeriesGrid(
                     animationsEnabled = animationsEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusGlideTarget(id, glide)
+                        .focusGlideTarget(id, glide, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
                         .focusRequester(focusRequesterFor(id))
                         .onFocusChanged { if (it.isFocused) onCardFocused(id) },
                     onClick = { onSeriesClick(s) }
@@ -619,9 +626,15 @@ private fun SeriesGridCard(
     Box(
         modifier = modifier
             .zIndex(focusFraction)
-            .clip(RoundedCornerShape(12.dp))
+            // O foco/clique vêm ANTES da escala: assim o "bring into view" da grade usa os limites sem
+            // escala e não rola a tela por causa do zoom.
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
+            .graphicsLayer {
+                val sc = 1f + (com.ntv2.app.core.ui.BRAND_FOCUS_SCALE - 1f) * focusFraction
+                scaleX = sc; scaleY = sc
+            }
+            .clip(RoundedCornerShape(6.dp))
             .background(Color(0x0FFFFFFF))
             .drawWithContent {
                 drawContent()
@@ -635,7 +648,7 @@ private fun SeriesGridCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(2f / 3f)
-                    .background(Color(0xFF1C1C1C))
+                    .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
             ) {
                 if (cover != null) {
                     com.ntv2.app.core.ui.CoverWithLoading(

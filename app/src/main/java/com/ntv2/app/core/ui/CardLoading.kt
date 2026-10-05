@@ -94,7 +94,7 @@ fun CardLoadingPlaceholder(
 }
 
 private val DARK_SHIMMER = listOf(Color(0xFF202A37), Color(0xFF364356), Color(0xFF202A37))
-private val PLACEHOLDER_BG = Color(0xFF1C1C1C)
+private val PLACEHOLDER_BG = com.ntv2.app.core.ui.BrandColors.SurfaceAlt
 private val BRAND_ACCENT = com.ntv2.app.core.ui.BrandColors.Accent
 // "Pôster" falso das prévias (fade-in e blur-up não têm capa real para mostrar ali).
 private val FAKE_POSTER = listOf(Color(0xFF7A4FA3), Color(0xFF2F6FB0), Color(0xFF1F9C8B))

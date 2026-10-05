@@ -97,13 +97,13 @@ private fun ContinueCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(height)
-                .glideTarget(12.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .glideTarget(6.dp)
+                .clip(RoundedCornerShape(6.dp))
                 .onFocusChanged { focused = it.isFocused }
                 .clickable(onClick = onClick)
-                .background(Color(0xFF1C1C20))
+                .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
                 .then(
-                    if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(12.dp))
+                    if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(6.dp))
                     else Modifier
                 )
         ) {
@@ -218,12 +218,12 @@ internal fun PosterCard(
         modifier = modifier
             .width(width)
             .height(width * 3 / 2)
-            .glideTarget(12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .glideTarget(6.dp)
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(Color(0xFF1C1C20))
-            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(12.dp)) else Modifier)
+            .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
+            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(6.dp)) else Modifier)
     ) {
         if (showCovers && cover != null) {
             AsyncImage(

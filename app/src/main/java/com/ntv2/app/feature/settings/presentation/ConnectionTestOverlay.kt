@@ -53,8 +53,8 @@ import com.ntv2.app.core.ui.trapFocus
 import kotlinx.coroutines.flow.Flow
 
 private val OK_GREEN = com.ntv2.app.core.ui.BrandColors.Accent
-private val WARN_YELLOW = Color(0xFFFFC857)
-private val FAIL_RED = Color(0xFFFF6B6B)
+private val WARN_YELLOW = Color(0xFFFFBE55)
+private val FAIL_RED = Color(0xFFFF626D)
 
 /** Teste de conexão: roda ao abrir; cada etapa mostra o resultado assim que termina. */
 @Composable
@@ -85,9 +85,9 @@ internal fun ConnectionTestOverlay(
                 .padding(16.dp)
                 .widthIn(max = 520.dp)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF141414))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
                 .clickable(enabled = false) {}
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp),
@@ -107,7 +107,7 @@ internal fun ConnectionTestOverlay(
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(6.dp))
                         .background(color.copy(alpha = 0.12f))
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 )
@@ -145,13 +145,13 @@ private fun CheckRow(icon: ImageVector, label: String, result: CheckResult) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(Color(0x0FFFFFFF))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = Color(0xFFB0B0B0), modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(22.dp))
         Text(label, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f))
         when (result) {
             CheckResult.Pending -> Text("—", color = Color(0xFF6A6A6A), style = MaterialTheme.typography.titleSmall)
@@ -185,7 +185,7 @@ private fun TestButton(
     var focused by remember { mutableStateOf(false) }
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             // Continua focável quando "desligado" (o foco não pode sumir no dpad); só ignora o clique.
             .clickable { if (enabled) onClick() }

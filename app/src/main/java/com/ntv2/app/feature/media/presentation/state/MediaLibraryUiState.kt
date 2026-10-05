@@ -19,7 +19,9 @@ data class MediaCardUi(
     /** Fração assistida (0f..1f) para o indicador de progresso; 0 se não houver. */
     val progress: Float = 0f,
     /** Filme dividido em partes no Telegram: total (>= 2). 1 = arquivo único. */
-    val partCount: Int = 1
+    val partCount: Int = 1,
+    /** Banner (horizontal) do filme, quando conhecido; preferido nos cards 16:9 de "Continuar assistindo". */
+    val backdropPath: String? = null
 )
 
 /** Uma linha do Histórico: card + se foi concluído + quando foi atualizado (para agrupar por dia). */

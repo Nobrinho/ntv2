@@ -90,7 +90,8 @@ private fun ContinueCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
-    val cover = media.posterPath ?: media.thumbnailPath
+    // Card horizontal (16:9): banner > frame do vídeo > pôster (retrato, só como último recurso).
+    val cover = media.backdropPath ?: media.thumbnailPath ?: media.posterPath
     Column(modifier = Modifier.width(width)) {
         Box(
             modifier = Modifier

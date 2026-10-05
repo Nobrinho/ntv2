@@ -1228,6 +1228,7 @@ class MediaLibraryViewModel(
                     )
                 }
                 _uiState.update { it.copy(continueWatching = cont, history = history) }
+                enrichContinueBackdrops(cont)
                 watchedIds = items.mapTo(HashSet()) { it.mediaId }
                 historyGenresRaw = items.map { it.genres }
                 recomputeRecommendations()
@@ -1362,8 +1363,28 @@ class MediaLibraryViewModel(
             thumbnailPath = thumbnailPath,
             posterPath = posterPath,
             fileId = 0,
-            progress = progress
+            progress = progress,
+            backdropPath = mediaDetailsCache.get(mediaId)?.backdropPath?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, "w500") }
         )
+    }
+
+    /** O histórico não guarda o banner: busca no índice local os que não estão no cache de detalhes. */
+    private fun enrichContinueBackdrops(cards: List<MediaCardUi>) {
+        val idx = searchIndexRepository ?: return
+        val missing = cards.filter { it.backdropPath == null }
+        if (missing.isEmpty()) return
+        viewModelScope.launch {
+            val found = HashMap<String, String>()
+            for (c in missing) {
+                val messageId = c.mediaId.substringAfterLast('_').toLongOrNull() ?: continue
+                val url = runCatching { idx.movieByMessage(c.channelId, messageId) }.getOrNull()?.backdropUrl ?: continue
+                found[c.mediaId] = com.ntv2.app.core.ui.tmdbAtWidth(url, "w500")
+            }
+            if (found.isEmpty()) return@launch
+            _uiState.update { s ->
+                s.copy(continueWatching = s.continueWatching.map { c -> found[c.mediaId]?.let { c.copy(backdropPath = it) } ?: c })
+            }
+        }
     }
 
     /** Grava o título no histórico ao abrir (metadados denormalizados p/ Continuar/Histórico). */

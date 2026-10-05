@@ -45,7 +45,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -89,7 +89,7 @@ fun LoginScreen(
     // Sessão encerrada fora do app (revogada/deslogada em outro dispositivo): exibe um aviso.
     sessionEndedNotice: Boolean = false
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(state.isAuthorized) {
         if (state.isAuthorized) onLoginSuccess()

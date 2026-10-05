@@ -1,5 +1,6 @@
 ﻿package com.ntv2.app.core.navigation
 
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -22,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,7 +87,7 @@ fun AppNavHost(
             replacer = appContainer.appReplacer
         )
     )
-    val updateState by updateViewModel.state.collectAsState()
+    val updateState by updateViewModel.state.collectAsStateWithLifecycle()
     val activityManager = remember(context) {
         context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
     }
@@ -294,7 +295,7 @@ fun AppNavHost(
             val cardLoadingStyleName by settings.cardLoadingStyle
                 .collectAsState(initial = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT.name)
             val searchIndex = appContainer.searchIndexRepository
-            val indexStatus by searchIndex.status.collectAsState()
+            val indexStatus by searchIndex.status.collectAsStateWithLifecycle()
             SettingsScreen(
                 showCovers = showCovers,
                 animationsEnabled = animationsEnabled,

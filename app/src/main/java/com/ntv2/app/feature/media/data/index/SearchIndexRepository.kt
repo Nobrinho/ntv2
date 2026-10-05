@@ -195,65 +195,99 @@ class SearchIndexRepository(
             .build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return@withContext null
-            val body = resp.body?.string() ?: return@withContext null
-            parse(body)
+            val body = resp.body ?: return@withContext null
+            // Lê em streaming: nunca existe a String inteira do arquivo (pico de memória ~3x o tamanho).
+            android.util.JsonReader(body.charStream()).use { parse(it) }
         }
     }
 
-    private fun parse(body: String): LoadedIndex {
-        val root = JSONObject(body)
-        val channelId = root.optString("channel").toLongOrNull() ?: 0L
-        val generatedAt = parseGeneratedAt(root.optString("generated_at"))
-        val arr = root.optJSONArray("movies") ?: return LoadedIndex(channelId, emptyList(), generatedAtMillis = generatedAt)
-        val movies = ArrayList<IndexMovie>(arr.length())
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val mids = o.optJSONArray("message_ids")
-            val videoMsg = o.optLong("video_message_id", 0L).takeIf { it != 0L }
-                ?: (mids?.let { if (it.length() > 0) it.optLong(it.length() - 1) else 0L } ?: 0L)
-            val genresArr = o.optJSONArray("genres")
-            val genres = if (genresArr != null) (0 until genresArr.length()).map { genresArr.optString(it) } else emptyList()
-            val castArr = o.optJSONArray("cast")
-            val cast = if (castArr != null) (0 until castArr.length()).mapNotNull { ci ->
-                val co = castArr.optJSONObject(ci) ?: return@mapNotNull null
-                val nome = co.optString("name").ifBlank { null } ?: return@mapNotNull null
-                CastMemberMeta(name = nome, photoUrl = co.optString("photo_url").ifBlank { null })
-            } else emptyList()
-            movies += IndexMovie(
-                tmdbId = o.optLong("tmdb_id"),
-                title = o.optString("title").ifBlank { "Filme" },
-                originalTitle = o.optString("original_title").ifBlank { null },
-                year = o.optString("year").ifBlank { null },
-                posterUrl = o.optString("poster_url").ifBlank { null },
-                backdropUrl = o.optString("backdrop_url").ifBlank { null },
-                overview = o.optString("overview").ifBlank { null },
-                genres = genres,
-                cast = cast,
-                videoMessageId = videoMsg
-            )
+    /** Percorre o JSON raiz item a item: só um filme/série fica como JSONObject por vez. */
+    private fun parse(reader: android.util.JsonReader): LoadedIndex {
+        var channelId = 0L
+        var generatedAt: Long? = null
+        val movies = ArrayList<IndexMovie>()
+        val series = ArrayList<IndexSeries>()
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "channel" -> channelId = readValue(reader).toString().toLongOrNull() ?: 0L
+                "generated_at" -> generatedAt = parseGeneratedAt(readValue(reader).toString())
+                "movies" -> forEachObject(reader) { parseMovie(it)?.let(movies::add) }
+                "series" -> forEachObject(reader) { series += parseOneSeries(it) }
+                else -> reader.skipValue()
+            }
         }
-        return LoadedIndex(channelId, movies, parseSeries(root), generatedAt)
+        reader.endObject()
+        return LoadedIndex(channelId, movies, series, generatedAt)
     }
 
-    private fun parseSeries(root: JSONObject): List<IndexSeries> {
-        val arr = root.optJSONArray("series") ?: return emptyList()
-        val out = ArrayList<IndexSeries>(arr.length())
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val genresArr = o.optJSONArray("genres")
-            val genres = if (genresArr != null) (0 until genresArr.length()).map { genresArr.optString(it) } else emptyList()
-            out += IndexSeries(
-                tmdbId = o.optLong("tmdb_id"),
-                title = o.optString("title").ifBlank { "Série" },
-                originalTitle = o.optString("original_title").ifBlank { null },
-                posterUrl = o.optString("poster_url").ifBlank { null },
-                backdropUrl = o.optString("backdrop_url").ifBlank { null },
-                overview = o.cleanString("overview"),
-                genres = genres,
-                seasons = parseSeasons(o.optJSONArray("seasons"))
-            )
+    private inline fun forEachObject(reader: android.util.JsonReader, block: (JSONObject) -> Unit) {
+        if (reader.peek() != android.util.JsonToken.BEGIN_ARRAY) { reader.skipValue(); return }
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() == android.util.JsonToken.BEGIN_OBJECT) block(readValue(reader) as JSONObject)
+            else reader.skipValue()
         }
-        return out
+        reader.endArray()
+    }
+
+    /** Lê o valor atual do [reader] como JSONObject/JSONArray/String/número/boolean/JSONObject.NULL. */
+    private fun readValue(reader: android.util.JsonReader): Any = when (reader.peek()) {
+        android.util.JsonToken.BEGIN_OBJECT -> JSONObject().also { o ->
+            reader.beginObject()
+            while (reader.hasNext()) o.put(reader.nextName(), readValue(reader))
+            reader.endObject()
+        }
+        android.util.JsonToken.BEGIN_ARRAY -> org.json.JSONArray().also { arr ->
+            reader.beginArray()
+            while (reader.hasNext()) arr.put(readValue(reader))
+            reader.endArray()
+        }
+        android.util.JsonToken.STRING -> reader.nextString()
+        android.util.JsonToken.NUMBER -> reader.nextString().let { it.toLongOrNull() ?: it.toDoubleOrNull() ?: it }
+        android.util.JsonToken.BOOLEAN -> reader.nextBoolean()
+        else -> { reader.skipValue(); JSONObject.NULL }
+    }
+
+    private fun parseMovie(o: JSONObject): IndexMovie? {
+        val mids = o.optJSONArray("message_ids")
+        val videoMsg = o.optLong("video_message_id", 0L).takeIf { it != 0L }
+            ?: (mids?.let { if (it.length() > 0) it.optLong(it.length() - 1) else 0L } ?: 0L)
+        val genresArr = o.optJSONArray("genres")
+        val genres = if (genresArr != null) (0 until genresArr.length()).map { genresArr.optString(it) } else emptyList()
+        val castArr = o.optJSONArray("cast")
+        val cast = if (castArr != null) (0 until castArr.length()).mapNotNull { ci ->
+            val co = castArr.optJSONObject(ci) ?: return@mapNotNull null
+            val nome = co.optString("name").ifBlank { null } ?: return@mapNotNull null
+            CastMemberMeta(name = nome, photoUrl = co.optString("photo_url").ifBlank { null })
+        } else emptyList()
+        return IndexMovie(
+            tmdbId = o.optLong("tmdb_id"),
+            title = o.optString("title").ifBlank { "Filme" },
+            originalTitle = o.optString("original_title").ifBlank { null },
+            year = o.optString("year").ifBlank { null },
+            posterUrl = o.optString("poster_url").ifBlank { null },
+            backdropUrl = o.optString("backdrop_url").ifBlank { null },
+            overview = o.optString("overview").ifBlank { null },
+            genres = genres,
+            cast = cast,
+            videoMessageId = videoMsg
+        )
+    }
+
+    private fun parseOneSeries(o: JSONObject): IndexSeries {
+        val genresArr = o.optJSONArray("genres")
+        val genres = if (genresArr != null) (0 until genresArr.length()).map { genresArr.optString(it) } else emptyList()
+        return IndexSeries(
+            tmdbId = o.optLong("tmdb_id"),
+            title = o.optString("title").ifBlank { "Série" },
+            originalTitle = o.optString("original_title").ifBlank { null },
+            posterUrl = o.optString("poster_url").ifBlank { null },
+            backdropUrl = o.optString("backdrop_url").ifBlank { null },
+            overview = o.cleanString("overview"),
+            genres = genres,
+            seasons = parseSeasons(o.optJSONArray("seasons"))
+        )
     }
 
     private fun parseSeasons(arr: org.json.JSONArray?): List<IndexSeason> {

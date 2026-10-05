@@ -31,7 +31,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import com.ntv2.app.core.ui.LocalFocusRestoreSignal
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -86,7 +86,7 @@ fun MediaLibraryScreen(
         thumbnailPath: String?
     ) -> Unit
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val initialActionsFocus = remember { FocusRequester() }
     val cardFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }

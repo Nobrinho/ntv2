@@ -122,6 +122,10 @@ class RealTdlibGateway(
 
     @Volatile
     private var client: Client? = null
+    // Geração do cliente atual: o Closed do cliente ANTIGO (pós-logout) chega na thread do TDLib
+    // depois que logout() já criou o novo; sem isto o ClearClient atrasado zerava o cliente NOVO
+    // ("TDLib client not initialized" ao tentar entrar de novo).
+    @Volatile private var clientGeneration = 0
     private val auth = MutableStateFlow<TdAuthorizationState>(TdAuthorizationState.Unknown)
     // Acessado pela thread de callback do TDLib (handleUpdate) e por corrotinas.
     private val fileStates = java.util.concurrent.ConcurrentHashMap<Int, MutableStateFlow<TdlibPlaybackFileState>>()
@@ -229,26 +233,19 @@ class RealTdlibGateway(
         // recria o cliente para voltar a WaitPhoneNumber e então pedir o QR (evita recusa por query
         // pendente). Mesmo mecanismo do caminho QR→telefone.
         if (auth.value is TdAuthorizationState.WaitCode || auth.value is TdAuthorizationState.WaitPassword) {
-            runCatching { send(TdApi.Close()) }
-            withTimeoutOrNull(5_000L) { auth.first { it is TdAuthorizationState.Closed } }
-            client = null
-            ensureClient()
-            withTimeoutOrNull(8_000L) { auth.first { it is TdAuthorizationState.WaitPhoneNumber } }
+            restartUnauthenticatedClient()
         }
         sendAuth(TdApi.RequestQrCodeAuthentication(longArrayOf()))
     }
 
     override suspend fun setAuthenticationPhoneNumber(phoneNumber: String) {
+        Log.i(TAG, "auth: enviando telefone (gen=$clientGeneration, client=${client != null}, estado=${auth.value})")
         ensureConfigured()
         // SetAuthenticationPhoneNumber só é aceito em WaitPhoneNumber. Se um QR já foi solicitado,
         // o TDLib fica em WaitOtherDeviceConfirmation e recusa ("call to ... unexpected"). Nesse
         // caso recriamos o cliente (Close → novo cliente → WaitPhoneNumber) antes de enviar.
         if (auth.value is TdAuthorizationState.WaitQrCode) {
-            runCatching { send(TdApi.Close()) }
-            withTimeoutOrNull(5_000L) { auth.first { it is TdAuthorizationState.Closed } }
-            client = null
-            ensureClient()
-            withTimeoutOrNull(8_000L) { auth.first { it is TdAuthorizationState.WaitPhoneNumber } }
+            restartUnauthenticatedClient()
         }
         sendAuth(TdApi.SetAuthenticationPhoneNumber(phoneNumber, null))
     }
@@ -261,6 +258,31 @@ class RealTdlibGateway(
     override suspend fun checkAuthenticationPassword(password: String) {
         ensureConfigured()
         sendAuth(TdApi.CheckAuthenticationPassword(password))
+    }
+
+    /** Espera o fechamento REAL do cliente (Closed sem motivo); o "Closing" também vira Closed(motivo). */
+    private suspend fun awaitRealClose(): Boolean =
+        withTimeoutOrNull(5_000L) {
+            auth.first { it is TdAuthorizationState.Closed && it.reason == null }
+        } != null
+
+    /**
+     * Sai de um passo de login em andamento (QR, código, senha) de volta a WaitPhoneNumber. Fechar e
+     * reabrir o MESMO banco não basta: o TDLib persiste o passo e volta nele (ex.: de novo no QR, onde
+     * o telefone é recusado com "Call to setAuthenticationPhoneNumber unexpected"). Como ainda não há
+     * sessão (nada a perder), fecha o cliente, apaga o banco e cria um cliente novo, que começa limpo.
+     */
+    private suspend fun restartUnauthenticatedClient() {
+        Log.i(TAG, "auth: reiniciando login do zero (gen=$clientGeneration, estado=${auth.value})")
+        runCatching { send(TdApi.Close()) }
+        val closed = awaitRealClose()
+        Log.i(TAG, "auth: cliente ${if (closed) "fechado" else "NÃO confirmou o fechamento (timeout)"}; apagando banco não autenticado")
+        client = null
+        runCatching { tdlibDbDir.deleteRecursively() }
+            .onFailure { Log.w(TAG, "auth: não apagou o banco: ${it.message}") }
+        ensureClient()
+        val phone = withTimeoutOrNull(8_000L) { auth.first { it is TdAuthorizationState.WaitPhoneNumber } }
+        Log.i(TAG, "auth: após reinício, estado=${auth.value} (WaitPhoneNumber ${if (phone != null) "ok" else "NÃO chegou"})")
     }
 
     // Comandos de autorização retornam o erro no resultado (não como update de estado). Sem checar,
@@ -298,16 +320,21 @@ class RealTdlibGateway(
         // ser classificada como revogação externa.
         userInitiatedLogout = true
         wasReady = false
+        Log.i(TAG, "auth: logout() início (gen=$clientGeneration, client=${client != null}, estado=${auth.value})")
         try {
             auth.value = TdAuthorizationState.LoggingOut
             runCatching { send(TdApi.LogOut()) }
+                .onFailure { Log.w(TAG, "auth: LogOut falhou: ${it.message}") }
             // O TDLib exige um cliente NOVO para autenticar após LogOut. Esperamos o fechamento
             // (LogOut → Closed), zeramos o cliente e criamos um novo, que fluirá para WaitPhoneNumber
             // via updates — momento em que a UI pede o QR. Sem isso, o re-login não gerava QR.
-            withTimeoutOrNull(5_000L) { auth.first { it is TdAuthorizationState.Closed } }
+            val closed = awaitRealClose()
+            Log.i(TAG, "auth: logout() Closed ${if (closed) "recebido" else "NÃO recebido (timeout 5s)"}; recriando cliente (gen=$clientGeneration)")
             client = null
             // ensureClient() cria um cliente novo e já reseta o guard de parâmetros (onClientCreated).
             runCatching { ensureClient() }
+                .onFailure { Log.e(TAG, "auth: logout() não conseguiu criar o cliente novo", it) }
+            Log.i(TAG, "auth: logout() fim (gen=$clientGeneration, client=${client != null})")
         } finally {
             userInitiatedLogout = false
         }
@@ -1036,8 +1063,10 @@ class RealTdlibGateway(
             runCatching { Client.execute(TdApi.SetLogVerbosityLevel(1)) }
             // Cliente novo: precisará receber SetTdlibParameters uma vez.
             authReducer.onClientCreated()
+            val generation = ++clientGeneration
+            Log.i(TAG, "auth: criando cliente TDLib (gen=$generation)")
             client = Client.create(
-                { update -> handleUpdate(update) },
+                { update -> handleUpdate(update, generation) },
                 { error ->
                     Log.e(TAG, "TDLib update exception", error)
                     auth.value = TdAuthorizationState.Error(error.message ?: "TDLib error")
@@ -1058,9 +1087,9 @@ class RealTdlibGateway(
         ensureClient()
     }
 
-    private fun handleUpdate(update: TdApi.Object) {
+    private fun handleUpdate(update: TdApi.Object, generation: Int) {
         when (update) {
-            is TdApi.UpdateAuthorizationState -> mapAuthorizationState(update.authorizationState)
+            is TdApi.UpdateAuthorizationState -> mapAuthorizationState(update.authorizationState, generation)
             is TdApi.UpdateMessageSendSucceeded ->
                 pendingSends.remove(update.oldMessageId)?.complete(update.message.id)
             is TdApi.UpdateMessageSendFailed ->
@@ -1078,7 +1107,12 @@ class RealTdlibGateway(
         }
     }
 
-    private fun mapAuthorizationState(state: TdApi.AuthorizationState) {
+    private fun mapAuthorizationState(state: TdApi.AuthorizationState, generation: Int) {
+        Log.i(
+            TAG,
+            "auth: update ${state.javaClass.simpleName} (do gen=$generation, atual=$clientGeneration, " +
+                "logoutVoluntário=$userInitiatedLogout, wasReady=$wasReady)"
+        )
         // TDLib às vezes NOTIFICA a revogação (Ready → WaitPhoneNumber/Closed/LoggingOut sem ação do
         // usuário). Classifica antes do reduce, para navegar ao Login em vez de só "parar de carregar".
         if (!userInitiatedLogout && wasReady && (
@@ -1107,10 +1141,10 @@ class RealTdlibGateway(
 
         val result = authReducer.reduce(update)
         result.state?.let { auth.value = it }
-        result.effects.forEach { effect -> applyAuthEffect(effect) }
+        result.effects.forEach { effect -> applyAuthEffect(effect, generation) }
     }
 
-    private fun applyAuthEffect(effect: TdlibAuthReducer.Effect) {
+    private fun applyAuthEffect(effect: TdlibAuthReducer.Effect, generation: Int) {
         when (effect) {
             TdlibAuthReducer.Effect.SendParameters -> scope.launch {
                 runCatching {
@@ -1138,8 +1172,14 @@ class RealTdlibGateway(
 
             // TDLib fecha o cliente após LogOut/Close; zeramos a referência para que ensureClient
             // recrie um cliente novo no próximo login.
+            // Só se o cliente que fechou ainda é o atual (senão já foi trocado por um novo).
             TdlibAuthReducer.Effect.ClearClient -> {
-                client = null
+                if (generation == clientGeneration) {
+                    Log.i(TAG, "auth: ClearClient aplicado (gen=$generation)")
+                    client = null
+                } else {
+                    Log.i(TAG, "auth: ClearClient IGNORADO — cliente antigo (gen=$generation, atual=$clientGeneration)")
+                }
             }
         }
     }
@@ -1264,7 +1304,14 @@ class RealTdlibGateway(
     }
 
     private suspend fun send(function: TdApi.Function<out TdApi.Object>): TdApi.Object {
-        val activeClient = client ?: throw IllegalStateException("TDLib client not initialized")
+        val activeClient = client ?: run {
+            Log.e(
+                TAG,
+                "send(${function.javaClass.simpleName}) sem cliente (gen=$clientGeneration, estado=${auth.value})",
+                IllegalStateException("TDLib client not initialized")
+            )
+            throw IllegalStateException("TDLib client not initialized")
+        }
         val result = suspendCancellableCoroutine { continuation ->
             activeClient.send(
                 function,

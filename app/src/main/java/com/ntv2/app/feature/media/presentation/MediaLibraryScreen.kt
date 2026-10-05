@@ -540,49 +540,53 @@ fun MediaLibraryScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    state.errorMessage != null -> {
-                        Text("Erro: ${state.errorMessage}", color = Color.White)
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(onClick = { viewModel.onAction(MediaLibraryAction.Refresh) }) {
-                                Text("Tentar novamente")
-                            }
-                            Button(onClick = { viewModel.onAction(MediaLibraryAction.ClearError) }) {
-                                Text("Fechar")
-                            }
-                        }
-                    }
+                    state.errorMessage != null -> LibraryStatusPanel(
+                        title = "Não foi possível carregar a biblioteca",
+                        lines = listOf(state.errorMessage.orEmpty()),
+                        primaryLabel = "Tentar novamente",
+                        onPrimary = { viewModel.onAction(MediaLibraryAction.Refresh) },
+                        secondaryLabel = "Fechar",
+                        onSecondary = { viewModel.onAction(MediaLibraryAction.ClearError) }
+                    )
 
                     state.emptyState != null -> {
-                        val message = when (state.emptyState) {
-                            MediaLibraryEmptyState.NoChannelsSelected -> "Nenhum canal selecionado (use Configurações)"
-                            MediaLibraryEmptyState.NoVideosFound -> "Nenhum vídeo neste canal para o filtro atual"
+                        val title = when (state.emptyState) {
+                            MediaLibraryEmptyState.NoChannelsSelected -> "Nenhum canal selecionado"
+                            MediaLibraryEmptyState.NoVideosFound -> "Nenhum filme para mostrar"
                             MediaLibraryEmptyState.NoSearchResults -> "Nenhum resultado para a busca"
                             null -> ""
                         }
-                        Text(message, color = Color.White)
-                        if (state.emptyState == MediaLibraryEmptyState.NoVideosFound) {
-                            val d = remember(state.emptyState, state.activeChannelId, state.minDurationMinutes, state.series.size) {
-                                viewModel.diagnoseEmpty()
-                            }
-                            val reasons = buildList {
-                                if (d.loaded == 0) {
-                                    add("O canal \"${d.channelName}\" não devolveu nenhuma mídia (histórico vazio, sem acesso ou ainda sincronizando).")
-                                    if (d.hasMore) add("Ainda há páginas a carregar neste canal.")
-                                } else {
-                                    add("O canal \"${d.channelName}\" devolveu ${d.loaded} ${if (d.loaded == 1) "item" else "itens"}, mas nenhum aparece em Filmes:")
-                                    if (d.hiddenByDuration > 0) {
-                                        add("• ${d.hiddenByDuration} escondido(s) pelo filtro de duração mínima (${d.minDurationMinutes} min) — ajuste em Configurações.")
+                        val lines = when (state.emptyState) {
+                            MediaLibraryEmptyState.NoChannelsSelected -> listOf("Escolha ao menos um canal em Configurações.")
+                            MediaLibraryEmptyState.NoVideosFound -> {
+                                val d = remember(state.emptyState, state.activeChannelId, state.minDurationMinutes, state.series.size) {
+                                    viewModel.diagnoseEmpty()
+                                }
+                                buildList {
+                                    if (d.loaded == 0) {
+                                        add("O canal \"${d.channelName}\" não devolveu nenhuma mídia (histórico vazio, sem acesso ou ainda sincronizando).")
+                                        if (d.hasMore) add("Ainda há páginas a carregar neste canal.")
+                                    } else {
+                                        add("O canal \"${d.channelName}\" devolveu ${d.loaded} ${if (d.loaded == 1) "item" else "itens"}, mas nenhum aparece em Filmes:")
+                                        if (d.hiddenByDuration > 0) {
+                                            add("• ${d.hiddenByDuration} escondido(s) pelo filtro de duração mínima (${d.minDurationMinutes} min) — ajuste em Configurações.")
+                                        }
+                                        if (d.episodes > 0) {
+                                            add("• ${d.episodes} episódio(s) de série — veja a aba Séries${if (d.seriesCount > 0) " (${d.seriesCount})" else ""}.")
+                                        }
+                                        val explained = d.hiddenByDuration + d.episodes
+                                        if (explained < d.loaded) add("• ${d.loaded - explained} item(ns) sem motivo identificado.")
                                     }
-                                    if (d.episodes > 0) {
-                                        add("• ${d.episodes} episódio(s) de série — veja a aba Séries${if (d.seriesCount > 0) " (${d.seriesCount})" else ""}.")
-                                    }
-                                    val explained = d.hiddenByDuration + d.episodes
-                                    if (explained < d.loaded) add("• ${d.loaded - explained} item(ns) sem motivo identificado.")
                                 }
                             }
-                            reasons.forEach { Text(it, color = Color(0xFFB7BBC4), style = MaterialTheme.typography.bodyMedium) }
-                            Button(onClick = { viewModel.onAction(MediaLibraryAction.Refresh) }) { Text("Tentar novamente") }
+                            else -> emptyList()
                         }
+                        LibraryStatusPanel(
+                            title = title,
+                            lines = lines,
+                            primaryLabel = "Tentar novamente",
+                            onPrimary = { viewModel.onAction(MediaLibraryAction.Refresh) }
+                        )
                     }
 
                     else -> {

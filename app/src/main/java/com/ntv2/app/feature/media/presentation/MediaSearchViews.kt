@@ -150,9 +150,14 @@ internal fun TvSearchOverlay(
     textEnabled: Boolean = true,
     filters: SearchFilters = SearchFilters(),
     filterOptions: SearchFilterOptions = SearchFilterOptions(),
-    onFiltersChange: (SearchFilters) -> Unit = {}
+    onFiltersChange: (SearchFilters) -> Unit = {},
+    actorCount: Int = 0
 ) {
     val scope = rememberCoroutineScope()
+    val backRequester = remember { FocusRequester() }
+    var overlayHasFocus by remember { mutableStateOf(true) }
+    // Busca por elenco: sem teclado, resultados em tela cheia numa grade de 6 colunas.
+    val gridColumns = if (textEnabled) 3 else 6
     var showFilters by remember { mutableStateOf(false) }
     val listState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val keyRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
@@ -204,8 +209,13 @@ internal fun TvSearchOverlay(
             withFrameNanos { }
             runCatching { resultRequester(cellIds[index]).requestFocus() }
                 .onFailure { focusKeyboard() }
-        } else {
+        } else if (textEnabled) {
             runCatching { keyRequester(firstKeyId).requestFocus() }
+        } else {
+            // Modo elenco: o foco já nasce no Voltar (único alvo enquanto a busca roda); o
+            // 1º resultado o recebe quando a busca termina.
+            withFrameNanos { }
+            runCatching { backRequester.requestFocus() }
         }
     }
 
@@ -225,6 +235,29 @@ internal fun TvSearchOverlay(
         }
     }
 
+    // Modo elenco: garante o foco no 1º resultado. Outra tela (ex.: biblioteca restaurando o foco ao
+    // fechar os Detalhes) pode roubá-lo logo após o pedido; tenta de novo até o foco ficar na grade.
+    val hasCells = cellIds.isNotEmpty()
+    LaunchedEffect(textEnabled, hasCells, searchInProgress) {
+        if (textEnabled || !hasCells || searchInProgress) return@LaunchedEffect
+        repeat(15) {
+            if (focusInResults) return@LaunchedEffect
+            withFrameNanos { }
+            focusResult(lastResultIndex)
+            kotlinx.coroutines.delay(120)
+        }
+    }
+    // Se o foco sair do overlay (ex.: o item focado foi removido da composição), traz de volta.
+    LaunchedEffect(overlayHasFocus, textEnabled, hasCells, searchInProgress, showFilters) {
+        if (overlayHasFocus || showFilters) return@LaunchedEffect
+        withFrameNanos { }
+        when {
+            textEnabled -> focusKeyboard()
+            hasCells && !searchInProgress -> focusResult(lastResultIndex)
+            else -> runCatching { backRequester.requestFocus() }
+        }
+    }
+
     fun typeChar(c: Char) {
         onKey(c)
     }
@@ -233,6 +266,9 @@ internal fun TvSearchOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xF2000000))
+            // A biblioteca continua composta por trás: nenhuma direção pode levar o foco para ela.
+            .trapFocus()
+            .onFocusChanged { overlayHasFocus = it.hasFocus }
             .onPreviewKeyEvent { e ->
                 when {
                     // Painel de filtros aberto: ele trata BACK e as teclas sozinho.
@@ -240,10 +276,12 @@ internal fun TvSearchOverlay(
                     // BACK em camadas: resultados → teclado; teclado → fecha a busca.
                     e.key == Key.Back || e.key == Key.Escape -> {
                         if (e.type == KeyEventType.KeyUp) {
-                            if (focusInResults) focusKeyboard() else onClose()
+                            if (focusInResults && textEnabled) focusKeyboard() else onClose()
                         }
                         true
                     }
+                    // Modo elenco: não há campo de texto, as teclas seguem para a grade.
+                    !textEnabled -> false
                     e.type != KeyEventType.KeyDown -> false
                     // Teclado físico / teclas numéricas do controle digitam direto.
                     e.key == Key.Backspace -> { onBackspace(); true }
@@ -263,8 +301,8 @@ internal fun TvSearchOverlay(
                 .padding(outerPadding),
             horizontalArrangement = Arrangement.spacedBy(if (compact) 20.dp else 32.dp)
         ) {
-            // ── Coluna esquerda: campo + teclado ──
-            BoxWithConstraints(
+            // ── Coluna esquerda: campo + teclado (fora do modo elenco) ──
+            if (textEnabled) BoxWithConstraints(
                 modifier = Modifier
                     .weight(0.42f)
                     .fillMaxHeight()
@@ -422,11 +460,45 @@ internal fun TvSearchOverlay(
             // ── Coluna direita: filtros ativos + resultados ao vivo ──
             Column(
                 modifier = Modifier
-                    .weight(0.58f)
+                    .weight(if (textEnabled) 0.58f else 1f)
                     .fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-            TvActiveFilters(filters)
+            if (textEnabled) {
+                TvActiveFilters(filters)
+            } else {
+                val name = filters.actor.orEmpty()
+                val count = if (actorCount == 1) "1 filme" else "$actorCount filmes"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (actorCount > 0) "$name • $count" else name,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    // Mesmo Voltar dos Detalhes: só o ícone, no canto superior direito.
+                    BackChip(
+                        onClose = onClose,
+                        modifier = Modifier
+                            .focusRequester(backRequester)
+                            .onPreviewKeyEvent { e ->
+                                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                when (e.key) {
+                                    Key.DirectionDown -> { if (hasCells) focusResult(lastResultIndex); true }
+                                    // Não deixa o foco escapar para a tela por trás.
+                                    Key.DirectionUp, Key.DirectionLeft, Key.DirectionRight -> true
+                                    else -> false
+                                }
+                            }
+                    )
+                }
+            }
             SearchResultsList(
                 query = query,
                 searchInProgress = searchInProgress,
@@ -439,6 +511,7 @@ internal fun TvSearchOverlay(
                 series = series,
                 onSeriesSelect = onSeriesSelect,
                 showCovers = showCovers,
+                columns = gridColumns,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -460,10 +533,16 @@ internal fun TvSearchOverlay(
                             if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             when (e.key) {
                                 // Coluna da esquerda volta ao teclado; as outras andam na grade.
-                                Key.DirectionLeft -> if (index % 3 == 0) { focusKeyboard(); true } else false
+                                Key.DirectionLeft -> if (index % gridColumns == 0) { if (textEnabled) focusKeyboard(); true } else false
                                 // Não sai da grade pela 1ª nem pela última linha.
-                                Key.DirectionUp -> index < 3
-                                Key.DirectionDown -> index / 3 == currentCells.lastIndex / 3
+                                // Modo elenco: a grade ocupa a tela toda; a direita não sai dela.
+                                Key.DirectionRight ->
+                                    !textEnabled && (index % gridColumns == gridColumns - 1 || index == currentCells.lastIndex)
+                                Key.DirectionUp -> if (index < gridColumns) {
+                                    if (!textEnabled) runCatching { backRequester.requestFocus() }
+                                    true
+                                } else false
+                                Key.DirectionDown -> index / gridColumns == currentCells.lastIndex / gridColumns
                                 else -> false
                             }
                         }
@@ -1137,7 +1216,8 @@ internal fun SearchResultsList(
     cellModifier: (index: Int, id: String) -> Modifier = { _, _ -> Modifier },
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary> = emptyList(),
     onSeriesSelect: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit = {},
-    showCovers: Boolean = true
+    showCovers: Boolean = true,
+    columns: Int = 3
 ) {
     val visibleResults = remember(query, searchInProgress, results) {
         if (query.isBlank() || searchInProgress) emptyList() else results
@@ -1158,7 +1238,7 @@ internal fun SearchResultsList(
     }
 
     androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
-        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(columns),
         state = listState,
         modifier = modifier,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),

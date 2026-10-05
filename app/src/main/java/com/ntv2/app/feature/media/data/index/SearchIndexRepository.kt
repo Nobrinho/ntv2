@@ -327,8 +327,8 @@ class SearchIndexRepository(
         years: Set<Int>,
         actor: String? = null,
         limit: Int = 60
-    ): Pair<List<IndexMovie>, List<IndexSeries>> {
-        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return emptyList<IndexMovie>() to emptyList()
+    ): Pair<List<IndexMovie>, List<IndexSeries>> = withContext(Dispatchers.Default) {
+        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext emptyList<IndexMovie>() to emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
         val wanted = genres.map { normalizeForIndex(it).trim() }
         fun genreOk(have: List<String>): Boolean {
@@ -358,15 +358,14 @@ class SearchIndexRepository(
         }
         val exact = run(fuzzy = false)
         // Nada casou exato: tenta de novo tolerando erro de digitação (ex.: "eletric" → "electric").
-        if (tokens.isEmpty() || exact.first.isNotEmpty() || exact.second.isNotEmpty()) return exact
-        return run(fuzzy = true)
+        if (tokens.isEmpty() || exact.first.isNotEmpty() || exact.second.isNotEmpty()) exact else run(fuzzy = true)
     }
 
     /** Quantos filmes do canal têm [actor] no elenco. */
-    suspend fun countByActor(channelId: Long, actor: String): Int {
-        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return 0
+    suspend fun countByActor(channelId: Long, actor: String): Int = withContext(Dispatchers.Default) {
+        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext 0
         val key = normalizeForIndex(actor).trim()
-        return idx.movieActorKeys.count { key in it }
+        idx.movieActorKeys.count { key in it }
     }
 
     /** Gêneros (A-Z) e anos (mais recente primeiro) existentes no índice do canal, para o filtro. */

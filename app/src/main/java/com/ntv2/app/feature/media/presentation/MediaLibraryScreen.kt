@@ -666,6 +666,9 @@ fun MediaLibraryScreen(
             // Progresso pode ter mudado depois que os Detalhes abriram (ex.: voltou do player).
             val media = state.progressOverrides[opened.mediaId]
                 ?.let { opened.copy(progress = it) } ?: opened
+            // key: trocar de filme (clique numa recomendação) recria a tela — foco no Assistir,
+            // rolagem no topo e anel de foco novo; antes o poster clicado sumia e o foco se perdia.
+            androidx.compose.runtime.key(media.mediaId) {
             MovieDetailsOverlay(
                 media = media,
                 details = viewModel.detailsFor(media.mediaId),
@@ -712,6 +715,7 @@ fun MediaLibraryScreen(
                 playLoading = state.isOpeningVideo,
                 playFailed = state.openVideoFailed
             )
+            }
         }
 
         if (showHistory) {
@@ -807,6 +811,7 @@ fun MediaLibraryScreen(
                     series = if (searchHidden) emptyList() else state.searchSeries,
                     onSeriesSelect = { s -> seriesFromSearch = true; openSeriesTmdbId = s.tmdbId; searching = false },
                     textEnabled = state.searchFilters.actor == null,
+                    actorCount = state.searchActorCount,
                     filters = state.searchFilters,
                     filterOptions = state.searchFilterOptions,
                     onFiltersChange = { viewModel.onAction(MediaLibraryAction.SetSearchFilters(it)) },

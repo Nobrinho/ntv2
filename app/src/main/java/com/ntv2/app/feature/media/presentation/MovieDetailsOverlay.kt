@@ -392,8 +392,10 @@ internal fun DetailsInfo(
         if (cast.isNotEmpty()) {
             if (showCastPhotos) {
                 Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    // Padding evita cortar o aro de foco/zoom nas bordas; focusGroup mantém o D-pad
+                    // dentro da fileira (←/→ andam entre os atores).
+                    modifier = Modifier.focusGroup().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.Top
                 ) {
                     // Entrada nº 11 (stagger): os rostos sobem em sequência, um pouco depois do
@@ -405,29 +407,38 @@ internal fun DetailsInfo(
                         val gliding = glideActive()
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.width(76.dp)
+                            // Tamanho único para todos: foto 64dp + nome em exatamente 2 linhas.
+                            modifier = Modifier.width(92.dp)
                                 .fadeInUpStaggered(castVisible, index, animationsEnabled)
-                                .glideTarget(10.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .glideTarget(12.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .onFocusChanged { actorFocused = it.isFocused }
                                 .clickable { onFilterClick(SearchFilter(SearchFilterKind.ACTOR, c.name)) }
-                                .then(if (actorFocused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
-                                .padding(2.dp)
+                                .then(if (actorFocused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(12.dp)) else Modifier)
+                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             if (c.photoUrl != null) {
                                 val castTiming = imageTiming("elenco#$index", c.photoUrl)
                                 AsyncImage(
                                     model = c.photoUrl, contentDescription = c.name, contentScale = ContentScale.Crop,
                                     onState = castTiming,
-                                    modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name))
+                                    modifier = Modifier.size(64.dp).clip(CircleShape).background(colorForTitle(c.name))
                                 )
                             } else {
                                 Box(
-                                    modifier = Modifier.size(56.dp).clip(CircleShape).background(colorForTitle(c.name)),
+                                    modifier = Modifier.size(64.dp).clip(CircleShape).background(colorForTitle(c.name)),
                                     contentAlignment = Alignment.Center
                                 ) { Text(initialFor(c.name), color = Color.White, style = MaterialTheme.typography.titleMedium) }
                             }
-                            Text(c.name, color = Color(0xFFDCDCDC), style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                            Text(
+                                c.name,
+                                color = if (actorFocused) Color.White else Color(0xFFDCDCDC),
+                                style = MaterialTheme.typography.labelMedium,
+                                minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }

@@ -296,7 +296,7 @@ private fun PosterGrid(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(246.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .clickable(onClick = { onCardClick(media) })
                     .background(Color(0xFF1C1C20))
             ) {
@@ -320,7 +320,7 @@ private fun EmptyState(message: String) {
 @Composable
 private fun PlayPill(onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).background(BRAND_ACCENT),
+        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).background(BRAND_ACCENT),
         contentAlignment = Alignment.Center
     ) {
         Icon(Icons.Filled.PlayArrow, contentDescription = "Continuar", tint = Color(0xFF0E0E0E), modifier = Modifier.size(18.dp))
@@ -331,7 +331,7 @@ private fun PlayPill(onClick: () -> Unit) {
 private fun TextPill(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, destructive: Boolean, onClick: () -> Unit) {
     val content = if (destructive) Color(0xFFFF7A7A) else Color.White
     Row(
-        modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).background(Color(0x1FFFFFFF)).padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).background(Color(0x1FFFFFFF)).padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

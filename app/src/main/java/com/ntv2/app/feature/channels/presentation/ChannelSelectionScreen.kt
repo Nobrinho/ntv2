@@ -442,7 +442,7 @@ private fun ChannelsGridSkeleton(compact: Boolean) {
                     Row(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(Color(0x11FFFFFF))
                             .padding(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -493,8 +493,8 @@ private fun ChannelCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .glideTarget(10.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .glideTarget(12.dp)
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onToggle)
             .background(
@@ -511,7 +511,7 @@ private fun ChannelCard(
                     selected -> accent
                     else -> Color(0x44FFFFFF)
                 },
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(12.dp)
             )
             .padding(12.dp)
     ) {

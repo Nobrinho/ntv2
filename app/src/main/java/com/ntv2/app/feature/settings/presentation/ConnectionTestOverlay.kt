@@ -107,7 +107,7 @@ internal fun ConnectionTestOverlay(
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(color.copy(alpha = 0.12f))
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 )
@@ -145,7 +145,7 @@ private fun CheckRow(icon: ImageVector, label: String, result: CheckResult) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(Color(0x0FFFFFFF))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -185,7 +185,7 @@ private fun TestButton(
     var focused by remember { mutableStateOf(false) }
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             // Continua focável quando "desligado" (o foco não pode sumir no dpad); só ignora o clique.
             .clickable { if (enabled) onClick() }

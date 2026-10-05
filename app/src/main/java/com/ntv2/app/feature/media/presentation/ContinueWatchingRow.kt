@@ -217,12 +217,12 @@ internal fun PosterCard(
         modifier = modifier
             .width(width)
             .height(width * 3 / 2)
-            .glideTarget(10.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .glideTarget(12.dp)
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0xFF1C1C20))
-            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(12.dp)) else Modifier)
     ) {
         if (showCovers && cover != null) {
             AsyncImage(

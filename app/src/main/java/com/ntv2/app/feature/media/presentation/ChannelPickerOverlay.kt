@@ -124,7 +124,7 @@ internal fun ChannelPickerOverlay(
                     Row(
                         modifier = mod
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .onFocusChanged { focused = it.isFocused }
                             .clickable { onSelect(ch.id) }
                             .background(
@@ -141,7 +141,7 @@ internal fun ChannelPickerOverlay(
                                     selected -> accent
                                     else -> Color(0x33FFFFFF)
                                 },
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(12.dp)
                             )
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -187,14 +187,14 @@ internal fun ChannelPickerOverlay(
             Row(
                 modifier = Modifier
                     .align(Alignment.End)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .onFocusChanged { closeFocused = it.isFocused }
                     .clickable(onClick = onDismiss)
                     .background(if (closeFocused) Color(0x33FFFFFF) else Color(0x1FFFFFFF))
                     .border(
                         width = if (closeFocused) 2.dp else 1.dp,
                         color = if (closeFocused) Color.White else Color(0x33FFFFFF),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(12.dp)
                     )
                     .padding(horizontal = 18.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

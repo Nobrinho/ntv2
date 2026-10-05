@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.auth.presentation
 
+import com.ntv2.app.core.ui.BrandBackdrop
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.RowScope
@@ -113,7 +114,8 @@ fun LoginScreen(
     BackHandler(enabled = step == LoginStep.Phone && adaptive.isTv) {
         viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode))
     }
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF0E0E0E))) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(com.ntv2.app.core.ui.BrandColors.Background)) {
+        BrandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Glow)
         val compact = adaptive.usePhoneLayout || maxWidth < 600.dp
         val logoGlow = if (compact) 124.dp else 180.dp
         val logoSize = if (compact) 86.dp else 124.dp

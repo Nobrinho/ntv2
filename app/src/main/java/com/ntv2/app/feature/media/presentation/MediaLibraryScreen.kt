@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.media.presentation
 
+import com.ntv2.app.core.ui.BrandBackdrop
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -394,7 +395,8 @@ fun MediaLibraryScreen(
     }
 
     com.ntv2.app.core.ui.FocusGlideScope(Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(com.ntv2.app.core.ui.BrandColors.Background)) {
+        BrandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Minimal)
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
         Row(modifier = Modifier.fillMaxSize()) {
             // Rail lateral de navegação (logo + ações), estilo TV.

@@ -529,12 +529,12 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
         modifier = Modifier
             .width(104.dp)
             .aspectRatio(2f / 3f)
-            .glideTarget(10.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .glideTarget(12.dp)
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0xFF1C1C20))
-            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(12.dp)) else Modifier)
     ) {
         if (cover != null) {
             AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -776,14 +776,14 @@ internal fun DetailIconButton(
     Box(
         modifier = Modifier
             .size(48.dp)
-            .glideTarget(10.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .glideTarget(12.dp)
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0x1FFFFFFF))
             .then(
-                if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp))
-                else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
+                if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(12.dp))
+                else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -800,15 +800,15 @@ internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(48.dp)
-            .glideTarget(10.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .glideTarget(12.dp)
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (isFavorite) Color(0x24B8C8E0) else Color(0x1FFFFFFF))
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
                 color = if (focused && !gliding) Color.White else border,
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(12.dp)
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -840,13 +840,13 @@ internal fun DetailButton(
     val content = if (primary) com.ntv2.app.core.ui.BrandColors.OnCta else Color.White
     Row(
         modifier = modifier
-            .glideTarget(10.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .glideTarget(12.dp)
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             // Enquanto carrega, ignora novos toques (evita disparos duplicados).
             .clickable(enabled = !loading, onClick = onClick)
             .background(bg)
-            .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(12.dp)) else Modifier)
             .padding(horizontal = 24.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically

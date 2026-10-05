@@ -342,11 +342,11 @@ internal fun ErrorActionButton(
     var focused by remember { mutableStateOf(false) }
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color.White else Color(0x22FFFFFF))
-            .border(1.dp, if (focused) Color.White else Color(0x44FFFFFF), RoundedCornerShape(10.dp))
+            .border(1.dp, if (focused) Color.White else Color(0x44FFFFFF), RoundedCornerShape(12.dp))
             .padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically

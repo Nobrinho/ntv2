@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.settings.presentation
 
+import com.ntv2.app.core.ui.BrandBackdrop
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.focus.focusProperties
@@ -144,7 +145,8 @@ fun SettingsScreen(
     }
 
     FocusGlideScope(Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF0E0E0E))) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(com.ntv2.app.core.ui.BrandColors.Background)) {
+        BrandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Minimal)
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
         Row(modifier = Modifier.fillMaxSize()) {
             // Rail (Busca/Canais/Atualizar voltam à Biblioteca; Config = atual).

@@ -124,7 +124,7 @@ internal fun Modifier.focusGlideHost(glide: FocusGlideState?): Modifier =
  * ANTES (acima) do `focusRequester`/`clickable` na cadeia, como qualquer `onFocusChanged`.
  */
 @Composable
-internal fun Modifier.focusGlideTarget(id: Any, glide: FocusGlideState?, radius: Dp = 10.dp): Modifier {
+internal fun Modifier.focusGlideTarget(id: Any, glide: FocusGlideState?, radius: Dp = 12.dp): Modifier {
     if (glide == null) return this
     val radiusPx = with(LocalDensity.current) { radius.toPx() }
     val holder = remember { arrayOfNulls<LayoutCoordinates>(1) }
@@ -141,7 +141,7 @@ internal fun Modifier.focusGlideTarget(id: Any, glide: FocusGlideState?, radius:
 
 /** Atalho: participa do anel da tela (se houver), com id próprio. */
 @Composable
-fun Modifier.glideTarget(radius: Dp = 10.dp): Modifier =
+fun Modifier.glideTarget(radius: Dp = 12.dp): Modifier =
     focusGlideTarget(remember { Any() }, LocalFocusGlide.current, radius)
 
 /** true quando a tela tem o anel deslizante: o item não deve desenhar o próprio aro de foco. */
@@ -152,12 +152,19 @@ fun glideActive(): Boolean = LocalFocusGlide.current != null
 @Composable
 internal fun FocusGlideRing(glide: FocusGlideState?) {
     if (glide == null) return
+    // Manual da marca: anel de 3 px + afastamento de 4 px; na TV, 4 px + 6 px.
+    val tv = rememberAdaptiveLayoutInfo().isTv
+    val strokeDp = if (tv) 4.dp else 3.dp
+    val gapDp = if (tv) 6.dp else 4.dp
     Spacer(
         modifier = Modifier.fillMaxSize().drawBehind {
             val (r, radius) = glide.displayed() ?: return@drawBehind
             val a = glide.alpha
             if (a <= 0f) return@drawBehind
-            translate(r.left, r.top) { drawFocusRing(Size(r.width, r.height), a, radius) }
+            val gap = gapDp.toPx()
+            translate(r.left - gap, r.top - gap) {
+                drawSpacedFocusRing(Size(r.width + 2 * gap, r.height + 2 * gap), a, radius + gap, strokeDp.toPx())
+            }
         }
     )
 }
@@ -177,8 +184,20 @@ fun FocusGlideScope(modifier: Modifier = Modifier, content: @Composable () -> Un
     }
 }
 
+/** Anel do manual da marca: um traço único no acento, afastado do item (o chamador infla a área pelo afastamento). */
+internal fun DrawScope.drawSpacedFocusRing(size: Size, alpha: Float, cornerRadiusPx: Float, strokePx: Float) {
+    val radius = min(cornerRadiusPx, min(size.width, size.height) / 2f)
+    drawRoundRect(
+        color = FOCUS_ACCENT.copy(alpha = alpha),
+        topLeft = Offset(strokePx / 2, strokePx / 2),
+        size = Size(size.width - strokePx, size.height - strokePx),
+        cornerRadius = CornerRadius(radius),
+        style = Stroke(strokePx)
+    )
+}
+
 /** Aro de foco do app: verde com contorno escuro por dentro. A espessura acompanha o tamanho do item. */
-internal fun DrawScope.drawFocusRing(size: Size, alpha: Float, cornerRadiusPx: Float = 10.dp.toPx()) {
+internal fun DrawScope.drawFocusRing(size: Size, alpha: Float, cornerRadiusPx: Float = 12.dp.toPx()) {
     val outer = (min(size.width, size.height) * 0.07f).coerceIn(2.dp.toPx(), 4.dp.toPx())
     val inner = outer / 2f
     val radius = min(cornerRadiusPx, min(size.width, size.height) / 2f)

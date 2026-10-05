@@ -160,7 +160,15 @@ fun AppNavHost(
     }
 
   // "Animações" (Configurações) para qualquer tela: liga o anel de foco deslizante.
-  val globalAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)
+  val settingAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)
+  // Respeita também o "movimento reduzido" do sistema (escala de animações = 0).
+  val appContext = androidx.compose.ui.platform.LocalContext.current
+  val systemAnimations = remember {
+      runCatching {
+          android.provider.Settings.Global.getFloat(appContext.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+      }.getOrDefault(true)
+  }
+  val globalAnimations = settingAnimations && systemAnimations
   Box(modifier = Modifier.fillMaxSize()) {
    androidx.compose.runtime.CompositionLocalProvider(
        com.ntv2.app.core.ui.LocalFocusRestoreSignal provides focusRestoreSignal,

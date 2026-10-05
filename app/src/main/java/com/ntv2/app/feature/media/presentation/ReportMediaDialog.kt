@@ -137,7 +137,7 @@ private fun ReportReasonRow(reason: MediaReportReason, modifier: Modifier, onCli
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color.White else Color(0x14FFFFFF))

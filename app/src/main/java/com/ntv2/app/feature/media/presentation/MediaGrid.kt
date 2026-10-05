@@ -312,7 +312,7 @@ internal fun MediaGridSkeleton(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(shimmer)
                     )
                     if (!showCovers) {
@@ -416,7 +416,7 @@ internal fun MediaCard(
         modifier = modifier
             // Contínuo: sem "salto" de camada ao trocar o foco.
             .zIndex(focusFraction)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), Color(0x22FFFFFF), focusFraction))
@@ -619,7 +619,7 @@ private fun SeriesGridCard(
     Box(
         modifier = modifier
             .zIndex(focusFraction)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0x0FFFFFFF))

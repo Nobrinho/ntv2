@@ -117,14 +117,14 @@ fun RailButton(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .glideTarget(10.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .glideTarget(12.dp)
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .then(if (enabled && interactive) Modifier.clickable(onClick = onClick) else Modifier)
             .background(background)
             // Foco sobre o CTA verde: borda branca para não "sumir" o realce de foco.
             .then(
-                if (cta && focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(10.dp))
+                if (cta && focused && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(12.dp))
                 else Modifier
             )
             .padding(vertical = 7.dp),

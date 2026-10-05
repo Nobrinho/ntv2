@@ -291,7 +291,7 @@ private fun SeriesHero(series: SeriesSummary, showCovers: Boolean) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF1A1A1A))
         )
     }
@@ -383,12 +383,12 @@ private fun EpisodeRow(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 4.dp)
-            .glideTarget(10.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .glideTarget(12.dp)
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x26FFFFFF) else Color.Transparent)
-            .then(if (focused && !gliding) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(12.dp)) else Modifier)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically

@@ -159,14 +159,14 @@ private fun DialogButton(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable { onClick() }
             .background(if (focused) accent else Color(0x14FFFFFF))
             .border(
                 width = if (focused) 2.dp else 1.dp,
                 color = if (focused) accent else Color(0x33FFFFFF),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(12.dp)
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),

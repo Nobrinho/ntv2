@@ -581,13 +581,13 @@ internal fun SynopsisText(text: String) {
             maxLines = if (expanded) Int.MAX_VALUE else 4,
             overflow = TextOverflow.Ellipsis
         )
-        if (focused) {
-            Text(
-                if (expanded) "OK para recolher" else "OK para ler tudo",
-                color = Color(0xFF9A9A9A),
-                style = MaterialTheme.typography.labelSmall
-            )
-        }
+        // A dica ocupa a linha SEMPRE (só fica transparente sem foco): se ela entrasse e saísse da
+        // composição, a altura do conteúdo mudava a cada foco e o fundo (Crop) dava zoom junto.
+        Text(
+            if (expanded) "OK para recolher" else "OK para ler tudo",
+            color = if (focused) Color(0xFF9A9A9A) else Color.Transparent,
+            style = MaterialTheme.typography.labelSmall
+        )
     }
 }
 

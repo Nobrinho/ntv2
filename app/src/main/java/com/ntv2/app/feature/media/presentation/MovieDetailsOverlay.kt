@@ -196,10 +196,11 @@ internal fun MovieDetailsOverlay(
             val heroMinHeight = if (showRecommendations) screenHeight - RECOMMENDATIONS_PEEK else screenHeight
             val scope = rememberCoroutineScope()
             var heroHeightPx by remember { mutableIntStateOf(0) }
+            val density = androidx.compose.ui.platform.LocalDensity.current
             // A rolagem por foco padrão da TV reposiciona a tela a cada movimento (mantém o item focado
             // num ponto fixo): andar de Assistir para o botão ao lado já rolava para baixo. Aqui só rola
             // quando o item focado não está inteiro na tela — na prática, ao descer para "Porque você viu".
-            CompositionLocalProvider(LocalBringIntoViewSpec provides ScrollOnlyIfHidden) {
+            CompositionLocalProvider(LocalBringIntoViewSpec provides remember(density) { ScrollOnlyIfHidden(with(density) { 16.dp.toPx() }) }) {
             Column(modifier = Modifier.fillMaxSize().verticalScroll(contentScroll)) {
                 Box(
                     modifier = Modifier
@@ -477,16 +478,21 @@ internal fun DetailsInfo(
     }
 }
 
-/** Rolagem por foco mínima: só rola se o item focado não estiver inteiro na área visível. */
+/**
+ * Rolagem por foco mínima: só rola se o item focado não estiver inteiro na área visível. A área do item
+ * é ampliada por [marginPx] (afastamento + traço do anel de foco, que é desenhado FORA do item), para o
+ * anel nunca ser cortado na borda da tela.
+ */
 @OptIn(ExperimentalFoundationApi::class)
-private object ScrollOnlyIfHidden : BringIntoViewSpec {
+private class ScrollOnlyIfHidden(private val marginPx: Float) : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
-        val trailing = offset + size
+        val start = offset - marginPx
+        val end = offset + size + marginPx
         return when {
-            offset >= 0f && trailing <= containerSize -> 0f // já visível
-            size > containerSize -> offset // maior que a tela: alinha o topo
-            offset < 0f -> offset // acima: sobe o necessário
-            else -> trailing - containerSize // abaixo: desce o necessário
+            start >= 0f && end <= containerSize -> 0f // já visível (com folga do anel)
+            end - start > containerSize -> start // maior que a tela: alinha o topo
+            start < 0f -> start // acima: sobe o necessário
+            else -> end - containerSize // abaixo: desce o necessário
         }
     }
 }

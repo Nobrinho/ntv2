@@ -68,6 +68,13 @@ class Ntv2Application : Application(), ImageLoaderFactory {
     //   esse teto e expulsava o banner e o elenco dos Detalhes, que voltavam a baixar toda vez.
     // - OkHttp com TrustManager que confia nas CAs do sistema + raízes Amazon/Starfield
     //   (o image.tmdb.org usa CloudFront/Amazon; alguns aparelhos não têm essas raízes).
+    // Pouca memória no aparelho (TV/emulador de 2 GB): devolve o cache de capas ao sistema antes que o
+    // lmkd mate o app (a saída aparecia como "PROCESS ENDED" sem exceção, motivo LOW_MEMORY).
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        runCatching { coil.Coil.imageLoader(this).memoryCache?.trimMemory(level) }
+    }
+
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
             .okHttpClient { buildOkHttpClient() }

@@ -74,7 +74,7 @@ fun RailColumn(
         Image(
             painter = painterResource(R.drawable.ic_brand_logo),
             contentDescription = "NBR Play",
-            modifier = Modifier.size(56.dp)
+            modifier = Modifier.size(96.dp)
         )
         content()
     }

@@ -52,7 +52,7 @@ import com.ntv2.app.core.network.ConnectionReport
 import com.ntv2.app.core.ui.trapFocus
 import kotlinx.coroutines.flow.Flow
 
-private val OK_GREEN = Color(0xFF2BEE34)
+private val OK_GREEN = com.ntv2.app.core.ui.BrandColors.Accent
 private val WARN_YELLOW = Color(0xFFFFC857)
 private val FAIL_RED = Color(0xFFFF6B6B)
 

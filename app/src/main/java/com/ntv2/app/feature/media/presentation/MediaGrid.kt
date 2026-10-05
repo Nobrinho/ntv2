@@ -97,7 +97,7 @@ internal fun LoadMoreButton(
     modifier: Modifier = Modifier
 ) {
     var focused by remember { mutableStateOf(false) }
-    val accent = Color(0xFF2BEE34)
+    val accent = com.ntv2.app.core.ui.BrandColors.Accent
     val content = if (focused) Color(0xFF0E0E0E) else Color.White
     Row(
         modifier = modifier
@@ -372,7 +372,7 @@ internal fun MediaGridSkeleton(
     }
 }
 
-private val FOCUS_ACCENT = Color(0xFF2BEE34)
+private val FOCUS_ACCENT = com.ntv2.app.core.ui.BrandColors.Accent
 
 /** Borda neutra do card sem foco (some conforme o foco chega). */
 private fun DrawScope.drawIdleBorder(fraction: Float) {

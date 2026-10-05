@@ -209,7 +209,7 @@ private fun ShelfTabPill(label: String, selected: Boolean, modifier: Modifier, o
             }
             .clickable(onClick = onSelect)
             .background(if (selected) Color.White else Color(0x1FFFFFFF))
-            .then(if (focused) Modifier.border(2.dp, BRAND_GREEN, RoundedCornerShape(22.dp)) else Modifier)
+            .then(if (focused) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(22.dp)) else Modifier)
             .padding(horizontal = 20.dp, vertical = 10.dp)
     ) {
         Text(label, color = if (selected) Color.Black else Color.White, style = MaterialTheme.typography.titleMedium)
@@ -284,7 +284,7 @@ private fun HistoryRow(
             }
             if (media.progress > 0f) {
                 Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x38FFFFFF))) {
-                    Box(modifier = Modifier.fillMaxWidth(media.progress).fillMaxSize().background(BRAND_GREEN))
+                    Box(modifier = Modifier.fillMaxWidth(media.progress).fillMaxSize().background(BRAND_ACCENT))
                 }
             }
         }
@@ -294,8 +294,8 @@ private fun HistoryRow(
         }
         if (entry.completed) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = BRAND_GREEN, modifier = Modifier.size(18.dp))
-                Text("Assistido", color = BRAND_GREEN, style = MaterialTheme.typography.labelMedium)
+                Icon(Icons.Filled.Check, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(18.dp))
+                Text("Assistido", color = BRAND_ACCENT, style = MaterialTheme.typography.labelMedium)
             }
         } else {
             HistoryTextButton(icon = Icons.Filled.PlayArrow, label = "Continuar", destructive = false, onClick = onContinue)

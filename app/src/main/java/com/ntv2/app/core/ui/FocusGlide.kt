@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.min
 
-private val FOCUS_ACCENT = Color(0xFF2BEE34)
+private val FOCUS_ACCENT = com.ntv2.app.core.ui.BrandColors.Accent
 
 /** Valor do toggle "Animações" das Configurações, disponível para qualquer tela. */
 val LocalAnimationsEnabled = compositionLocalOf { true }

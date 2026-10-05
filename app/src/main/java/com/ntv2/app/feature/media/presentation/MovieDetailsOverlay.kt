@@ -88,7 +88,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 
 // Tela de detalhes do filme (Continuar/Recomeçar/Voltar).
 
-internal val BRAND_GREEN = Color(0xFF2BEE34)
+internal val BRAND_ACCENT = com.ntv2.app.core.ui.BrandColors.Accent
 
 // Tela de Detalhes (estilo Netflix/Prime): responsiva (TV/paisagem lado a lado, celular/retrato
 // empilhado). O conteúdo aparece imediatamente; imagens secundárias carregam sem bloquear a tela.
@@ -496,7 +496,7 @@ private val RECOMMENDATIONS_PEEK = 110.dp
 
 private fun recommendationsHeading(seedTitle: String) = buildAnnotatedString {
     append("Porque você viu ")
-    withStyle(SpanStyle(color = BRAND_GREEN)) { append(seedTitle) }
+    withStyle(SpanStyle(color = BRAND_ACCENT)) { append(seedTitle) }
 }
 
 /** "Porque você viu <título>": trilha de pôsteres recomendados dentro dos Detalhes. */
@@ -534,7 +534,7 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0xFF1C1C20))
-            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(10.dp)) else Modifier)
     ) {
         if (cover != null) {
             AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -686,8 +686,8 @@ private fun DetailMetaRow(details: MovieDetails?, durationSecs: Int, onFilterCli
         ) {
             details?.rating?.let { rating ->
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Star, contentDescription = null, tint = BRAND_GREEN, modifier = Modifier.size(15.dp))
-                    Text("%.1f".format(rating), color = BRAND_GREEN, style = MaterialTheme.typography.titleSmall)
+                    Icon(Icons.Filled.Star, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(15.dp))
+                    Text("%.1f".format(rating), color = BRAND_ACCENT, style = MaterialTheme.typography.titleSmall)
                 }
             }
             if (durationSecs > 0) MetaText(durationLabel(durationSecs))
@@ -759,8 +759,8 @@ internal fun InListLabel() {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Filled.Check, contentDescription = null, tint = BRAND_GREEN, modifier = Modifier.size(15.dp))
-        Text("Na sua lista", color = BRAND_GREEN, style = MaterialTheme.typography.labelLarge)
+        Icon(Icons.Filled.Check, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(15.dp))
+        Text("Na sua lista", color = BRAND_ACCENT, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -796,7 +796,7 @@ internal fun DetailIconButton(
 internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
-    val border = if (isFavorite) BRAND_GREEN else Color(0x33FFFFFF)
+    val border = if (isFavorite) BRAND_ACCENT else Color(0x33FFFFFF)
     Box(
         modifier = Modifier
             .size(48.dp)
@@ -804,7 +804,7 @@ internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
             .clip(RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (isFavorite) Color(0x242BEE34) else Color(0x1FFFFFFF))
+            .background(if (isFavorite) Color(0x24B8C8E0) else Color(0x1FFFFFFF))
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
                 color = if (focused && !gliding) Color.White else border,
@@ -815,7 +815,7 @@ internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
         Icon(
             imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
             contentDescription = if (isFavorite) "Remover da minha lista" else "Adicionar à minha lista",
-            tint = if (isFavorite) BRAND_GREEN else Color.White,
+            tint = if (isFavorite) BRAND_ACCENT else Color.White,
             modifier = Modifier.size(24.dp)
         )
     }
@@ -833,11 +833,11 @@ internal fun DetailButton(
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
     val bg = when {
-        primary -> BRAND_GREEN
+        primary -> com.ntv2.app.core.ui.BrandColors.Cta
         focused -> Color(0x33FFFFFF)
         else -> Color(0x1FFFFFFF)
     }
-    val content = if (primary) Color(0xFF0B0B0B) else Color.White
+    val content = if (primary) com.ntv2.app.core.ui.BrandColors.OnCta else Color.White
     Row(
         modifier = modifier
             .glideTarget(10.dp)

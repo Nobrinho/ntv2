@@ -48,9 +48,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.R
 
-private val BRAND = Color(0xFF2BEE34)
+private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 
-/** Coluna base do rail (logo Nbr PLAY no topo + slot de itens), compartilhada entre telas. */
+/** Coluna base do rail (logo NBR Play no topo + slot de itens), compartilhada entre telas. */
 @Composable
 fun RailColumn(
     // Ao entrar no rail pelo D-pad (← da grade), o foco vai para este item em vez do mais próximo.
@@ -72,10 +72,9 @@ fun RailColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Image(
-            painter = painterResource(R.drawable.ic_splash_logo),
-            contentDescription = "Nbr PLAY",
-            colorFilter = ColorFilter.tint(BRAND),
-            modifier = Modifier.size(44.dp)
+            painter = painterResource(R.drawable.ic_brand_logo),
+            contentDescription = "NBR Play",
+            modifier = Modifier.size(56.dp)
         )
         content()
     }
@@ -103,7 +102,7 @@ fun RailButton(
     val gliding = glideActive()
     val active = focused || highlighted
     val cta = primary && enabled // botão de ação em destaque
-    val onCta = Color(0xFF0E0E0E) // conteúdo escuro sobre o verde
+    val onCta = com.ntv2.app.core.ui.BrandColors.OnCta // conteúdo escuro sobre o CTA branco
     val tint = when {
         !enabled -> Color(0x44FFFFFF)
         cta -> onCta
@@ -111,8 +110,8 @@ fun RailButton(
         else -> Color.White
     }
     val background = when {
-        cta -> BRAND
-        focused -> Color(0x332BEE34)
+        cta -> com.ntv2.app.core.ui.BrandColors.Cta
+        focused -> Color(0x33B8C8E0)
         else -> Color.Transparent
     }
     Column(

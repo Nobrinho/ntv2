@@ -25,7 +25,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 
-private val BRAND = Color(0xFF2BEE34)
+private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 
 enum class MainTab {
     Library,

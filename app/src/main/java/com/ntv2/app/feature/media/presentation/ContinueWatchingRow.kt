@@ -102,7 +102,7 @@ private fun ContinueCard(
                 .clickable(onClick = onClick)
                 .background(Color(0xFF1C1C20))
                 .then(
-                    if (focused && !gliding) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(12.dp))
+                    if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(12.dp))
                     else Modifier
                 )
         ) {
@@ -140,7 +140,7 @@ private fun ContinueCard(
                         modifier = Modifier
                             .fillMaxWidth(media.progress)
                             .fillMaxSize()
-                            .background(BRAND_GREEN)
+                            .background(BRAND_ACCENT)
                     )
                 }
             }
@@ -154,7 +154,7 @@ private fun ContinueCard(
             overflow = TextOverflow.Ellipsis
         )
         remainingLabel(media)?.let {
-            Text(it, color = BRAND_GREEN, style = MaterialTheme.typography.labelSmall)
+            Text(it, color = BRAND_ACCENT, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -222,7 +222,7 @@ internal fun PosterCard(
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0xFF1C1C20))
-            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(10.dp)) else Modifier)
     ) {
         if (showCovers && cover != null) {
             AsyncImage(

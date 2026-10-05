@@ -157,7 +157,7 @@ private fun Segment(label: String, selected: Boolean, modifier: Modifier, onClic
         modifier = modifier
             .clip(RoundedCornerShape(9.dp))
             .clickable(onClick = onClick)
-            .background(if (selected) BRAND_GREEN else Color.Transparent)
+            .background(if (selected) BRAND_ACCENT else Color.Transparent)
             .padding(vertical = 9.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -222,8 +222,8 @@ private fun HistoryList(
                     trailing = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             if (entry.completed) {
-                                Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(0x242BEE34)), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.Check, contentDescription = "Assistido", tint = BRAND_GREEN, modifier = Modifier.size(16.dp))
+                                Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(0x24B8C8E0)), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Filled.Check, contentDescription = "Assistido", tint = BRAND_ACCENT, modifier = Modifier.size(16.dp))
                                 }
                             } else {
                                 PlayPill(onClick = { onContinue(entry.card) })
@@ -262,7 +262,7 @@ private fun ThumbRow(
             }
             if (media.progress > 0f) {
                 Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x38FFFFFF))) {
-                    Box(modifier = Modifier.fillMaxWidth(media.progress).fillMaxSize().background(BRAND_GREEN))
+                    Box(modifier = Modifier.fillMaxWidth(media.progress).fillMaxSize().background(BRAND_ACCENT))
                 }
             }
         }
@@ -320,7 +320,7 @@ private fun EmptyState(message: String) {
 @Composable
 private fun PlayPill(onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).background(BRAND_GREEN),
+        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).background(BRAND_ACCENT),
         contentAlignment = Alignment.Center
     ) {
         Icon(Icons.Filled.PlayArrow, contentDescription = "Continuar", tint = Color(0xFF0E0E0E), modifier = Modifier.size(18.dp))

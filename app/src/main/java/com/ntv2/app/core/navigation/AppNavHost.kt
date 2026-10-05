@@ -541,7 +541,7 @@ private fun LogoutOverlay() {
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             androidx.compose.material3.CircularProgressIndicator(
-                color = Color(0xFF2BEE34),
+                color = com.ntv2.app.core.ui.BrandColors.Accent,
                 modifier = Modifier.size(52.dp)
             )
             androidx.compose.material3.Text(

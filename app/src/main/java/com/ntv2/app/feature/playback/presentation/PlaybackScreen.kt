@@ -804,7 +804,7 @@ private fun UpNextOverlay(
                     .focusRequester(playFocus)
                     .focusable()
                     .clickable { onPlayNext(next) }
-                    .background(Color(0xFF2BEE34), RoundedCornerShape(8.dp))
+                    .background(com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(8.dp))
                     .padding(horizontal = 28.dp, vertical = 12.dp)
             ) {
                 Text(

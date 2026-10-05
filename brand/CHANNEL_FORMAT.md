@@ -1,4 +1,4 @@
-# Padrão de postagem — Nbr PLAY
+# Padrão de postagem — NBR Play
 
 O app lê **legendas com rótulos** (`Rótulo: valor`). O canal é um **banco de dados do app** —
 poste **sem emoji, o mais enxuto possível**. A ordem é livre e **todo campo é opcional** (o que

@@ -92,7 +92,7 @@ import com.ntv2.app.BuildConfig
 import com.ntv2.app.feature.update.presentation.UpdateStage
 import com.ntv2.app.feature.update.presentation.UpdateUiState
 
-private val BRAND = Color(0xFF2BEE34)
+private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 
 @Composable
 fun SettingsScreen(
@@ -728,7 +728,7 @@ private fun PrivacyCloseButton(onClose: () -> Unit) {
 
 private const val PRIVACY_POLICY_TEXT =
     "Última atualização: 24/09/2026\n\n" +
-    "O Nbr PLAY é um aplicativo cliente de mídia para TV que exibe e reproduz vídeos dos " +
+    "O NBR Play é um aplicativo cliente de mídia para TV que exibe e reproduz vídeos dos " +
     "canais do Telegram escolhidos pelo próprio usuário. O aplicativo não hospeda, não " +
     "distribui e não disponibiliza conteúdo: ele apenas organiza e reproduz o que já existe " +
     "nos canais aos quais a sua conta do Telegram tem acesso.\n\n" +
@@ -758,7 +758,7 @@ private const val PRIVACY_POLICY_TEXT =
     "O uso do Telegram está sujeito à Política de Privacidade e aos Termos do próprio Telegram. " +
     "Não utilizamos publicidade nem ferramentas de análise/rastreamento.\n\n" +
     "5. Conteúdo\n" +
-    "Todo o conteúdo exibido pertence aos canais e usuários do Telegram. O Nbr PLAY não é " +
+    "Todo o conteúdo exibido pertence aos canais e usuários do Telegram. O NBR Play não é " +
     "responsável pelo conteúdo publicado nesses canais e não realiza qualquer distribuição " +
     "de mídia.\n\n" +
     "6. Crianças\n" +

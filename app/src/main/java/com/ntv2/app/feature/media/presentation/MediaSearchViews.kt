@@ -98,7 +98,7 @@ internal fun SearchStatusText(
     ) {
         if (searchInProgress && query.isNotBlank()) {
             CircularProgressIndicator(
-                color = BRAND_GREEN,
+                color = BRAND_ACCENT,
                 strokeWidth = 2.dp,
                 modifier = Modifier.size(18.dp)
             )
@@ -586,7 +586,7 @@ private fun TvActiveFilters(filters: SearchFilters) {
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0x332BEE34))
+                    .background(Color(0x33B8C8E0))
                     .padding(horizontal = 12.dp, vertical = 5.dp)
             )
         }
@@ -704,13 +704,13 @@ private fun TvFilterChip(text: String, selected: Boolean, modifier: Modifier = M
             .background(
                 when {
                     focused -> Color.White
-                    selected -> BRAND_GREEN
+                    selected -> BRAND_ACCENT
                     else -> Color(0xFF2A2A2A)
                 }
             )
             .border(
                 if (focused) 2.dp else 1.dp,
-                if (focused) Color.White else if (selected) BRAND_GREEN else Color(0xFF3A3A3A),
+                if (focused) Color.White else if (selected) BRAND_ACCENT else Color(0xFF3A3A3A),
                 RoundedCornerShape(20.dp)
             )
             .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -840,7 +840,7 @@ internal fun TouchSearchOverlay(
                     modifier = Modifier
                         .size(50.dp)
                         .clip(CircleShape)
-                        .background(if (filters.isActive) BRAND_GREEN else Color(0xFF252525))
+                        .background(if (filters.isActive) BRAND_ACCENT else Color(0xFF252525))
                         .clickable { keyboard?.hide(); showFilterSheet = true },
                     contentAlignment = Alignment.Center
                 ) {
@@ -915,7 +915,7 @@ private fun RemovableChip(text: String, onRemove: () -> Unit) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0x332BEE34))
+            .background(Color(0x33B8C8E0))
             .clickable(onClick = onRemove)
             .padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -969,7 +969,7 @@ private fun SearchFilterSheet(
                 if (filters.isActive) {
                     androidx.compose.material3.Text(
                         "Limpar",
-                        color = BRAND_GREEN,
+                        color = BRAND_ACCENT,
                         style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
@@ -1030,7 +1030,7 @@ private fun SelectableChip(text: String, selected: Boolean, onClick: () -> Unit)
         style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(if (selected) BRAND_GREEN else Color(0xFF2A2A2A))
+            .background(if (selected) BRAND_ACCENT else Color(0xFF2A2A2A))
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 7.dp)
     )
@@ -1104,7 +1104,7 @@ internal fun TouchSearchResultsGrid(
                 ) {
                     if (loadingMore) {
                         CircularProgressIndicator(
-                            color = BRAND_GREEN,
+                            color = BRAND_ACCENT,
                             strokeWidth = 3.dp,
                             modifier = Modifier.size(22.dp)
                         )
@@ -1129,7 +1129,7 @@ internal fun TouchSearchResultsGrid(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         CircularProgressIndicator(
-                            color = BRAND_GREEN,
+                            color = BRAND_ACCENT,
                             strokeWidth = 3.dp,
                             modifier = Modifier.size(24.dp)
                         )
@@ -1268,7 +1268,7 @@ internal fun SearchResultsList(
                     contentAlignment = Alignment.Center
                 ) {
                     if (loadingMore) {
-                        CircularProgressIndicator(color = BRAND_GREEN, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
+                        CircularProgressIndicator(color = BRAND_ACCENT, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
                     } else {
                         androidx.compose.material3.Text(
                             "Fim da lista",
@@ -1289,7 +1289,7 @@ internal fun SearchResultsList(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(color = BRAND_GREEN, strokeWidth = 3.dp, modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(color = BRAND_ACCENT, strokeWidth = 3.dp, modifier = Modifier.size(24.dp))
                         androidx.compose.material3.Text(
                             "Pesquisando…",
                             color = Color.White,

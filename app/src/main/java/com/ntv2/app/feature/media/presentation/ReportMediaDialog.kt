@@ -92,7 +92,7 @@ internal fun ReportMediaDialog(
         ) {
             if (sent) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = BRAND_GREEN, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(28.dp))
                     Column {
                         Text("Obrigado!", color = Color.White, style = MaterialTheme.typography.titleLarge)
                         Text(

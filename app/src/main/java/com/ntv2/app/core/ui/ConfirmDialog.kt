@@ -42,7 +42,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
-private val BRAND = Color(0xFF2BEE34)
+private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 private val DESTRUCTIVE = Color(0xFFFF6B6B)
 
 /**

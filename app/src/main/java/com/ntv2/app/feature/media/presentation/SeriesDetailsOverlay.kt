@@ -313,7 +313,7 @@ private fun PlayButton(
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(BRAND_GREEN)
+            .background(BRAND_ACCENT)
             .then(if (focused && !gliding) Modifier.border(3.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier)
             .padding(horizontal = 22.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -361,7 +361,7 @@ private fun SeasonSelector(
                     .clip(RoundedCornerShape(20.dp))
                     .onFocusChanged { focused = it.isFocused }
                     .clickable { onSelect(s.number) }
-                    .background(if (isSel) BRAND_GREEN else Color(0x22FFFFFF))
+                    .background(if (isSel) BRAND_ACCENT else Color(0x22FFFFFF))
                     .then(if (focused && !isSel && !gliding) Modifier.border(2.dp, Color.White, RoundedCornerShape(20.dp)) else Modifier)
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
@@ -388,7 +388,7 @@ private fun EpisodeRow(
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color(0x26FFFFFF) else Color.Transparent)
-            .then(if (focused && !gliding) Modifier.border(2.dp, BRAND_GREEN, RoundedCornerShape(10.dp)) else Modifier)
+            .then(if (focused && !gliding) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(10.dp)) else Modifier)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -418,7 +418,7 @@ private fun EpisodeRow(
                             modifier = Modifier
                                 .fillMaxWidth(progress.coerceIn(0.02f, 1f))
                                 .height(3.dp)
-                                .background(BRAND_GREEN)
+                                .background(BRAND_ACCENT)
                         )
                     }
                 }

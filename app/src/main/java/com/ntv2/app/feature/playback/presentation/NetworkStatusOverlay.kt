@@ -53,7 +53,7 @@ internal fun NetworkStatusOverlay(
 ) {
     BackHandler(enabled = true) { onDismiss() }
 
-    val connectionColor = if (connectionReady) Color(0xFF2BEE34) else Color(0xFFFFB020)
+    val connectionColor = if (connectionReady) com.ntv2.app.core.ui.BrandColors.Accent else Color(0xFFFFB020)
     val connectionLabel = if (connectionReady) "Conectado" else "Reconectando…"
     val stateLabel = when (playbackState) {
         PlaybackState.Ready -> "Reproduzindo"

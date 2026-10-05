@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Cor de marca do Nbr PLAY (fundo do ícone adaptativo e accent). -->
-    <color name="ic_launcher_background">#2CE84B</color>
+    <!-- Cores de marca do NBR Play (brand kit). No Compose use core/ui/BrandColors. -->
+    <color name="brand_background">#0B0C0F</color>
+    <color name="brand_accent">#B8C8E0</color>
 </resources>

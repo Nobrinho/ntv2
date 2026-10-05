@@ -120,7 +120,7 @@ internal fun ChannelPickerOverlay(
                     val selected = ch.id == activeId
                     var focused by remember { mutableStateOf(false) }
                     val mod = if (index == focusIndex) Modifier.focusRequester(firstFocus) else Modifier
-                    val accent = Color(0xFF2BEE34)
+                    val accent = com.ntv2.app.core.ui.BrandColors.Accent
                     Row(
                         modifier = mod
                             .fillMaxWidth()
@@ -130,7 +130,7 @@ internal fun ChannelPickerOverlay(
                             .background(
                                 when {
                                     focused -> Color(0x33FFFFFF)
-                                    selected -> Color(0x1F2BEE34)
+                                    selected -> Color(0x1FB8C8E0)
                                     else -> Color(0x14FFFFFF)
                                 }
                             )

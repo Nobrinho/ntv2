@@ -88,14 +88,14 @@ fun CardLoadingPlaceholder(
         CardLoadingStyle.BLUR_UP -> BlurUp(modifier, animate, cover, preview)
         CardLoadingStyle.FADE_IN -> FadeIn(modifier, animate, preview)
         CardLoadingStyle.SPINNER -> Box(modifier.background(PLACEHOLDER_BG), Alignment.Center) {
-            CircularProgressIndicator(color = BRAND_GREEN, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+            CircularProgressIndicator(color = BRAND_ACCENT, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
         }
     }
 }
 
 private val DARK_SHIMMER = listOf(Color(0xFF202A37), Color(0xFF364356), Color(0xFF202A37))
 private val PLACEHOLDER_BG = Color(0xFF1C1C1C)
-private val BRAND_GREEN = Color(0xFF2BEE34)
+private val BRAND_ACCENT = com.ntv2.app.core.ui.BrandColors.Accent
 // "Pôster" falso das prévias (fade-in e blur-up não têm capa real para mostrar ali).
 private val FAKE_POSTER = listOf(Color(0xFF7A4FA3), Color(0xFF2F6FB0), Color(0xFF1F9C8B))
 

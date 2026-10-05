@@ -77,7 +77,7 @@ import com.ntv2.app.feature.auth.domain.model.LoginMode
 import com.ntv2.app.feature.auth.presentation.state.LoginAction
 import com.ntv2.app.feature.auth.presentation.viewmodel.LoginViewModel
 
-private val BRAND = Color(0xFF2BEE34)
+private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 private const val CARD_WIDTH_DP = 560
 
 private enum class LoginStep { Qr, Phone, Code, Password, Success }
@@ -123,7 +123,7 @@ fun LoginScreen(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0x242BEE34), Color(0x0A2BEE34), Color(0x00000000))
+                        listOf(Color(0x24B8C8E0), Color(0x0AB8C8E0), Color(0x00000000))
                     )
                 )
         )
@@ -144,13 +144,12 @@ fun LoginScreen(
                     modifier = Modifier
                         .size(logoGlow)
                         .background(
-                            Brush.radialGradient(listOf(Color(0x552BEE34), Color(0x00000000)))
+                            Brush.radialGradient(listOf(Color(0x55B8C8E0), Color(0x00000000)))
                         )
                 )
                 Image(
-                    painter = painterResource(R.drawable.ic_splash_logo),
-                    contentDescription = "Nbr PLAY",
-                    colorFilter = ColorFilter.tint(BRAND),
+                    painter = painterResource(R.drawable.ic_brand_logo),
+                    contentDescription = "NBR Play",
                     modifier = Modifier.size(logoSize)
                 )
             }
@@ -347,7 +346,7 @@ private fun StepLine(number: String, text: String) {
             modifier = Modifier
                 .size(22.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(Color(0x332BEE34)),
+                .background(Color(0x33B8C8E0)),
             contentAlignment = Alignment.Center
         ) {
             Text(number, color = BRAND, style = MaterialTheme.typography.labelMedium)

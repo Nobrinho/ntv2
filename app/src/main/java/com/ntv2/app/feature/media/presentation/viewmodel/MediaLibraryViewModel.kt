@@ -1248,7 +1248,8 @@ class MediaLibraryViewModel(
             RecommendationEngine.Candidate("series_${it.tmdbId}", it.genres.map { g -> g.trim().lowercase() }.toSet())
         }
         val ids = RecommendationEngine.recommend(
-            taste, movieCandidates + seriesCandidates, exclude = favoriteIdsSet + watchedIds, limit = 20
+            taste, movieCandidates + seriesCandidates, exclude = favoriteIdsSet + watchedIds, limit = 20,
+            seed = java.time.LocalDate.now().toEpochDay() // varia por dia, estável durante o dia
         )
         val movieById = movies.associateBy { it.mediaId }
         val seriesById = series.associateBy { "series_${it.tmdbId}" }

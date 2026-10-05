@@ -58,4 +58,24 @@ class RecommendationEngineTest {
         assertEquals(4, taste["ação"]) // 3 (fav) + 1 (hist)
         assertEquals(1, taste["drama"])
     }
+
+    @Test
+    fun `empates nao seguem a ordem do catalogo e sao estaveis por semente`() {
+        val taste = mapOf("ação" to 1)
+        val candidates = (1..30).map { Candidate("m$it", setOf("ação")) }
+        val a = RecommendationEngine.recommend(taste, candidates, emptySet(), limit = 10, seed = 1)
+        assertEquals(a, RecommendationEngine.recommend(taste, candidates, emptySet(), limit = 10, seed = 1))
+        assertTrue(a != candidates.take(10).map { it.id })
+        assertTrue(a != RecommendationEngine.recommend(taste, candidates, emptySet(), limit = 10, seed = 2))
+    }
+
+    @Test
+    fun `mais generos fora do gosto nao ganham de quem combina melhor`() {
+        val taste = mapOf("ação" to 3)
+        val candidates = listOf(
+            Candidate("muitos", setOf("ação", "x", "y", "z", "w")),
+            Candidate("exato", setOf("ação"))
+        )
+        assertEquals("exato", RecommendationEngine.recommend(taste, candidates, emptySet()).first())
+    }
 }

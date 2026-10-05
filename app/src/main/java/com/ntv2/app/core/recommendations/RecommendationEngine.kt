@@ -28,17 +28,31 @@ object RecommendationEngine {
         preferredGenres: Map<String, Int>,
         candidates: List<Candidate>,
         exclude: Set<String>,
-        limit: Int = 20
+        limit: Int = 20,
+        seed: Long = 0L
     ): List<String> {
         if (preferredGenres.isEmpty() || candidates.isEmpty() || limit <= 0) return emptyList()
         return candidates.asSequence()
             .filter { it.id !in exclude }
-            .map { c -> c.id to c.genres.sumOf { g -> preferredGenres[g] ?: 0 } }
-            .filter { (_, score) -> score > 0 }
-            .sortedByDescending { (_, score) -> score } // sortedBy é estável → empate preserva ordem
-            .map { (id, _) -> id }
+            .map { c ->
+                val shared = c.genres.sumOf { g -> preferredGenres[g] ?: 0 }
+                // Gêneros fora do gosto diluem a nota levemente: não premia quem só tem mais gêneros.
+                val unmatched = c.genres.count { g -> (preferredGenres[g] ?: 0) == 0 }
+                Triple(c.id, shared, shared / (1.0 + 0.1 * unmatched))
+            }
+            .filter { (_, shared, _) -> shared > 0 }
+            // Empate: ordem embaralhada de forma estável pela semente. Sem isso o desempate seguia a
+            // ordem do catálogo (mais recentes primeiro) e a lista só mostrava lançamentos do índice.
+            .sortedWith(compareByDescending<Triple<String, Int, Double>> { it.third }.thenBy { mix(it.first, seed) })
+            .map { it.first }
             .take(limit)
             .toList()
+    }
+
+    private fun mix(id: String, seed: Long): Long {
+        var h = id.hashCode().toLong() xor seed
+        h *= -0x61c8864680b583ebL
+        return h xor (h ushr 29)
     }
 
     /**

@@ -571,7 +571,7 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
     }
 }
 
-// Sinopse: 4 linhas; focável pelo D-pad e OK expande/recolhe o texto completo.
+// Sinopse: 2 linhas; focável pelo D-pad e OK expande/recolhe o texto completo.
 @Composable
 internal fun SynopsisText(text: String) {
     var expanded by remember(text) { mutableStateOf(false) }
@@ -592,7 +592,7 @@ internal fun SynopsisText(text: String) {
             text,
             color = Color(0xFFDCDCDC),
             style = MaterialTheme.typography.bodyMedium,
-            maxLines = if (expanded) Int.MAX_VALUE else 4,
+            maxLines = if (expanded) Int.MAX_VALUE else 2,
             overflow = TextOverflow.Ellipsis
         )
         // A dica ocupa a linha SEMPRE (só fica transparente sem foco): se ela entrasse e saísse da

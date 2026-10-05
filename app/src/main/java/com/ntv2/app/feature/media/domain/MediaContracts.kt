@@ -131,6 +131,21 @@ sealed interface MultiPartPrepareResult {
     data object Failed : MultiPartPrepareResult
 }
 
+/** Mensagem para o usuário quando o filme em partes não pode tocar agora; null se está pronto. */
+fun MultiPartPrepareResult.failureText(): String? = when (this) {
+    MultiPartPrepareResult.Ready -> null
+    MultiPartPrepareResult.Failed ->
+        "Não consegui localizar as partes deste filme no canal. Confira a conexão e tente de novo."
+    is MultiPartPrepareResult.Incomplete -> {
+        val faltando = when {
+            missing.size == 1 -> "Falta a parte ${missing.first()} de $total"
+            missing.size <= 3 -> "Faltam as partes ${missing.dropLast(1).joinToString(", ")} e ${missing.last()} de $total"
+            else -> "Faltam ${missing.size} partes de $total"
+        }
+        "$faltando: este filme ainda está sendo enviado ao canal."
+    }
+}
+
 /**
  * Antes de tocar um filme dividido: acha todas as partes no canal e as registra para o player
  * (que passa a abrir o filme como um arquivo só). [messageId] é a mensagem de qualquer parte.

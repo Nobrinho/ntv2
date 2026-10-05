@@ -69,9 +69,10 @@ class MultiPartReader(
             if (read == END) {
                 // A parte disse que acabou, mas o mapa diz que ainda há bytes: não pula dados em
                 // silêncio — erro, e o player reabre na posição (recuperação de I/O).
-                throw IOException(
-                    "A parte ${cursor.part + 1} de ${map.partCount} acabou antes do esperado " +
-                        "(faltavam ${cursor.bytesToPartEnd} bytes)"
+                throw PartUnavailableException(
+                    part = cursor.part + 1,
+                    total = map.partCount,
+                    detail = "acabou antes do esperado (faltavam ${cursor.bytesToPartEnd} bytes)"
                 )
             }
             cursor.consume(read)

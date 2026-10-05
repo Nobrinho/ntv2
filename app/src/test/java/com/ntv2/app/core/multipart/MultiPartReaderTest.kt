@@ -165,8 +165,10 @@ class MultiPartReaderTest {
     fun `parte que acaba antes do esperado e erro e nao pula dados`() {
         val f = Fixture(threeParts, brokenPart = 0)
         val reader = f.reader(0)
-        val erro = assertThrows(IOException::class.java) { reader.readAll(16) }
-        assertTrue(erro.message!!.contains("parte 1 de 3"))
+        val erro = assertThrows(PartUnavailableException::class.java) { reader.readAll(16) }
+        assertEquals(1, erro.part)
+        assertEquals(3, erro.total)
+        assertTrue(erro.message!!.contains("Parte 1 de 3 indisponível"))
     }
 
     @Test

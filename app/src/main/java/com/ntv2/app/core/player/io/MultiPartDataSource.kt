@@ -12,9 +12,11 @@ import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import com.ntv2.app.core.multipart.MultiPartCursor
+import com.ntv2.app.core.multipart.MultiPartPlaybackState
 import com.ntv2.app.core.multipart.MultiPartReader
 import com.ntv2.app.core.multipart.MultiPartUris
 import com.ntv2.app.core.multipart.PartRef
+import com.ntv2.app.core.multipart.PartUnavailableException
 import com.ntv2.app.core.multipart.PartStream
 import com.ntv2.app.core.multipart.PartsLookup
 import com.ntv2.app.core.multipart.VirtualFileMap
@@ -38,7 +40,8 @@ internal class MultiPartDataSource(
     private val partsLookup: PartsLookup,
     private val accessor: PartialFileAccessor,
     private val openPart: () -> DataSource,
-    private val prefetchAheadBytes: (firstFileId: Int) -> Long
+    private val prefetchAheadBytes: (firstFileId: Int) -> Long,
+    private val playbackState: MultiPartPlaybackState? = null
 ) : BaseDataSource(false) {
 
     private var dataSpec: DataSpec? = null
@@ -64,12 +67,13 @@ internal class MultiPartDataSource(
             length = if (unbounded) MultiPartCursor.UNSET else dataSpec.length,
             prefetchAheadBytes = prefetchAhead,
             openPart = { part, offset, partLength ->
+                playbackState?.set(firstFileId, part)
                 Log.i(
                     TAG,
                     "lendo parte ${part + 1}/${parts.size} a partir de ${offset / MB}MB " +
                         "(posição global ${(map.partStart(part) + offset) / MB}MB de ${map.totalSize / MB}MB)"
                 )
-                openPartStream(dataSpec, parts[part], offset, partLength)
+                openPartStream(dataSpec, parts[part], offset, partLength, partNumber = part + 1, total = parts.size)
             },
             prefetchPart = { part ->
                 Log.i(TAG, "pré-baixando o começo da parte ${part + 1}/${parts.size} (emenda perto)")
@@ -94,9 +98,22 @@ internal class MultiPartDataSource(
     }
 
     /** Abre [part] no data source de arquivo parcial, já com o arquivo registrado no TDLib. */
-    private fun openPartStream(spec: DataSpec, part: PartRef, offset: Long, partLength: Long): PartStream {
+    private fun openPartStream(
+        spec: DataSpec,
+        part: PartRef,
+        offset: Long,
+        partLength: Long,
+        partNumber: Int,
+        total: Int
+    ): PartStream {
         // Partes 2 em diante ainda não foram abertas no TDLib (ou foram descartadas na emenda).
-        runBlocking { accessor.ensureOpen(part.fileId) }
+        try {
+            runBlocking { accessor.ensureOpen(part.fileId) }
+        } catch (error: IOException) {
+            throw error
+        } catch (error: Exception) {
+            throw PartUnavailableException(partNumber, total, "não abriu no Telegram (${error.message})", error)
+        }
         val partSpec = spec.buildUpon()
             .setUri(Uri.parse("tgfile://video/${part.fileId}"))
             .setPosition(offset)

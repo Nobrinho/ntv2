@@ -107,6 +107,7 @@ internal fun MovieDetailsOverlay(
     showCovers: Boolean = true,
     playLoading: Boolean = false,
     playFailed: Boolean = false,
+    playFailedText: String? = null,
     onRestart: () -> Unit = {},
     isTv: Boolean = true,
     onReport: (MediaReportReason) -> Unit = {},
@@ -179,6 +180,7 @@ internal fun MovieDetailsOverlay(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
                     playLoading = playLoading,
                     playFailed = playFailed,
+                    playFailedText = playFailedText,
                     onRestart = onRestart,
                     fillActions = !isTv,
                     onReportClick = { reporting = true },
@@ -248,6 +250,7 @@ internal fun MovieDetailsOverlay(
                             .padding(start = 48.dp, end = 24.dp, top = 32.dp, bottom = 44.dp),
                         playLoading = playLoading,
                         playFailed = playFailed,
+                        playFailedText = playFailedText,
                         onRestart = onRestart,
                         onReportClick = { reporting = true },
                         isFavorite = isFavorite,
@@ -356,6 +359,7 @@ internal fun DetailsInfo(
     modifier: Modifier = Modifier,
     playLoading: Boolean = false,
     playFailed: Boolean = false,
+    playFailedText: String? = null,
     onRestart: () -> Unit = {},
     fillActions: Boolean = false,
     onReportClick: () -> Unit = {},
@@ -375,7 +379,7 @@ internal fun DetailsInfo(
         details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
             Text(it, color = Color(0xFFC9C9C9), style = MaterialTheme.typography.titleMedium)
         }
-        DetailMetaRow(details, durationSecs, onFilterClick)
+        DetailMetaRow(details, durationSecs, onFilterClick, partCount = media.partCount)
         if (showPlaybackWarning) {
             Text(
                 text = "Este aparelho pode tocar apenas o som em vídeos 1080p. Prefira versão 720p quando disponível.",
@@ -392,6 +396,7 @@ internal fun DetailsInfo(
             DetailsActionRow(
                 media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
                 fillWidth = fillActions,
+                playFailedText = playFailedText,
                 isFavorite = isFavorite,
                 onToggleFavorite = onToggleFavorite,
                 onReportClick = onReportClick
@@ -474,6 +479,7 @@ internal fun DetailsInfo(
             DetailsActionRow(
                 media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
                 fillWidth = fillActions,
+                playFailedText = playFailedText,
                 isFavorite = isFavorite,
                 onToggleFavorite = onToggleFavorite,
                 onReportClick = onReportClick
@@ -619,11 +625,12 @@ internal fun DetailsActionRow(
     fillWidth: Boolean = false,
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
-    onReportClick: () -> Unit = {}
+    onReportClick: () -> Unit = {},
+    playFailedText: String? = null
 ) {
     val playLabel = when {
         playLoading -> "Abrindo…"
-        playFailed -> "Falhou — tentar de novo"
+        playFailed -> playFailedText ?: "Falhou — tentar de novo"
         showPlaybackWarning -> "Tentar assistir"
         media.progress > 0f -> continueLabel(media)
         else -> "Assistir"
@@ -694,7 +701,13 @@ private fun continueLabel(media: MediaCardUi): String {
 /** Metadados no estilo do protótipo: nota verde com estrela + chips com borda (idade/qualidade/gênero).
  *  Ano e gêneros são clicáveis: listam as mídias do canal com esse ano/gênero. */
 @Composable
-private fun DetailMetaRow(details: MovieDetails?, durationSecs: Int, onFilterClick: (SearchFilter) -> Unit) {
+private fun DetailMetaRow(
+    details: MovieDetails?,
+    durationSecs: Int,
+    onFilterClick: (SearchFilter) -> Unit,
+    /** Filme dividido em partes no Telegram (>= 2): mostra um chip com a quantidade. */
+    partCount: Int = 1
+) {
     // Linha 1: informativos (não clicáveis). Linha 2, exclusiva: ano e gêneros (clicáveis).
     val bullet = Regex("\\s*,\\s*")
     val genres = details?.genres?.split(',', ';', '/', '•')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
@@ -713,6 +726,7 @@ private fun DetailMetaRow(details: MovieDetails?, durationSecs: Int, onFilterCli
             if (durationSecs > 0) MetaText(durationLabel(durationSecs))
             details?.ageRating?.takeIf { it.isNotBlank() }?.let { MetaChip(it.trim().replace(bullet, " • ")) }
             details?.quality?.takeIf { it.isNotBlank() }?.let { MetaChip(it.trim().replace(bullet, " • ")) }
+            if (partCount >= 2) MetaChip("$partCount partes")
         }
         if (details?.year != null || genres.isNotEmpty()) {
             Row(

@@ -1,6 +1,7 @@
 ﻿package com.ntv2.app.core.player
 
 import androidx.media3.common.Player
+import com.ntv2.app.core.multipart.PartsSnapshot
 import kotlinx.coroutines.flow.StateFlow
 
 data class PlaybackMedia(
@@ -23,7 +24,9 @@ sealed interface PlaybackState {
         val message: String,
         val recoverable: Boolean,
         /** Parou por falta de espaço no aparelho (a tela explica e sugere liberar espaço). */
-        val lowStorage: Boolean = false
+        val lowStorage: Boolean = false,
+        /** Filme dividido: a parte que faltou/falhou (a tela diz qual); null = outro erro. */
+        val partUnavailable: com.ntv2.app.core.multipart.PartUnavailableException? = null
     ) : PlaybackState
 }
 
@@ -43,6 +46,14 @@ data class MediaTracksInfo(
     val videoMimeType: String? = null,
     /** O arquivo tem vídeo, mas nenhuma trilha dele pode ser decodificada neste aparelho (toca só o áudio). */
     val videoUnsupported: Boolean = false,
+    /** Profundidade de cor (bits) e HDR ("HDR10"/"HLG"; null = SDR ou desconhecido), vistos pelo ExoPlayer. */
+    val videoBitDepth: Int = 0,
+    val videoHdr: String? = null,
+    /** Dolby Vision: perfil cuja camada base HEVC está tocando no lugar da trilha DV (ver DolbyVisionFallback). */
+    val dolbyVisionBaseLayerProfile: Int? = null,
+    /** Áudio em uso (formato e canais); o nome da faixa está em [audios]. */
+    val audioMimeType: String? = null,
+    val audioChannels: Int = 0,
     val audios: List<MediaTrackOption> = emptyList(),
     val subtitles: List<MediaTrackOption> = emptyList()
 ) {
@@ -83,7 +94,13 @@ data class PlaybackSnapshot(
     val downloadedBytes: Long = 0L,
     val expectedBytes: Long? = null,
     val activeMediaId: String? = null,
-    val tracks: MediaTracksInfo = MediaTracksInfo()
+    val tracks: MediaTracksInfo = MediaTracksInfo(),
+    /** Filme dividido em partes: onde se está e o que já foi baixado do filme todo (null = arquivo único). */
+    val parts: PartsSnapshot? = null,
+    /** Progresso de download que NUNCA cai (descartar uma parte não vira "velocidade negativa"): mede velocidade. */
+    val progressBytes: Long = 0L,
+    /** Progresso da parte em leitura: detecta download parado sem a pré-carga da próxima parte mascarar. */
+    val stallBytes: Long = 0L
 )
 
 interface PlaybackCoordinator {

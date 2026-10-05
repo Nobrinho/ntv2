@@ -13,7 +13,15 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
+import com.ntv2.app.core.multipart.ActivePartCounter
+import com.ntv2.app.core.player.exoplayer.DolbyVisionFallback
+import com.ntv2.app.core.multipart.MonotonicCounter
+import com.ntv2.app.core.multipart.MultiPartProgress
 import com.ntv2.app.core.multipart.PartsLookup
+import com.ntv2.app.core.multipart.VirtualFileMap
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import com.ntv2.app.core.multipart.allFileIds
 import com.ntv2.app.core.player.MediaTrackOption
 import com.ntv2.app.core.player.MediaTracksInfo
@@ -68,7 +76,9 @@ class DefaultPlaybackCoordinator(
     /** Onde o hardware falhou em cada vídeo: software só em volta desses pontos (ver DecoderWindows). */
     private val decoderTroubleMemory: DecoderTroubleMemory? = null,
     /** Filmes divididos em partes: o `fileId` da parte 1 identifica o filme (ver MultiPartRegistry). */
-    private val partsLookup: PartsLookup? = null
+    private val partsLookup: PartsLookup? = null,
+    /** Parte que o player está lendo em cada filme dividido (ver MultiPartDataSource). */
+    private val partsPlaybackState: com.ntv2.app.core.multipart.MultiPartPlaybackState? = null
 ) : PlaybackCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -155,6 +165,9 @@ class DefaultPlaybackCoordinator(
             }
             val lowStorage = generateSequence<Throwable>(error) { it.cause }
                 .firstOrNull { it is LowStorageException }
+            val partError = generateSequence<Throwable>(error) { it.cause }
+                .filterIsInstance<com.ntv2.app.core.multipart.PartUnavailableException>()
+                .firstOrNull()
             val isDecoderError = error.errorCode in
                 PlaybackException.ERROR_CODE_DECODER_INIT_FAILED until PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED
             val isIoError = error.errorCode in
@@ -176,9 +189,10 @@ class DefaultPlaybackCoordinator(
             snapshotState.update {
                 it.copy(
                     state = PlaybackState.Error(
-                        message = lowStorage?.message ?: error.localizedMessage ?: "Falha de reprodução",
+                        message = lowStorage?.message ?: partError?.message ?: error.localizedMessage ?: "Falha de reprodução",
                         recoverable = true,
-                        lowStorage = lowStorage != null
+                        lowStorage = lowStorage != null,
+                        partUnavailable = partError
                     ),
                     isPlaying = false
                 )
@@ -220,10 +234,16 @@ class DefaultPlaybackCoordinator(
         // Filme dividido: o bitrate vem do tamanho TOTAL (a parte 1 é só uma fatia).
         val totalBytes = partsLookup?.partsOf(media.fileId)?.sumOf { it.sizeBytes } ?: handle.expectedBytes
         applyStreamProfile(media, totalBytes, handle.localPath)
+        partsPlaybackState?.set(media.fileId, 0)
+        DolbyVisionFallback.appliedProfile = null           // a trilha nova diz de novo se precisou do fallback
         snapshotState.update {
             it.copy(
                 downloadedBytes = handle.downloadedBytes,
-                expectedBytes = handle.expectedBytes
+                // Filme dividido: o total é o do filme todo, não o da parte 1.
+                expectedBytes = totalBytes,
+                progressBytes = handle.downloadedBytes,
+                stallBytes = handle.downloadedBytes,
+                parts = null
             )
         }
 
@@ -570,14 +590,49 @@ class DefaultPlaybackCoordinator(
 
     private fun observeFileState(media: PlaybackMedia) {
         observeJob?.cancel()
+        val parts = partsLookup?.partsOf(media.fileId)
         observeJob = scope.launch {
-            playbackDataSource.observe(media.fileId).collect { fileState ->
-                snapshotState.update {
-                    it.copy(
-                        downloadedBytes = fileState.downloadedBytes,
-                        expectedBytes = fileState.expectedBytes
-                    )
+            if (parts == null) {
+                playbackDataSource.observe(media.fileId).collect { fileState ->
+                    snapshotState.update {
+                        it.copy(
+                            downloadedBytes = fileState.downloadedBytes,
+                            expectedBytes = fileState.expectedBytes,
+                            progressBytes = fileState.downloadedBytes,
+                            stallBytes = fileState.downloadedBytes,
+                            parts = null
+                        )
+                    }
                 }
+            } else {
+                observePartsState(media, parts)
+            }
+        }
+    }
+
+    /**
+     * Filme dividido: junta o estado de TODAS as partes (antes só a parte 1 era observada, então o "carregado"
+     * mostrava 1,8 GB de um filme de 70 GB e o watchdog parava de agir depois dela).
+     */
+    private suspend fun observePartsState(media: PlaybackMedia, parts: List<com.ntv2.app.core.multipart.PartRef>) {
+        val map = VirtualFileMap(parts.map { it.sizeBytes })
+        val perPart: List<Flow<Long>> = parts.map { part -> playbackDataSource.observe(part.fileId).map { it.downloadedBytes } }
+        val reading: Flow<Long> = (partsPlaybackState?.currentPart(media.fileId) ?: MutableStateFlow(0)).map { it.toLong() }
+        val counter = MonotonicCounter()
+        val active = ActivePartCounter()
+        combine(perPart + reading) { values ->
+            val raw = values.take(parts.size)
+            val current = values.last().toInt().coerceIn(0, parts.size - 1)
+            Triple(MultiPartProgress.snapshot(map, raw, current), counter.feed(raw.sum()), active.feed(current, raw[current]))
+        }.collect { (snapshot, progress, stall) ->
+            snapshotState.update {
+                it.copy(
+                    downloadedBytes = snapshot.downloadedBytes,
+                    expectedBytes = snapshot.totalBytes,
+                    progressBytes = progress,
+                    stallBytes = stall,
+                    parts = snapshot
+                )
             }
         }
     }
@@ -587,6 +642,10 @@ class DefaultPlaybackCoordinator(
         var videoHeight = 0
         var videoFrameRate = 0f
         var videoMimeType: String? = null
+        var videoBits = 0
+        var videoHdr: String? = null
+        var audioMime: String? = null
+        var audioChannels = 0
         val videoSupport = mutableListOf<Boolean>()
         val audios = mutableListOf<MediaTrackOption>()
         val subtitles = mutableListOf<MediaTrackOption>()
@@ -603,16 +662,29 @@ class DefaultPlaybackCoordinator(
                             if (format.height > 0) videoHeight = format.height
                             if (format.frameRate > 0f) videoFrameRate = format.frameRate
                             videoMimeType = format.sampleMimeType
+                            val color = format.colorInfo
+                            videoBits = color?.lumaBitdepth?.takeIf { it > 0 } ?: 0
+                            videoHdr = when (color?.colorTransfer) {
+                                C.COLOR_TRANSFER_ST2084 -> "HDR10"
+                                C.COLOR_TRANSFER_HLG -> "HLG"
+                                else -> null
+                            }
                         }
                     }
                     // Sem filtro de suporte: lista todas as faixas de áudio do container
                     // (ex.: 2º áudio/dublagem), como a versão anterior fazia. A reprodução
                     // usa override manual e o ExoPlayer decodifica por software se preciso.
-                    C.TRACK_TYPE_AUDIO -> audios += MediaTrackOption(
-                        id = "$groupIndex:$trackIndex",
-                        label = audioLabel(format, audios.size),
-                        isSelected = selected
-                    )
+                    C.TRACK_TYPE_AUDIO -> {
+                        audios += MediaTrackOption(
+                            id = "$groupIndex:$trackIndex",
+                            label = audioLabel(format, audios.size),
+                            isSelected = selected
+                        )
+                        if (selected) {
+                            audioMime = format.sampleMimeType
+                            audioChannels = format.channelCount.takeIf { it > 0 } ?: 0
+                        }
+                    }
                     C.TRACK_TYPE_TEXT -> if (group.isTrackSupported(trackIndex, true)) {
                         subtitles += MediaTrackOption(
                             id = "$groupIndex:$trackIndex",
@@ -629,6 +701,11 @@ class DefaultPlaybackCoordinator(
             videoFrameRate = videoFrameRate,
             videoMimeType = videoMimeType,
             videoUnsupported = MediaTracksInfo.isVideoUnsupported(videoSupport),
+            videoBitDepth = videoBits,
+            videoHdr = videoHdr,
+            dolbyVisionBaseLayerProfile = DolbyVisionFallback.appliedProfile,
+            audioMimeType = audioMime,
+            audioChannels = audioChannels,
             audios = audios,
             subtitles = subtitles
         )

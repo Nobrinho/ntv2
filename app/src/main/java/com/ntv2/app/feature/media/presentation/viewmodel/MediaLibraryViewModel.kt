@@ -1,5 +1,6 @@
 ﻿package com.ntv2.app.feature.media.presentation.viewmodel
 
+import com.ntv2.app.feature.media.domain.failureText
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -636,7 +637,7 @@ class MediaLibraryViewModel(
             }
             // O índice aponta para uma parte de filme dividido: acha as outras antes de tocar.
             if (!withContext(ioDispatcher) { partsReady(media.channelId, messageId, resolved.partCount) }) {
-                _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = true) }
+                _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = true, openVideoFailureText = lastPartsFailure) }
                 return@launch
             }
             _uiState.update {
@@ -663,10 +664,17 @@ class MediaLibraryViewModel(
      * não foi possível localizá-las. Sem [multiPartPreparer] (testes) não bloqueia nada.
      */
     private suspend fun partsReady(channelId: Long, messageId: Long, partCount: Int): Boolean {
+        lastPartsFailure = null
         if (partCount < 2) return true
         val preparer = multiPartPreparer ?: return true
-        return preparer.prepare(channelId, messageId) is com.ntv2.app.feature.media.domain.MultiPartPrepareResult.Ready
+        val result = preparer.prepare(channelId, messageId)
+        lastPartsFailure = result.failureText()
+        return result is com.ntv2.app.feature.media.domain.MultiPartPrepareResult.Ready
     }
+
+    /** Motivo da última falha de [partsReady] (um abrir de cada vez; null = pronto ou arquivo único). */
+    @Volatile
+    private var lastPartsFailure: String? = null
 
     /** Abre um card de filme dividido (já com fileId da parte 1): prepara as partes e navega. */
     private fun openMultiPartVideo(media: MediaCardUi) {
@@ -685,7 +693,7 @@ class MediaLibraryViewModel(
             val ready = messageId != null &&
                 withContext(ioDispatcher) { partsReady(media.channelId, messageId, media.partCount) }
             if (!ready) {
-                _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = true) }
+                _uiState.update { it.copy(isOpeningVideo = false, openVideoFailed = true, openVideoFailureText = lastPartsFailure) }
                 return@launch
             }
             _uiState.update {
@@ -1573,7 +1581,8 @@ class MediaLibraryViewModel(
             posterPath = posterPath,
             coverAspectRatio = coverAspectRatio,
             fileId = fileId,
-            videoHeight = height,
+            // Filme em partes vem como documento (sem dimensões): a altura sai do texto de qualidade da legenda.
+            videoHeight = height.takeIf { it > 0 } ?: com.ntv2.app.feature.media.domain.QualityText.heightOf(quality),
             progress = progress,
             partCount = partCount
         )

@@ -766,7 +766,8 @@ fun MediaLibraryScreen(
                     }
                 },
                 playLoading = state.isOpeningVideo,
-                playFailed = state.openVideoFailed
+                playFailed = state.openVideoFailed,
+                playFailedText = state.openVideoFailureText
             )
             }
         }

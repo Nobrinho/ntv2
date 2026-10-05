@@ -159,6 +159,8 @@ data class MediaLibraryUiState(
     val isOpeningVideo: Boolean = false,
     /** Falha ao resolver/abrir o vídeo — feedback de erro no botão Assistir. */
     val openVideoFailed: Boolean = false,
+    /** Por que falhou (ex.: faltam partes do filme); null = mensagem genérica no botão. */
+    val openVideoFailureText: String? = null,
     val isSearchPending: Boolean = false,
     val isSearchLoading: Boolean = false,
     /** Há mais páginas de busca para carregar (paginação infinita). */

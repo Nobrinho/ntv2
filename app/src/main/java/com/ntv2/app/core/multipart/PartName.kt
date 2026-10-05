@@ -30,6 +30,9 @@ data class PartName(val baseName: String, val index: Int, val total: Int) {
             return PartName(match.groupValues[1], index, total)
         }
 
+        /** Nome para mostrar ao usuário: sem o sufixo `.partNNofMM` (se não for nome de parte, volta como veio). */
+        fun displayName(fileName: String?): String? = parse(fileName)?.baseName ?: fileName
+
         /** Largura dos números: no mínimo 2 dígitos, ou os dígitos do total se forem mais. */
         fun format(baseName: String, index: Int, total: Int): String {
             val width = maxOf(2, total.toString().length)

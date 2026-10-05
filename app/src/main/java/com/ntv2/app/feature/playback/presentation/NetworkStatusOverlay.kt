@@ -31,6 +31,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.multipart.PartStatus
+import com.ntv2.app.core.multipart.PartsSnapshot
+import com.ntv2.app.core.player.MediaTracksInfo
 import com.ntv2.app.core.player.PlaybackState
 
 /**
@@ -49,7 +52,11 @@ internal fun NetworkStatusOverlay(
     connectionReady: Boolean,
     fileName: String?,
     fileId: Int,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** Filme dividido em partes: mostra a parte atual, o que há à frente e o mapa das partes. */
+    parts: PartsSnapshot? = null,
+    /** Formato real do vídeo e do áudio em uso (lido pelo ExoPlayer). */
+    tracks: MediaTracksInfo = MediaTracksInfo()
 ) {
     BackHandler(enabled = true) { onDismiss() }
 
@@ -107,7 +114,15 @@ internal fun NetworkStatusOverlay(
             }
 
             InfoLine("Velocidade", formatSpeed(speedBytesPerSec))
-            InfoLine("Carregado", loadedText)
+            if (parts != null) {
+                InfoLine("Partes", "${parts.currentPartNumber} de ${parts.partCount}")
+                InfoLine("Parte atual", "${formatBytes(parts.currentPartDownloaded)} / ${formatBytes(parts.currentPartSize)}")
+                InfoLine("À frente", if (parts.aheadBytes > 0L) formatBytes(parts.aheadBytes) else "—")
+                InfoLine("Filme todo", "${formatBytes(parts.downloadedBytes)} / ${formatBytes(parts.totalBytes)}")
+                PartsMap(parts)
+            } else {
+                InfoLine("Carregado", loadedText)
+            }
             // Conexão numa linha só: bolinha + estado · reprodução · buffer.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(connectionColor))
@@ -120,6 +135,9 @@ internal fun NetworkStatusOverlay(
                 )
             }
 
+            VideoInfoTexts.videoLine(tracks)?.let { InfoBlock("Vídeo", it) }
+            VideoInfoTexts.audioLine(tracks)?.let { InfoBlock("Áudio", it) }
+
             Text(
                 fileName ?: "arquivo #$fileId",
                 color = Color(0x66FFFFFF),
@@ -128,6 +146,15 @@ internal fun NetworkStatusOverlay(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+/** Rótulo pequeno e o valor embaixo, em até duas linhas (formatos longos não cabem ao lado do rótulo). */
+@Composable
+private fun InfoBlock(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Text(label, color = Color(0x99FFFFFF), style = MaterialTheme.typography.labelSmall)
+        Text(value, color = Color.White, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -150,3 +177,40 @@ private fun InfoLine(label: String, value: String) {
 
 /** "624 KB/s", "1,4 MB/s". Reusa o formatador de bytes do player. */
 internal fun formatSpeed(bytesPerSec: Long): String = "${formatBytes(bytesPerSec)}/s"
+
+
+/**
+ * Mapa das partes do filme: uma célula por parte (agrupadas se forem muitas), com a atual em destaque.
+ * Legenda curta embaixo para ninguém precisar adivinhar as cores.
+ */
+@Composable
+private fun PartsMap(parts: PartsSnapshot) {
+    val accent = com.ntv2.app.core.ui.BrandColors.Accent
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            parts.groupedCells().forEach { cell ->
+                val color = when (cell.status) {
+                    PartStatus.WATCHED -> accent.copy(alpha = 0.35f)
+                    PartStatus.CURRENT -> Color.White
+                    PartStatus.DOWNLOADED -> accent
+                    PartStatus.PARTIAL -> accent.copy(alpha = 0.25f + 0.5f * cell.fraction)
+                    PartStatus.PENDING -> Color(0x22FFFFFF)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .size(width = 1.dp, height = 9.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(color)
+                )
+            }
+        }
+        Text(
+            "branca = lendo · verde = baixada · apagada = já assistida",
+            color = Color(0x80FFFFFF),
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}

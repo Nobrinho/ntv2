@@ -26,6 +26,10 @@ import androidx.media3.extractor.TrackOutput
  * como HEVC para o resto do pipeline. Aparelhos com DV real continuam usando o decodificador DV.
  */
 object DolbyVisionFallback {
+    /** Perfil DV cuja camada base foi aplicada na trilha em reprodução (null = nenhuma); a tela mostra isso. */
+    @Volatile
+    var appliedProfile: Int? = null
+
     /** Perfil DV lido de `dvhe.07.06` / `dvh1.07.06`; null se não for um codec DV. */
     fun dolbyVisionProfile(codecs: String?): Int? {
         if (codecs == null) return null
@@ -113,6 +117,7 @@ internal class FallbackTrackOutput(
             runCatching {
                 android.util.Log.i("NtvPlayer", "Dolby Vision ${format.codecs} sem decodificador: tocando a camada base HEVC")
             }
+            DolbyVisionFallback.appliedProfile = DolbyVisionFallback.dolbyVisionProfile(format.codecs)
             DolbyVisionFallback.baseLayerFormat(format)
         } else {
             format

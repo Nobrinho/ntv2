@@ -33,7 +33,9 @@ class GrowingFileDataSourceFactory(
     /** false enquanto o TDLib reconecta: esse tempo não conta como download travado. */
     private val isNetworkReady: () -> Boolean = { true },
     /** Filmes divididos em partes: quando presente, `tgfile://multi/<id>` toca as partes como um arquivo só. */
-    private val partsLookup: PartsLookup? = null
+    private val partsLookup: PartsLookup? = null,
+    /** Recebe a parte que o player está lendo (a tela mostra "Parte 5/12"). */
+    private val partsPlaybackState: com.ntv2.app.core.multipart.MultiPartPlaybackState? = null
 ) : DataSource.Factory {
 
     // Dimensionamento por vídeo (bitrate), definido pelo coordinator ao preparar.
@@ -56,7 +58,8 @@ class GrowingFileDataSourceFactory(
                 partsLookup = lookup,
                 accessor = partialFileAccessor,
                 openPart = ::newSingleFileDataSource,
-                prefetchAheadBytes = { firstFileId -> (profiles[firstFileId]?.aheadWindowBytes ?: readAheadBytes) }
+                prefetchAheadBytes = { firstFileId -> (profiles[firstFileId]?.aheadWindowBytes ?: readAheadBytes) },
+                playbackState = partsPlaybackState
             )
         )
     }

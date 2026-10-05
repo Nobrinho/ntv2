@@ -712,7 +712,9 @@ fun PlaybackScreen(
                 connectionReady = state.connectionReady,
                 fileName = state.fileName,
                 fileId = fileId,
-                onDismiss = { showNetworkPanel = false; controlsNonce++ }
+                onDismiss = { showNetworkPanel = false; controlsNonce++ },
+                parts = state.snapshot.parts,
+                tracks = state.snapshot.tracks
             )
         }
 

@@ -210,10 +210,20 @@ internal fun AmbientPoster(url: String, title: String, nativeBlur: Boolean, anim
 @Composable
 internal fun LoadingProgress(progress: DownloadProgress?, hint: String?, hintAlign: TextAlign = TextAlign.Center) {
     if (progress != null && progress.downloadedBytes > 0L) {
+        val parts = progress.parts
         val text = buildString {
+            if (parts != null) append("Filme todo: ")
             append(formatBytes(progress.downloadedBytes))
             if (progress.expectedBytes > 0L) append(" de ").append(formatBytes(progress.expectedBytes))
             if (progress.bytesPerSecond > 0L) append(" · ").append(formatBytes(progress.bytesPerSecond)).append("/s")
+        }
+        // Filme dividido: primeiro em que parte está (é o que anda), depois o total do filme.
+        if (parts != null) {
+            Text(
+                PartsTexts.currentPartLine(parts),
+                color = Color(0xFFE6E6E6),
+                style = MaterialTheme.typography.bodySmall
+            )
         }
         Text(text, color = Color(0xFFD0D0D0), style = MaterialTheme.typography.bodySmall)
         if (progress.expectedBytes > 0L) {

@@ -62,7 +62,9 @@ data class PlayerScreenUiState(
 data class DownloadProgress(
     val downloadedBytes: Long,
     val expectedBytes: Long,
-    val bytesPerSecond: Long
+    val bytesPerSecond: Long,
+    /** Filme dividido em partes: em que parte se está (null = arquivo único). */
+    val parts: com.ntv2.app.core.multipart.PartsSnapshot? = null
 )
 
 data class PlayerLoadError(
@@ -178,7 +180,7 @@ class PlayerScreenViewModel(
             val speed = SpeedMeter()
             while (true) {
                 val snap = playbackController.snapshot.value
-                val bps = speed.sample(snap.downloadedBytes, now())
+                val bps = speed.sample(snap.progressBytes, now())
                 val ready = networkReady.value
                 // A velocidade só é exibida no painel de rede: fora dele não recompõe a tela a cada
                 // segundo (pesava no Fire TV durante a reprodução).
@@ -311,14 +313,15 @@ class PlayerScreenViewModel(
         when (action) {
             is PlayerScreenAction.Prepare -> {
                 preparingFileId = action.fileId
-                castFileName = action.fileName
+                castFileName = com.ntv2.app.core.multipart.PartName.displayName(action.fileName)
                 val details = mediaDetailsCache?.get(action.mediaId)
                 _uiState.update {
                     it.copy(
                         title = details?.title ?: action.title,
                         channelName = action.channelName,
                         durationSeconds = action.durationSeconds,
-                        fileName = action.fileName,
+                        // Filme dividido: sem o sufixo `.partNNofMM` (aparece no painel e serve para deduzir o ano).
+                        fileName = com.ntv2.app.core.multipart.PartName.displayName(action.fileName),
                         thumbnailPath = details?.posterPath ?: action.thumbnailPath,
                         statusMessage = "preparando reprodução…",
                         details = details
@@ -576,6 +579,18 @@ class PlayerScreenViewModel(
                     fail(lowStorageError(freeBytes = null, requiredBytes = null))
                     return@launch
                 }
+                if (state is PlaybackState.Error && state.partUnavailable != null) {
+                    val part = state.partUnavailable
+                    fail(
+                        PlayerLoadError(
+                            title = "Parte ${part.part} de ${part.total} indisponível",
+                            message = "Essa parte do filme não está no canal (ou ainda não terminou de ser enviada). " +
+                                "Avise quem postou o filme.",
+                            detail = state.message
+                        )
+                    )
+                    return@launch
+                }
                 if (state is PlaybackState.Error) {
                     fail(
                         PlayerLoadError(
@@ -596,7 +611,9 @@ class PlayerScreenViewModel(
                 val action = stall.tick(
                     nowMs = t,
                     waiting = waiting,
-                    downloadedBytes = snap.downloadedBytes,
+                    // Progresso da parte em leitura (monotônico): num filme dividido o total agregado seria
+                    // mascarado pela pré-carga da parte seguinte.
+                    downloadedBytes = snap.stallBytes,
                     networkReady = networkReady.value,
                     storageBlocked = storage != null,
                     restartAfterMs = STALL_RESTART_MS,
@@ -610,14 +627,15 @@ class PlayerScreenViewModel(
                     continue
                 }
                 val hint = if (!everPlayed && t - startedAt >= SLOW_START_HINT_MS) {
-                    "Este vídeo precisa baixar mais dados antes de começar (índice no fim do arquivo)."
+                    PartsTexts.indexHint(snap.parts)
                 } else null
                 _uiState.update {
                     it.copy(
                         downloadProgress = DownloadProgress(
                             downloadedBytes = snap.downloadedBytes,
                             expectedBytes = snap.expectedBytes ?: 0L,
-                            bytesPerSecond = speed.sample(snap.downloadedBytes, t)
+                            bytesPerSecond = speed.sample(snap.progressBytes, t),
+                            parts = snap.parts
                         ),
                         loadingHint = hint
                     )

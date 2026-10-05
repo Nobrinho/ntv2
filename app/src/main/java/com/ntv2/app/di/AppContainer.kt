@@ -190,6 +190,9 @@ class DefaultAppContainer(
     // Partes dos filmes divididos que o usuário abriu (preenchido ao abrir; lido pelo player).
     private val multiPartRegistry = com.ntv2.app.core.multipart.MultiPartRegistry()
 
+    // Qual parte o player está lendo em cada filme dividido (o data source escreve; o coordinator lê).
+    private val multiPartPlaybackState = com.ntv2.app.core.multipart.MultiPartPlaybackState()
+
     override val partsLookup: com.ntv2.app.core.multipart.PartsLookup get() = multiPartRegistry
 
     override val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer by lazy {
@@ -199,6 +202,7 @@ class DefaultAppContainer(
     private val growingFileDataSourceFactory: GrowingFileDataSourceFactory by lazy {
         GrowingFileDataSourceFactory(
             partsLookup = multiPartRegistry,
+            partsPlaybackState = multiPartPlaybackState,
             partialFileAccessor = telegramPlaybackDataSource,
             stallTimeoutMs = playbackTuning.ioStallTimeoutMs,
             readAheadBytes = playbackTuning.aheadWindowBytes,
@@ -232,7 +236,8 @@ class DefaultAppContainer(
             refreshNetwork = { tdlibPlaybackGateway.refreshNetwork() },
             videoDecoderPolicy = videoDecoderPolicy,
             decoderTroubleMemory = com.ntv2.app.core.player.exoplayer.SharedPrefsDecoderTroubleMemory(appContext),
-            partsLookup = multiPartRegistry
+            partsLookup = multiPartRegistry,
+            partsPlaybackState = multiPartPlaybackState
         )
     }
 

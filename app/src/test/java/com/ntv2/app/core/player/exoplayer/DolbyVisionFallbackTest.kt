@@ -140,4 +140,15 @@ class DolbyVisionFallbackTest {
         override fun seek(position: Long, timeUs: Long) = Unit
         override fun release() = Unit
     }
+
+    @Test
+    fun `fallback registra o perfil dv cuja camada base esta tocando`() {
+        DolbyVisionFallback.appliedProfile = null
+        val saida = SaidaGravadora()
+        FallbackExtractorOutput(saida) { true }.track(1, C.TRACK_TYPE_VIDEO).format(dv("dvhe.07.06"))
+        assertNull(DolbyVisionFallback.appliedProfile)                    // aparelho com DV: não houve fallback
+        FallbackExtractorOutput(saida) { false }.track(2, C.TRACK_TYPE_VIDEO).format(dv("dvhe.07.06"))
+        assertEquals(7, DolbyVisionFallback.appliedProfile)
+        DolbyVisionFallback.appliedProfile = null
+    }
 }

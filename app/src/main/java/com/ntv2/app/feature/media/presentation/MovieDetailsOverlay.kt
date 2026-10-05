@@ -23,6 +23,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
@@ -224,6 +226,18 @@ internal fun MovieDetailsOverlay(
                     Box(modifier = Modifier.matchParentSize().background(
                         Brush.verticalGradient(0f to Color(0x00050505), 0.55f to Color(0x66050505), 1f to Color(0xF2050505))
                     ))
+                    // Pista de que há mais abaixo: some quando a rolagem desce até as recomendações.
+                    if (showRecommendations) {
+                        Row(
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
+                                .graphicsLayer { alpha = (1f - contentScroll.value / 120f).coerceIn(0f, 1f) },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = Color(0xFFB7BBC4), modifier = Modifier.size(20.dp))
+                            Text("Mais abaixo: recomendados", color = Color(0xFFB7BBC4), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                     DetailsInfo(
                         media, details, showCastPhotos, lowRamPlaybackWarnings, animationsEnabled,
                         playFocus, onPlay, onDismiss,
@@ -231,7 +245,7 @@ internal fun MovieDetailsOverlay(
                         // 80% da largura: com 62% os chips e os botões (Continuar + Recomeçar + Voltar)
                         // eram cortados à direita mesmo com espaço sobrando na tela.
                         modifier = Modifier.fillMaxWidth(0.8f).align(Alignment.TopStart)
-                            .padding(start = 48.dp, end = 24.dp, top = 48.dp, bottom = 40.dp),
+                            .padding(start = 48.dp, end = 24.dp, top = 32.dp, bottom = 44.dp),
                         playLoading = playLoading,
                         playFailed = playFailed,
                         onRestart = onRestart,
@@ -498,7 +512,7 @@ private class ScrollOnlyIfHidden(private val marginPx: Float) : BringIntoViewSpe
 }
 
 /** Quanto das recomendações aparece no rodapé da TV antes de rolar: o título e o topo das capas. */
-private val RECOMMENDATIONS_PEEK = 110.dp
+private val RECOMMENDATIONS_PEEK = 170.dp
 
 private fun recommendationsHeading(seedTitle: String) = buildAnnotatedString {
     append("Porque você viu ")

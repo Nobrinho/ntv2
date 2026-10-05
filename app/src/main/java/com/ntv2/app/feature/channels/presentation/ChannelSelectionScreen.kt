@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.channels.presentation
 
+import com.ntv2.app.core.ui.brandBackdrop
 import androidx.compose.runtime.withFrameNanos
 
 import androidx.compose.animation.core.LinearEasing
@@ -133,7 +134,11 @@ fun ChannelSelectionScreen(
 
     val adaptive = rememberAdaptiveLayoutInfo()
     FocusGlideScope(Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize()
+            .background(com.ntv2.app.core.ui.BrandColors.Background)
+            .brandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Gradient)
+    ) {
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
         if (useTvLayout) {
             Row(modifier = Modifier.fillMaxSize()) {

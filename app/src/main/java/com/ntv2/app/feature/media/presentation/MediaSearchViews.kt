@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.media.presentation
 
+import com.ntv2.app.core.ui.brandBackdrop
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -265,7 +266,8 @@ internal fun TvSearchOverlay(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF2000000))
+            .background(com.ntv2.app.core.ui.BrandColors.Background)
+            .brandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Gradient)
             // A biblioteca continua composta por trás: nenhuma direção pode levar o foco para ela.
             .trapFocus()
             .onFocusChanged { overlayHasFocus = it.hasFocus }
@@ -758,7 +760,8 @@ internal fun TouchSearchOverlay(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF101010))
+            .background(com.ntv2.app.core.ui.BrandColors.Background)
+            .brandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Gradient)
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {

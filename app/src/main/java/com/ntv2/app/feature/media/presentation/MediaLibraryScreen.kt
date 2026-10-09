@@ -415,9 +415,8 @@ fun MediaLibraryScreen(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                // Sem o fundo "minimal" (textura ampliada a cada quadro): a raiz já pinta a cor sólida
-                // da marca por baixo e o "minimal" é quase liso — uma camada a menos para a GPU.
                 .drawWithContent { if (!libraryCovered) drawContent() }
+                .brandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Minimal)
         ) {
             // Rail lateral de navegação (logo + ações), estilo TV.
             if (useTvLayout) {

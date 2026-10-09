@@ -57,6 +57,13 @@ class DefaultExoPlayerProvider(
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
+        // Legenda: só português entra sozinha. Sem isso valia a faixa marcada como "padrão" no
+        // arquivo (num MKV do Vingadores era a turca). Legenda "forçada" no idioma do áudio segue valendo.
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setPreferredTextLanguages("pt-BR", "pt", "pob")
+            .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .build()
+
         // Engasgos (nível W/I, tag NtvPlayer) em todos os builds. No debug também o EventLogger
         // completo — mas o nível D dele não aparece no logcat do Fire OS, por isso o StutterLogger.
         player.addAnalyticsListener(StutterLogger)

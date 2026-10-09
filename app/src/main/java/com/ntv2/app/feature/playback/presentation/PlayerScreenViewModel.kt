@@ -597,6 +597,18 @@ class PlayerScreenViewModel(
                     )
                     return@launch
                 }
+                if (state is PlaybackState.Error && state.unsupportedVideo != null) {
+                    val what = state.unsupportedVideo.takeIf { it.isNotEmpty() }?.let { " ($it)" }.orEmpty()
+                    fail(
+                        PlayerLoadError(
+                            title = "Vídeo não suportado neste aparelho",
+                            message = "O decodificador deste aparelho não reproduz este vídeo$what. " +
+                                "Procure outra versão do arquivo, em outro formato ou resolução menor.",
+                            detail = state.message
+                        )
+                    )
+                    return@launch
+                }
                 if (state is PlaybackState.Error) {
                     fail(
                         PlayerLoadError(

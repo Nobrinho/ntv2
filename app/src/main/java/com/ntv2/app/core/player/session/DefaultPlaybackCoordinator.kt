@@ -114,6 +114,9 @@ class DefaultPlaybackCoordinator(
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
+            // O ExoPlayer avisa o erro (onPlayerError) e só depois passa a IDLE: sem isso o Idle
+            // apagava o Error antes de a tela vê-lo, e o usuário ficava parado no pôster.
+            if (playbackState == Player.STATE_IDLE && snapshotState.value.state is PlaybackState.Error) return
             val mapped = when (playbackState) {
                 Player.STATE_IDLE -> PlaybackState.Idle
                 Player.STATE_BUFFERING -> PlaybackState.Buffering
@@ -178,6 +181,7 @@ class DefaultPlaybackCoordinator(
                 PlaybackException.ERROR_CODE_DECODER_INIT_FAILED until PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED
             val isIoError = error.errorCode in
                 PlaybackException.ERROR_CODE_IO_UNSPECIFIED until PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+            var unsupportedVideo: String? = null
             if (player != null && currentMedia != null) {
                 val position = player.currentPosition
                 val action = when {
@@ -191,6 +195,10 @@ class DefaultPlaybackCoordinator(
                     else -> RecoveryAction.GiveUp
                 }
                 if (applyRecovery(action, "erro ${error.errorCodeName} em ${position}ms")) return
+                if (action == RecoveryAction.Unsupported) {
+                    unsupportedVideo = describeVideo((error as? androidx.media3.exoplayer.ExoPlaybackException)?.rendererFormat)
+                    android.util.Log.w("NtvPlayer", "decodificador não reproduz este vídeo ($unsupportedVideo); desistindo")
+                }
             }
             snapshotState.update {
                 it.copy(
@@ -198,7 +206,8 @@ class DefaultPlaybackCoordinator(
                         message = lowStorage?.message ?: partError?.message ?: error.localizedMessage ?: "Falha de reprodução",
                         recoverable = true,
                         lowStorage = lowStorage != null,
-                        partUnavailable = partError
+                        partUnavailable = partError,
+                        unsupportedVideo = unsupportedVideo
                     ),
                     isPlaying = false
                 )
@@ -437,14 +446,15 @@ class DefaultPlaybackCoordinator(
     }
 
     /**
-     * Executa a decisão da [PlayerRecoveryPolicy]. Retorna true se tratou (false = [RecoveryAction.GiveUp],
+     * Executa a decisão da [PlayerRecoveryPolicy]. Retorna true se tratou (false = [RecoveryAction.GiveUp]
+     * ou [RecoveryAction.Unsupported],
      * o chamador mostra o erro; [RecoveryAction.None] conta como tratado). [reason] null = troca planejada
      * de decodificador (janela de software), sem log de falha. Na Main.
      */
     private fun applyRecovery(action: RecoveryAction, reason: String?): Boolean {
         when (action) {
             RecoveryAction.None -> return true
-            RecoveryAction.GiveUp -> return false
+            RecoveryAction.GiveUp, RecoveryAction.Unsupported -> return false
             is RecoveryAction.RestartDecoder -> {
                 action.newBadPositionMs?.let { position ->
                     currentMedia?.mediaId?.let { id -> runCatching { decoderTroubleMemory?.remember(id, position) } }
@@ -479,6 +489,21 @@ class DefaultPlaybackCoordinator(
                 return true
             }
         }
+    }
+
+    /** "VP9 3840×1606" para a mensagem de vídeo não suportado ("" se o formato não veio no erro). */
+    private fun describeVideo(format: Format?): String {
+        if (format == null) return ""
+        val codec = when (format.sampleMimeType) {
+            MimeTypes.VIDEO_VP9 -> "VP9"
+            MimeTypes.VIDEO_H265 -> "HEVC"
+            MimeTypes.VIDEO_H264 -> "H.264"
+            MimeTypes.VIDEO_AV1 -> "AV1"
+            MimeTypes.VIDEO_DOLBY_VISION -> "Dolby Vision"
+            else -> format.sampleMimeType?.substringAfter('/')?.uppercase().orEmpty()
+        }
+        val size = if (format.width > 0 && format.height > 0) "${format.width}×${format.height}" else ""
+        return listOf(codec, size).filter { it.isNotEmpty() }.joinToString(" ")
     }
 
     /**

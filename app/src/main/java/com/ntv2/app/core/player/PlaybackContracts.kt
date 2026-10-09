@@ -26,7 +26,9 @@ sealed interface PlaybackState {
         /** Parou por falta de espaço no aparelho (a tela explica e sugere liberar espaço). */
         val lowStorage: Boolean = false,
         /** Filme dividido: a parte que faltou/falhou (a tela diz qual); null = outro erro. */
-        val partUnavailable: com.ntv2.app.core.multipart.PartUnavailableException? = null
+        val partUnavailable: com.ntv2.app.core.multipart.PartUnavailableException? = null,
+        /** O decodificador do aparelho não reproduz o vídeo (ex.: "VP9 3840×1606"); null = outro erro. */
+        val unsupportedVideo: String? = null
     ) : PlaybackState
 }
 

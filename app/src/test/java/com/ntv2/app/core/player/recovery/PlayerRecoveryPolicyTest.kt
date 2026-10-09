@@ -55,6 +55,31 @@ class PlayerRecoveryPolicyTest {
     }
 
     @Test
+    fun `4K que o hardware recusa sempre no mesmo ponto desiste cedo`() {
+        val p = policy()
+        assertTrue(p.onDecoderError(0L, 7_000_000L, videoHeight = 1606, usingSoftware = false) is RecoveryAction.RestartDecoder)
+        assertTrue(p.onDecoderError(0L, 7_000_000L, videoHeight = 1606, usingSoftware = false) is RecoveryAction.RestartDecoder)
+        assertEquals(RecoveryAction.Unsupported, p.onDecoderError(0L, 7_000_000L, videoHeight = 1606, usingSoftware = false))
+    }
+
+    @Test
+    fun `4K que falha em pontos diferentes continua recriando`() {
+        val p = policy()
+        repeat(4) {
+            val action = p.onDecoderError(it * 60_000L, 7_000_000L, videoHeight = 2160, usingSoftware = false)
+            assertTrue(action is RecoveryAction.RestartDecoder)
+        }
+    }
+
+    @Test
+    fun `ate 1080p falha no mesmo ponto vai para o software em vez de desistir`() {
+        val p = policy()
+        repeat(3) {
+            assertTrue(p.onDecoderError(0L, 7_000_000L, videoHeight = 1080, usingSoftware = false) is RecoveryAction.RestartDecoder)
+        }
+    }
+
+    @Test
     fun `congelamentos esgotados nao fazem nada`() {
         val p = policy()
         repeat(PlayerRecoveryPolicy.MAX_FREEZES) { p.onFreeze(it * 100_000L, 800, usingSoftware = true) }

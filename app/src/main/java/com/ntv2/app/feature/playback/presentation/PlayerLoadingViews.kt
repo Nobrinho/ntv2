@@ -81,13 +81,15 @@ internal fun BoxScope.LoadingStatus(
     label: String,
     progress: DownloadProgress?,
     hint: String?,
-    isTv: Boolean
+    isTv: Boolean,
+    /** Controles abertos: fica abaixo da barra superior (senão cobria os ícones de legenda e opções). */
+    belowTopBar: Boolean = false
 ) {
     if (isTv) {
         Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 32.dp, end = 40.dp)
+                .padding(top = if (belowTopBar) 88.dp else 32.dp, end = 40.dp)
                 // 20% menor, ancorado no canto superior direito.
                 .graphicsLayer {
                     scaleX = 0.8f

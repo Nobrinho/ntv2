@@ -573,6 +573,7 @@ fun PlaybackScreen(
                     animationsEnabled = animationsEnabled,
                     nativeBlurGlow = nativeBlurGlow,
                     verticalAdjustmentEnabled = videoIsFullscreen && !controlsVisible,
+                    controlsVisible = controlsVisible,
                     isTv = adaptive.isTv,
                     onReveal = { reveal() },
                     onSeek = { delta -> seekBy(delta); reveal() },
@@ -858,6 +859,8 @@ internal fun VideoSurface(
     animationsEnabled: Boolean,
     nativeBlurGlow: Boolean,
     verticalAdjustmentEnabled: Boolean,
+    /** Controles abertos: o aviso de carregamento desce para baixo da barra superior. */
+    controlsVisible: Boolean = false,
     isTv: Boolean,
     onReveal: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -935,7 +938,7 @@ internal fun VideoSurface(
             }
             // Spinner + rótulo do estado enquanto prepara/armazena em buffer.
             loadingLabel(playbackState)?.let { label ->
-                LoadingStatus(label, downloadProgress, loadingHint, isTv)
+                LoadingStatus(label, downloadProgress, loadingHint, isTv, belowTopBar = controlsVisible)
             }
             // Feedback central de seek: seta + segundos acumulados.
             if (seekFeedbackMs != 0L) {

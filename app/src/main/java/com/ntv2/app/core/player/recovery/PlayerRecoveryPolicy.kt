@@ -12,6 +12,12 @@ sealed interface RecoveryAction {
     data object GiveUp : RecoveryAction
 
     /**
+     * O hardware falha sempre no mesmo ponto e o vídeo é grande demais para o software (> 1080p):
+     * recriar não adianta. Mostrar o erro já, dizendo que o aparelho não reproduz este vídeo.
+     */
+    data object Unsupported : RecoveryAction
+
+    /**
      * Recriar só o decodificador em [positionMs] (o download segue). [useSoftware] escolhe o
      * decodificador; [skippedMs] > 0 = pulou um trecho que nem o software decodifica;
      * [newBadPositionMs] = ponto de falha do hardware a gravar na memória do vídeo.
@@ -42,6 +48,9 @@ class PlayerRecoveryPolicy {
 
     companion object {
         const val MAX_DECODER_ERRORS = 6
+        /** Falhas seguidas do hardware no mesmo ponto, sem software possível, até desistir. */
+        const val MAX_SAME_SPOT_HW_ERRORS = 3
+        const val SAME_SPOT_MS = 2_000L
         const val DECODER_ERROR_SKIP_MS = 2_000L
         const val MAX_FREEZES = 5
         const val DROP_BURST_COOLDOWN_MS = 30_000L
@@ -52,6 +61,8 @@ class PlayerRecoveryPolicy {
 
     private var mediaId: String? = null
     private var decoderErrors = 0
+    private var lastHwErrorAt: Long? = null
+    private var sameSpotHwErrors = 0
     private var freezes = 0
     private var ioErrors = 0
     private var lastDropBurstAt: Long? = null
@@ -76,6 +87,8 @@ class PlayerRecoveryPolicy {
         if (id == mediaId) return false
         mediaId = id
         decoderErrors = 0
+        lastHwErrorAt = null
+        sameSpotHwErrors = 0
         freezes = 0
         ioErrors = 0
         lastDropBurstAt = null
@@ -92,6 +105,14 @@ class PlayerRecoveryPolicy {
 
     fun onDecoderError(positionMs: Long, durationMs: Long, videoHeight: Int, usingSoftware: Boolean): RecoveryAction {
         if (decoderErrors >= MAX_DECODER_ERRORS) return RecoveryAction.GiveUp
+        // Ex.: VP9 4K que o decodificador do Fire TV recusa logo ao configurar: cada recriação falhava
+        // de novo em 0 ms e o usuário via só o pôster por ~25 s até o limite geral.
+        if (!usingSoftware && !VideoDecoderPolicy.softwareCapable(videoHeight)) {
+            val last = lastHwErrorAt
+            sameSpotHwErrors = if (last != null && kotlin.math.abs(positionMs - last) < SAME_SPOT_MS) sameSpotHwErrors + 1 else 1
+            lastHwErrorAt = positionMs
+            if (sameSpotHwErrors >= MAX_SAME_SPOT_HW_ERRORS) return RecoveryAction.Unsupported
+        }
         decoderErrors++
         val skipMs = if (usingSoftware) DECODER_ERROR_SKIP_MS * decoderErrors else 0L
         val resumeAt = (positionMs + skipMs).let { if (durationMs > 0L) it.coerceAtMost(durationMs - 1_000L) else it }
@@ -137,6 +158,8 @@ class PlayerRecoveryPolicy {
         healthyForMs = if (healthy) healthyForMs + 1_000L else 0L
         if (healthyForMs >= HEALTHY_RESET_MS) {
             decoderErrors = 0
+            lastHwErrorAt = null
+            sameSpotHwErrors = 0
             freezes = 0
             ioErrors = 0
         }

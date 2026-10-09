@@ -117,6 +117,15 @@ fun PlaybackScreen(
     nativeBlurGlow: Boolean = true
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // No Android < 8 os pixels das capas ficam no heap Java, junto do buffer do ExoPlayer: ao entrar
+    // no player, devolve metade do cache de capas (a grade não está visível).
+    val trimContext = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        runCatching {
+            coil.Coil.imageLoader(trimContext).memoryCache
+                ?.trimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     val videoFocusRequester = remember { FocusRequester() }
     val scrubberFocus = remember { FocusRequester() }

@@ -22,6 +22,7 @@ import com.ntv2.app.core.multipart.VirtualFileMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.sample
 import com.ntv2.app.core.multipart.allFileIds
 import com.ntv2.app.core.player.MediaTrackOption
 import com.ntv2.app.core.player.MediaTracksInfo
@@ -55,7 +56,12 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
+// 10 s: cada gravação faz o Room reemitir o histórico e a biblioteca (viva atrás do player) recalcular;
+// a cada 5 s isso disputava CPU com a decodificação no Fire TV. Sair do player sempre salva.
+private const val PROGRESS_SAVE_INTERVAL_MS = 10_000L
+
+/** Intervalo mínimo entre atualizações de bytes baixados no estado do player. */
+private const val FILE_STATE_SAMPLE_MS = 500L
 private const val MB = 1024L * 1024L
 // Vídeo congelado: tocando (áudio/relógio avançando) sem nenhum quadro novo por esse tempo.
 private const val VIDEO_FREEZE_RECOVER_MS = 3_000L
@@ -308,9 +314,16 @@ class DefaultPlaybackCoordinator(
         // Roda na Main (ExoPlayer só pode ser lido na sua thread) e salva periodicamente,
         // para não perder a posição se o app for encerrado.
         progressJob = scope.launch(Dispatchers.Main) {
+            var lastSaved = -1L
             while (true) {
                 kotlinx.coroutines.delay(PROGRESS_SAVE_INTERVAL_MS)
-                persistCurrentProgress(media)
+                // Pausado: salva uma vez (a posição mudou desde o último salvamento) e depois não grava
+                // de novo a mesma posição a cada ciclo.
+                val pos = exoPlayer?.currentPosition ?: continue
+                if (exoPlayer?.isPlaying == true || pos != lastSaved) {
+                    persistCurrentProgress(media)
+                    lastSaved = pos
+                }
             }
         }
     }
@@ -593,7 +606,10 @@ class DefaultPlaybackCoordinator(
         val parts = partsLookup?.partsOf(media.fileId)
         observeJob = scope.launch {
             if (parts == null) {
-                playbackDataSource.observe(media.fileId).collect { fileState ->
+                // O TDLib manda UpdateFile várias vezes por segundo; cada um recriava o estado do player e
+                // recompunha a tela inteira. 2x/s basta para o painel de rede e o watchdog.
+                @OptIn(kotlinx.coroutines.FlowPreview::class)
+                playbackDataSource.observe(media.fileId).sample(FILE_STATE_SAMPLE_MS).collect { fileState ->
                     snapshotState.update {
                         it.copy(
                             downloadedBytes = fileState.downloadedBytes,
@@ -620,11 +636,12 @@ class DefaultPlaybackCoordinator(
         val reading: Flow<Long> = (partsPlaybackState?.currentPart(media.fileId) ?: MutableStateFlow(0)).map { it.toLong() }
         val counter = MonotonicCounter()
         val active = ActivePartCounter()
+        @OptIn(kotlinx.coroutines.FlowPreview::class)
         combine(perPart + reading) { values ->
             val raw = values.take(parts.size)
             val current = values.last().toInt().coerceIn(0, parts.size - 1)
             Triple(MultiPartProgress.snapshot(map, raw, current), counter.feed(raw.sum()), active.feed(current, raw[current]))
-        }.collect { (snapshot, progress, stall) ->
+        }.sample(FILE_STATE_SAMPLE_MS).collect { (snapshot, progress, stall) ->
             snapshotState.update {
                 it.copy(
                     downloadedBytes = snapshot.downloadedBytes,

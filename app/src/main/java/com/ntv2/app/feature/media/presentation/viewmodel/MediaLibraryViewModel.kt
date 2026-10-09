@@ -122,6 +122,9 @@ class MediaLibraryViewModel(
     private var favoriteGenresRaw: List<String?> = emptyList()
     private var historyGenresRaw: List<String?> = emptyList()
     private var watchedIds: Set<String> = emptySet()
+    /** Banners já achados no índice (o histórico reemite a cada gravação; não procurar de novo). */
+    private val knownBackdrops = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     private var favoriteIdsSet: Set<String> = emptySet()
 
     // mediaId -> fileId com pré-download em andamento (cancelado se sair sem assistir).
@@ -1250,25 +1253,33 @@ class MediaLibraryViewModel(
     private fun observeContinueWatching() {
         viewModelScope.launch {
             progressStore.observeHistory().collect { items ->
-                val cont = items.asSequence()
-                    .filter { !it.completed }
-                    .filter { it.lastPositionMs >= PlaybackProgressPolicy.MIN_POSITION_MS }
-                    .filter { it.durationMs <= 0L || it.lastPositionMs < it.durationMs - PlaybackProgressPolicy.END_GUARD_MS }
-                    .take(20)
-                    .map { it.toContinueCard() }
-                    .toList()
-                val history = items.map {
-                    com.ntv2.app.feature.media.presentation.state.HistoryEntryUi(
-                        card = it.toContinueCard(),
-                        completed = it.completed,
-                        updatedAt = it.updatedAt
-                    )
+                // O Room reemite o histórico a cada gravação de progresso (durante a reprodução): montar
+                // os cards fora da Main e só recalcular recomendações quando o conjunto realmente mudar.
+                val (cont, history) = withContext(computeDispatcher) {
+                    items.asSequence()
+                        .filter { !it.completed }
+                        .filter { it.lastPositionMs >= PlaybackProgressPolicy.MIN_POSITION_MS }
+                        .filter { it.durationMs <= 0L || it.lastPositionMs < it.durationMs - PlaybackProgressPolicy.END_GUARD_MS }
+                        .take(20)
+                        .map { it.toContinueCard() }
+                        .toList() to
+                        items.map {
+                            com.ntv2.app.feature.media.presentation.state.HistoryEntryUi(
+                                card = it.toContinueCard(),
+                                completed = it.completed,
+                                updatedAt = it.updatedAt
+                            )
+                        }
                 }
                 _uiState.update { it.copy(continueWatching = cont, history = history) }
                 enrichContinueBackdrops(cont)
-                watchedIds = items.mapTo(HashSet()) { it.mediaId }
-                historyGenresRaw = items.map { it.genres }
-                recomputeRecommendations()
+                val ids = items.mapTo(HashSet()) { it.mediaId }
+                val genres = items.map { it.genres }
+                if (ids != watchedIds || genres != historyGenresRaw) {
+                    watchedIds = ids
+                    historyGenresRaw = genres
+                    recomputeRecommendations()
+                }
             }
         }
     }
@@ -1409,7 +1420,8 @@ class MediaLibraryViewModel(
             posterPath = posterPath,
             fileId = 0,
             progress = progress,
-            backdropPath = mediaDetailsCache.get(mediaId)?.backdropPath?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, "w500") }
+            backdropPath = knownBackdrops[mediaId]
+                ?: mediaDetailsCache.get(mediaId)?.backdropPath?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, "w500") }
         )
     }
 
@@ -1424,6 +1436,7 @@ class MediaLibraryViewModel(
                 val messageId = c.mediaId.substringAfterLast('_').toLongOrNull() ?: continue
                 val url = runCatching { idx.movieByMessage(c.channelId, messageId) }.getOrNull()?.backdropUrl ?: continue
                 found[c.mediaId] = com.ntv2.app.core.ui.tmdbAtWidth(url, "w500")
+                knownBackdrops[c.mediaId] = found.getValue(c.mediaId)
             }
             if (found.isEmpty()) return@launch
             _uiState.update { s ->

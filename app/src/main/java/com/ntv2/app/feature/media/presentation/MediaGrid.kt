@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -215,7 +216,8 @@ internal fun LazyMediaGrid(
             }
             items(
                 items = items,
-                key = { it.mediaId }
+                key = { it.mediaId },
+                contentType = { if (it.posterPath != null) 0 else 1 }
             ) { media ->
                 val requester = focusRequesterFor(media.mediaId)
                 MediaCard(
@@ -400,7 +402,7 @@ internal fun MediaCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     // Com pôster → capa retrato (9:16). Sem pôster (capas ON) → frame 16:9. Capas OFF → placeholder.
-    val cover = if (showCover) (media.posterPath ?: media.thumbnailPath) else null
+    val cover = if (showCover) (media.posterPath ?: media.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null
     val showTitle = !showCover || media.posterPath == null
     // Foco: aro verde (cor de destaque do app) com contorno escuro por dentro, desenhado POR CIMA
     // da capa. Só a borda branca sumia em pôsteres claros e o usuário se perdia.
@@ -416,7 +418,7 @@ internal fun MediaCard(
     Box(
         modifier = modifier
             // Contínuo: sem "salto" de camada ao trocar o foco.
-            .zIndex(focusFraction)
+            .zIndex(if (focused) 1f else 0f)
             // O foco/clique vêm ANTES da escala: assim o "bring into view" da grade usa os limites sem
             // escala e não rola a tela por causa do zoom.
             .onFocusChanged { focused = it.isFocused }
@@ -426,7 +428,7 @@ internal fun MediaCard(
                 scaleX = sc; scaleY = sc
             }
             .clip(RoundedCornerShape(6.dp))
-            .background(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), Color(0x22FFFFFF), focusFraction))
+            .drawBehind { drawRect(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), Color(0x22FFFFFF), focusFraction)) }
             .drawWithContent {
                 drawContent()
                 drawIdleBorder(focusFraction)
@@ -617,7 +619,7 @@ private fun SeriesGridCard(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val cover = if (showCover) series.posterUrl else null
+    val cover = if (showCover) series.posterUrl?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null
     val focusFraction by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
         animationSpec = tween(if (animationsEnabled) 140 else 0),
@@ -625,7 +627,7 @@ private fun SeriesGridCard(
     )
     Box(
         modifier = modifier
-            .zIndex(focusFraction)
+            .zIndex(if (focused) 1f else 0f)
             // O foco/clique vêm ANTES da escala: assim o "bring into view" da grade usa os limites sem
             // escala e não rola a tela por causa do zoom.
             .onFocusChanged { focused = it.isFocused }

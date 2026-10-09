@@ -47,6 +47,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import com.ntv2.app.core.ui.brandBackdrop
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -282,7 +284,8 @@ fun MediaLibraryScreen(
     // prontas antes de rolar). Só dispara quando o conjunto de capas muda.
     val coverContext = LocalContext.current
     val coverUrls = remember(state.items, state.showCovers) {
-        if (state.showCovers) state.items.mapNotNull { it.posterPath ?: it.thumbnailPath } else emptyList()
+        // Mesma URL (w342) que o card vai pedir: senão o cache de disco não casa e baixa duas vezes.
+        if (state.showCovers) state.items.mapNotNull { (it.posterPath ?: it.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } } else emptyList()
     }
     LaunchedEffect(coverUrls) {
         if (coverUrls.isNotEmpty()) com.ntv2.app.core.ui.prefetchCovers(coverContext, coverUrls)
@@ -404,10 +407,17 @@ fun MediaLibraryScreen(
     }
 
     com.ntv2.app.core.ui.FocusGlideScope(Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(com.ntv2.app.core.ui.BrandColors.Background)) {
-        BrandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Minimal)
+    // Overlay opaco por cima (Detalhes, série, busca, histórico): a biblioteca continua composta (estado,
+    // foco de volta), mas não é desenhada — no Fire TV a GPU desenhava as duas telas inteiras a cada quadro.
+    val libraryCovered = detailsMedia != null || searching || seriesDetails != null || showHistory || showMyStuff
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
-        Row(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent { if (!libraryCovered) drawContent() }
+                .brandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Minimal)
+        ) {
             // Rail lateral de navegação (logo + ações), estilo TV.
             if (useTvLayout) {
                 val showingStatus = !state.isLoading && (state.errorMessage != null || state.emptyState != null)

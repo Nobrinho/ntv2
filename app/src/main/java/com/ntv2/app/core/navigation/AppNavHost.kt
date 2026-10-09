@@ -97,7 +97,14 @@ fun AppNavHost(
     // refiltrada/projetada — custo de CPU proporcional ao tamanho).
     val maxRetainedCards = remember(activityManager, lowRamDevice) {
         val memoryClassMb = activityManager?.memoryClass ?: 256
-        if (lowRamDevice || memoryClassMb <= 128) 300 else 1_000
+        // Android < 8 com heap de até 192 MB (Fire TV Stick 4K): as capas vivem no heap Java, então
+        // mantém menos cards em memória.
+        val legacyHeap = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O && memoryClassMb <= 192
+        when {
+            lowRamDevice || memoryClassMb <= 128 -> 300
+            legacyHeap -> 500
+            else -> 1_000
+        }
     }
     var showExitDialog by remember { mutableStateOf(false) }
     // Sinal para a tela de baixo restaurar o foco quando o "Fechar o aplicativo?" é cancelado.
@@ -176,7 +183,11 @@ fun AppNavHost(
    ) {
     NavHost(
         navController = navController,
-        startDestination = RoutePath.LOGIN
+        startDestination = RoutePath.LOGIN,
+        enterTransition = { androidx.compose.animation.EnterTransition.None },
+        exitTransition = { androidx.compose.animation.ExitTransition.None },
+        popEnterTransition = { androidx.compose.animation.EnterTransition.None },
+        popExitTransition = { androidx.compose.animation.ExitTransition.None }
     ) {
         composable(RoutePath.LOGIN) {
             // TV inicia no QR Code; celular inicia no telefone.

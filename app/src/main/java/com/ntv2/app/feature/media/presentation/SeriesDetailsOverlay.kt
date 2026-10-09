@@ -295,7 +295,7 @@ private fun SeriesFilterChips(
 
 @Composable
 private fun SeriesHero(series: SeriesSummary, showCovers: Boolean) {
-    val hero = series.backdropUrl ?: series.posterUrl
+    val hero = (series.backdropUrl ?: series.posterUrl)?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, "w780") }
     if (showCovers && hero != null) {
         AsyncImage(
             model = hero,
@@ -406,7 +406,8 @@ private fun EpisodeRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val thumb = episode.backdropPath ?: episode.posterPath
+        // Miniatura de 132 dp: w300 em vez do banner w1280 (decodificação e upload menores no Fire TV).
+        val thumb = (episode.backdropPath ?: episode.posterPath)?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, "w300") }
         if (showCovers && thumb != null) {
             // Largura fixa: o overlay de progresso usa fillMaxWidth e, sem isso, esticava a caixa até a
             // linha toda, empurrando o texto do episódio para fora (linhas com progresso ficavam sem título).

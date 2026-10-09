@@ -86,10 +86,19 @@ class Ntv2Application : Application(), ImageLoaderFactory {
             // Tempo de carregamento das capas em lotes (logcat, tag NtvCovers).
             .eventListener(com.ntv2.app.core.ui.CoverTimingListener())
             .memoryCache {
-                MemoryCache.Builder(this)
-                    .maxSizePercent(0.25)
-                    .build()
+                MemoryCache.Builder(this).apply {
+                    // Antes do Android 8 os pixels dos bitmaps ficam no heap Java (192 MB no Fire TV),
+                    // junto do buffer do ExoPlayer: 25% disso (~48 MB) gerava GC frequente. Teto fixo.
+                    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+                        maxSizeBytes(24 * 1024 * 1024)
+                    } else {
+                        maxSizePercent(0.25)
+                    }
+                }.build()
             }
+            // No máximo 2 decodificações JPEG ao mesmo tempo: no A53 (4 núcleos) 4 em paralelo
+            // disputavam a CPU com a thread de UI durante a rolagem.
+            .components { add(coil.decode.BitmapFactoryDecoder.Factory(maxParallelism = 2)) }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
@@ -141,7 +150,8 @@ class Ntv2Application : Application(), ImageLoaderFactory {
     // image.tmdb.org e carregavam em fila de 5 em 5. O TMDB usa HTTP/2 (multiplexa numa conexão).
     private fun coverDispatcher() = okhttp3.Dispatcher().apply {
         maxRequests = 64
-        maxRequestsPerHost = 16
+        // Android < 8 (Fire TV de 1ª linha): menos downloads simultâneos para não competir com a UI.
+        maxRequestsPerHost = if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) 8 else 16
     }
 
     /** Prefere endereços IPv4 (evita timeout em redes/emuladores com IPv6 quebrado). */

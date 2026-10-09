@@ -83,7 +83,7 @@ class CoverTimingListener : EventListener {
  * esses dois limites a lista inteira (até mil cards) era reenfileirada a cada mudança de estado e a
  * arte da tela de Detalhes esperava meio minuto atrás dessa fila.
  */
-fun prefetchCovers(context: Context, urls: List<String>, max: Int = 40) {
+fun prefetchCovers(context: Context, urls: List<String>, max: Int = 15) {
     val loader = context.imageLoader
     synchronized(pending) { pending.removeAll { (_, d) -> d.isDisposed } }
     urls.asSequence()

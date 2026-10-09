@@ -28,6 +28,7 @@ fun Modifier.slideInFromRight(visible: Boolean, enabled: Boolean = true): Modifi
     )
     return this.graphicsLayer {
         alpha = progress
+        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
         translationX = (1f - progress) * 76.dp.toPx()
         val scale = 0.96f + 0.04f * progress
         scaleX = scale
@@ -52,6 +53,7 @@ fun Modifier.fadeInUpStaggered(visible: Boolean, index: Int, enabled: Boolean = 
     )
     return this.graphicsLayer {
         alpha = progress
+        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
         translationY = (1f - progress) * 38.dp.toPx()
         val scale = 0.97f + 0.03f * progress
         scaleX = scale

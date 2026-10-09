@@ -73,7 +73,7 @@ fun RailColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Image(
-            painter = painterResource(R.drawable.ic_brand_logo),
+            painter = painterResource(R.drawable.ic_brand_logo_small),
             contentDescription = "NBR Play",
             modifier = Modifier.size(96.dp)
         )

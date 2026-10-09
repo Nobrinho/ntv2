@@ -45,8 +45,9 @@ enum class CardLoadingStyle(val label: String, val description: String) {
     FADE_IN("Fade-in", "Fundo neutro e a capa surgindo aos poucos, sem troca seca."),
     SPINNER("Spinner", "O indicador circular verde no centro do card.");
 
-    /** Precisa aparecer imediatamente (a miniatura do blur-up tem que comecar a baixar ja). */
-    val startsImmediately: Boolean get() = this == BLUR_UP
+    /** Precisa aparecer imediatamente (a miniatura do blur-up tem que comecar a baixar ja). Antes do
+     *  Android 12 não há desfoque e o blur-up vira fundo neutro (sem a 2ª imagem por card). */
+    val startsImmediately: Boolean get() = this == BLUR_UP && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     companion object {
         val DEFAULT = BLUR_UP
@@ -62,15 +63,18 @@ enum class CardLoadingStyle(val label: String, val description: String) {
  */
 fun tinyCoverUrl(cover: String): String = tmdbAtWidth(cover, "w92")
 
+/** Capa de card (grade/busca/trilhas, ~150-240 dp): w342 basta e decodifica bem menos que w780/original. */
+fun gridCoverUrl(cover: String): String = tmdbAtWidth(cover, "w342")
+
 /**
  * Força a largura de uma URL do TMDB. As legendas dos canais às vezes trazem o endereço já com uma
  * largura enorme (w1280 na arte de fundo): pedir uma menor é a diferença entre centenas de KB e
  * algumas dezenas em quem está numa rede ruim. Caminhos locais passam sem alteração.
  */
 fun tmdbAtWidth(url: String, width: String): String =
-    if (url.startsWith("http")) TMDB_WIDTH.replace(url, "/$width/") else url
+    if (url.startsWith("http") && "image.tmdb.org" in url) TMDB_WIDTH.replace(url, "/$width/") else url
 
-private val TMDB_WIDTH = Regex("/w(?:92|154|185|342|500|780|1280)/")
+private val TMDB_WIDTH = Regex("/(?:w(?:45|92|154|185|300|342|500|632|780|1280)|h632|original)/")
 
 @Composable
 fun CardLoadingPlaceholder(
@@ -101,21 +105,22 @@ private val FAKE_POSTER = listOf(Color(0xFF7A4FA3), Color(0xFF2F6FB0), Color(0xF
 
 @Composable
 private fun Shimmer(modifier: Modifier, animate: Boolean, colors: List<Color>) {
-    val progress = if (animate) {
+    // State lido só dentro do drawBehind: anima redesenhando, sem recompor o card a cada quadro.
+    val progress: androidx.compose.runtime.State<Float> = if (animate) {
         rememberInfiniteTransition(label = "shimmer").animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(tween(1_250, easing = LinearEasing)),
             label = "shimmer-progress"
-        ).value
+        )
     } else {
-        0.5f
+        remember { androidx.compose.runtime.mutableFloatStateOf(0.5f) }
     }
     Box(
         modifier = modifier.drawBehind {
             // A faixa clara percorre o card: desloca o gradiente de fora a fora da largura.
             val span = size.width * 2f
-            val start = -span + progress * (size.width + span)
+            val start = -span + progress.value * (size.width + span)
             drawRect(
                 brush = Brush.linearGradient(
                     colors = colors,
@@ -129,19 +134,19 @@ private fun Shimmer(modifier: Modifier, animate: Boolean, colors: List<Color>) {
 
 @Composable
 private fun BreathingGradient(modifier: Modifier, animate: Boolean) {
-    val shift = if (animate) {
+    val shift: androidx.compose.runtime.State<Float> = if (animate) {
         rememberInfiniteTransition(label = "breath").animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(tween(3_200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
             label = "breath-shift"
-        ).value
+        )
     } else {
-        0.5f
+        remember { androidx.compose.runtime.mutableFloatStateOf(0.5f) }
     }
     Box(
         modifier = modifier.drawBehind {
-            val offset = shift * size.minDimension
+            val offset = shift.value * size.minDimension
             drawRect(
                 brush = Brush.linearGradient(
                     colors = listOf(Color(0xFF283242), Color(0xFF3C4A5E), Color(0xFF232C39)),
@@ -174,7 +179,7 @@ private fun FadeIn(modifier: Modifier, animate: Boolean, preview: Boolean) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { this.alpha = alpha }
+                .graphicsLayer { this.alpha = alpha; compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }
                 .background(Brush.linearGradient(FAKE_POSTER))
         )
     }
@@ -205,6 +210,7 @@ private fun BlurUp(modifier: Modifier, animate: Boolean, cover: String?, preview
             )
             return@Box
         }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@Box
         val context = LocalContext.current
         val tiny = remember(cover) { ImageRequest.Builder(context).data(tinyCoverUrl(cover)).build() }
         // API 31+: desfoque real. Abaixo disso a própria ampliação da miniatura já borra.
@@ -244,8 +250,9 @@ fun CoverWithLoading(
         animationSpec = tween(if (animationsEnabled && !fromMemory) 320 else 0),
         label = "cover-alpha"
     )
+    val fadeDone by remember(cover) { androidx.compose.runtime.derivedStateOf { coverAlpha >= 1f } }
     Box(modifier = modifier) {
-        if (showLoading && coverAlpha < 1f) {
+        if (showLoading && !fadeDone) {
             CardLoadingPlaceholder(
                 style = style,
                 modifier = Modifier.fillMaxSize(),
@@ -269,7 +276,7 @@ fun CoverWithLoading(
                     loaded = true
                 }
             },
-            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = coverAlpha }
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = coverAlpha; compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }
         )
         LaunchedEffect(cover, style) {
             if (showLoading) return@LaunchedEffect

@@ -23,3 +23,14 @@ HSPLcom/ntv2/app/core/player/**->**(**)**
 Lcom/ntv2/app/core/player/**;
 HSPLcom/ntv2/app/feature/playback/**->**(**)**
 Lcom/ntv2/app/feature/playback/**;
+
+# Navegação e grades (Fire TV): sem isto a UI do app roda interpretada/JIT até o dexopt em segundo
+# plano, e cada compilação JIT na rolagem custava quadros.
+HSPLcom/ntv2/app/core/ui/**->**(**)**
+Lcom/ntv2/app/core/ui/**;
+HSPLcom/ntv2/app/core/navigation/**->**(**)**
+Lcom/ntv2/app/core/navigation/**;
+HSPLcom/ntv2/app/feature/media/**->**(**)**
+Lcom/ntv2/app/feature/media/**;
+HSPLcoil/**->**(**)**
+Lcoil/**;

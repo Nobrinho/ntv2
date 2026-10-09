@@ -1084,7 +1084,7 @@ internal fun TouchSearchResultsGrid(
     ) {
         items(visibleSeries, key = { "series_${it.tmdbId}" }) { s ->
             SearchCoverCell(
-                cover = if (showCovers) s.posterUrl ?: s.backdropUrl else null,
+                cover = if (showCovers) (s.posterUrl ?: s.backdropUrl)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null,
                 description = s.title,
                 cardLoadingStyle = cardLoadingStyle,
                 animationsEnabled = animationsEnabled,
@@ -1093,7 +1093,7 @@ internal fun TouchSearchResultsGrid(
         }
         items(visibleResults, key = { it.mediaId }) { media ->
             SearchCoverCell(
-                cover = if (showCovers) media.posterPath ?: media.thumbnailPath else null,
+                cover = if (showCovers) (media.posterPath ?: media.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null,
                 description = media.title,
                 cardLoadingStyle = cardLoadingStyle,
                 animationsEnabled = animationsEnabled,
@@ -1251,7 +1251,7 @@ internal fun SearchResultsList(
     ) {
         itemsIndexed(visibleSeries, key = { _, s -> "series_${s.tmdbId}" }) { i, s ->
             TvCoverCell(
-                cover = if (showCovers) s.posterUrl ?: s.backdropUrl else null,
+                cover = if (showCovers) (s.posterUrl ?: s.backdropUrl)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null,
                 title = s.title,
                 modifier = cellModifier(i, "series_${s.tmdbId}"),
                 onClick = { onSeriesSelect(s) }
@@ -1259,7 +1259,7 @@ internal fun SearchResultsList(
         }
         itemsIndexed(visibleResults, key = { _, m -> m.mediaId }) { j, media ->
             TvCoverCell(
-                cover = if (showCovers) media.posterPath ?: media.thumbnailPath else null,
+                cover = if (showCovers) (media.posterPath ?: media.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null,
                 title = media.title,
                 modifier = cellModifier(visibleSeries.size + j, media.mediaId),
                 onClick = { onSelect(media) }
@@ -1338,7 +1338,7 @@ private fun TvCoverCell(
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(Color(0xFF222222))
-            .border(if (focused) 3.dp else 0.dp, if (focused) BRAND_ACCENT else Color.Transparent, shape),
+            .then(if (focused) Modifier.border(3.dp, BRAND_ACCENT, shape) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         if (cover != null) {

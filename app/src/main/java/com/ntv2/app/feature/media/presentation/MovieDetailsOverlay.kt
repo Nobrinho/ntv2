@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -220,14 +221,16 @@ internal fun MovieDetailsOverlay(
                                 .slideInFromRight(backdropLoaded, animationsEnabled)
                         )
                     }
-                    Box(modifier = Modifier.matchParentSize().background(
-                        // Escurece até onde vai a coluna de informações (80% da largura), para o texto
-                        // continuar legível sobre o banner.
-                        Brush.horizontalGradient(0f to Color(0xF2090B0F), 0.6f to Color(0xB3090B0F), 0.95f to Color(0x00090B0F))
-                    ))
-                    Box(modifier = Modifier.matchParentSize().background(
-                        Brush.verticalGradient(0f to Color(0x00090B0F), 0.55f to Color(0x66090B0F), 1f to Color(0xF2090B0F))
-                    ))
+                    // Escurece até onde vai a coluna de informações (80% da largura), para o texto continuar
+                    // legível sobre o banner. Um nó só, com os degradês em cache (antes eram 2 caixas).
+                    Box(modifier = Modifier.matchParentSize().drawWithCache {
+                        val h = Brush.horizontalGradient(0f to Color(0xF2090B0F), 0.6f to Color(0xB3090B0F), 0.95f to Color(0x00090B0F))
+                        val v = Brush.verticalGradient(0f to Color(0x00090B0F), 0.55f to Color(0x66090B0F), 1f to Color(0xF2090B0F))
+                        onDrawBehind {
+                            drawRect(h)
+                            drawRect(v)
+                        }
+                    })
                     // Pista de que há mais abaixo: some quando a rolagem desce até as recomendações.
                     if (showRecommendations) {
                         Row(
@@ -441,7 +444,7 @@ internal fun DetailsInfo(
                             if (c.photoUrl != null) {
                                 val castTiming = imageTiming("elenco#$index", c.photoUrl)
                                 AsyncImage(
-                                    model = c.photoUrl, contentDescription = c.name, contentScale = ContentScale.Crop,
+                                    model = com.ntv2.app.core.ui.tmdbAtWidth(c.photoUrl, "w185"), contentDescription = c.name, contentScale = ContentScale.Crop,
                                     onState = castTiming,
                                     modifier = Modifier.size(64.dp).clip(CircleShape).background(colorForTitle(c.name))
                                 )
@@ -550,7 +553,7 @@ internal fun RecommendationsRow(
 private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
-    val cover = if (showCovers) media.posterPath ?: media.thumbnailPath else null
+    val cover = if (showCovers) (media.posterPath ?: media.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null
     Box(
         modifier = Modifier
             .width(104.dp)

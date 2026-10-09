@@ -107,7 +107,7 @@ internal fun MyListHistoryOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF2090B0F))
+            .background(com.ntv2.app.core.ui.BrandColors.Background)
             .statusBarsPadding()
             .navigationBarsPadding()
             .trapFocus()

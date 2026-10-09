@@ -74,7 +74,7 @@ internal fun MyStuffOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF2090B0F))
+            .background(com.ntv2.app.core.ui.BrandColors.Background)
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 16.dp)

@@ -157,7 +157,9 @@ fun BrandButton(
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .then(
-                if (focused) Modifier.scale(1.03f).shadow(14.dp, BrandShapes.Md, ambientColor = glow, spotColor = glow)
+                if (focused && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    Modifier.scale(1.03f).shadow(14.dp, BrandShapes.Md, ambientColor = glow, spotColor = glow)
+                } else if (focused) Modifier.scale(1.03f)
                 else Modifier
             )
             .clip(BrandShapes.Md)

@@ -213,7 +213,7 @@ internal fun PosterCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
-    val cover = media.posterPath ?: media.thumbnailPath
+    val cover = (media.posterPath ?: media.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) }
     Box(
         modifier = modifier
             .width(width)

@@ -61,7 +61,7 @@ internal fun LibraryStatusPanel(
         verticalArrangement = Arrangement.Center
     ) {
         Image(
-            painter = painterResource(R.drawable.ic_brand_logo),
+            painter = painterResource(R.drawable.ic_brand_logo_small),
             contentDescription = "NBR Play",
             modifier = Modifier.size(120.dp)
         )

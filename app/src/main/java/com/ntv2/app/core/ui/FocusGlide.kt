@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
@@ -172,7 +173,7 @@ internal fun FocusGlideRing(glide: FocusGlideState?) {
     val strokeDp = 3.dp
     val gapDp = 2.dp
     Spacer(
-        modifier = Modifier.fillMaxSize().drawBehind {
+        modifier = Modifier.fillMaxSize().graphicsLayer().drawBehind {
             val (r, radius) = glide.displayed() ?: return@drawBehind
             val a = glide.alpha
             if (a <= 0f) return@drawBehind

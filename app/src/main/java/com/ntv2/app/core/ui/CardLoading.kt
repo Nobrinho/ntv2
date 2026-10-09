@@ -45,6 +45,13 @@ enum class CardLoadingStyle(val label: String, val description: String) {
     FADE_IN("Fade-in", "Fundo neutro e a capa surgindo aos poucos, sem troca seca."),
     SPINNER("Spinner", "O indicador circular verde no centro do card.");
 
+    /**
+     * Placeholder é só um fundo parado (o card já pinta esse fundo): não compor nada nem agendar o
+     * atraso de 180 ms por card. Na rolagem da grade cada card a menos de trabalho conta no Fire TV.
+     */
+    val staticPlaceholder: Boolean
+        get() = this == FADE_IN || (this == BLUR_UP && Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+
     /** Precisa aparecer imediatamente (a miniatura do blur-up tem que comecar a baixar ja). Antes do
      *  Android 12 não há desfoque e o blur-up vira fundo neutro (sem a 2ª imagem por card). */
     val startsImmediately: Boolean get() = this == BLUR_UP && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -252,7 +259,7 @@ fun CoverWithLoading(
     )
     val fadeDone by remember(cover) { androidx.compose.runtime.derivedStateOf { coverAlpha >= 1f } }
     Box(modifier = modifier) {
-        if (showLoading && !fadeDone) {
+        if (showLoading && !fadeDone && !style.staticPlaceholder) {
             CardLoadingPlaceholder(
                 style = style,
                 modifier = Modifier.fillMaxSize(),
@@ -278,7 +285,7 @@ fun CoverWithLoading(
             },
             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = coverAlpha; compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha }
         )
-        LaunchedEffect(cover, style) {
+        if (!style.staticPlaceholder) LaunchedEffect(cover, style) {
             if (showLoading) return@LaunchedEffect
             kotlinx.coroutines.delay(180)
             if (!loaded) showLoading = true

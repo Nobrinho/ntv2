@@ -428,7 +428,11 @@ internal fun MediaCard(
                 scaleX = sc; scaleY = sc
             }
             .clip(RoundedCornerShape(6.dp))
-            .drawBehind { drawRect(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), Color(0x22FFFFFF), focusFraction)) }
+            .drawBehind {
+                if (showTitle || focusFraction > 0f) {
+                    drawRect(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), Color(0x22FFFFFF), focusFraction))
+                }
+            }
             .drawWithContent {
                 drawContent()
                 drawIdleBorder(focusFraction)

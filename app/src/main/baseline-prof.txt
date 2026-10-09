@@ -34,3 +34,8 @@ HSPLcom/ntv2/app/feature/media/**->**(**)**
 Lcom/ntv2/app/feature/media/**;
 HSPLcoil/**->**(**)**
 Lcoil/**;
+
+# Todo o código do app (Macrobenchmark não roda no Fire TV, API 25 < 28): o Compose e as libs
+# trazem os próprios perfis; aqui garantimos que nada do app fique interpretado/JIT.
+HSPLcom/ntv2/app/**->**(**)**
+Lcom/ntv2/app/**;

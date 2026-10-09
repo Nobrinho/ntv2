@@ -118,6 +118,7 @@ class MediaLibraryViewModelTest {
         progressStore = progressStore,
         mediaDetailsCache = com.ntv2.app.feature.media.domain.MediaDetailsCache(),
         ioDispatcher = dispatcher,
+        computeDispatcher = dispatcher,
         maxRetainedItems = maxRetainedItems
     )
 

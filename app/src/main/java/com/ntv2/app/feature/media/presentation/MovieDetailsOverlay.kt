@@ -709,7 +709,7 @@ private fun DetailMetaRow(
     partCount: Int = 1
 ) {
     // Linha 1: informativos (não clicáveis). Linha 2, exclusiva: ano e gêneros (clicáveis).
-    val bullet = Regex("\\s*,\\s*")
+    val bullet = RX_COMMA_SEP
     val genres = details?.genres?.split(',', ';', '/', '•')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -893,3 +893,7 @@ internal fun DetailButton(
         Text(label, color = content, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
+
+
+// Regex compilados uma vez (criar a cada chamada custava CPU no Fire TV, em caminhos por item/página).
+private val RX_COMMA_SEP = Regex("\\s*,\\s*")

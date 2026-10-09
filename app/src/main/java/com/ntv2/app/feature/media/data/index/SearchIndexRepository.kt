@@ -30,6 +30,8 @@ data class IndexMovie(
 ) {
     val searchKey: String = normalizeForIndex(listOfNotNull(title, originalTitle).joinToString(" "))
     val searchWords: Set<String> by lazy { wordsOf(searchKey) }
+    /** Gêneros já normalizados (o filtro não renormaliza a cada busca). */
+    val genreKeys: Set<String> by lazy { genres.mapTo(HashSet()) { normalizeForIndex(it).trim() } }
 }
 
 /** Um episódio do índice (schema v2). Unidade reproduzível: resolve o vídeo por [videoMessageId]. */
@@ -83,6 +85,7 @@ data class IndexSeries(
         }
     )
     val searchWords: Set<String> by lazy { wordsOf(searchKey) }
+    val genreKeys: Set<String> by lazy { genres.mapTo(HashSet()) { normalizeForIndex(it).trim() } }
 }
 
 private data class LoadedIndex(
@@ -96,6 +99,9 @@ private data class LoadedIndex(
     val movieActorKeys: List<Set<String>> by lazy {
         movies.map { m -> m.cast.map { normalizeForIndex(it.name).trim() }.toSet() }
     }
+
+    /** Filme pelo message_id do vídeo (Bot API), montado 1x: evita varrer o catálogo a cada consulta. */
+    val movieByVideoMessage: Map<Long, IndexMovie> by lazy { movies.associateBy { it.videoMessageId } }
 }
 
 /** Situação do índice para a tela de Configurações. */
@@ -343,16 +349,16 @@ class SearchIndexRepository(
     }
 
     /** Busca local por séries: casa título da série, título de episódio ou código SxxExx. */
-    suspend fun searchSeries(channelId: Long, query: String, limit: Int = 60): List<IndexSeries> {
-        val idx = ensureLoaded() ?: return emptyList()
-        if (idx.channelId != channelId) return emptyList()
+    suspend fun searchSeries(channelId: Long, query: String, limit: Int = 60): List<IndexSeries> = withContext(Dispatchers.Default) {
+        val idx = ensureLoaded() ?: return@withContext emptyList()
+        if (idx.channelId != channelId) return@withContext emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
-        if (tokens.isEmpty()) return emptyList()
+        if (tokens.isEmpty()) return@withContext emptyList()
         fun hits(fuzzy: Boolean) = idx.series.asSequence()
             .filter { s -> matchesTokens(s.searchKey, s.searchWords, tokens, fuzzy) }
             .take(limit)
             .toList()
-        return hits(false).ifEmpty { hits(true) }
+        hits(false).ifEmpty { hits(true) }
     }
 
     /**
@@ -370,11 +376,7 @@ class SearchIndexRepository(
         val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext emptyList<IndexMovie>() to emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
         val wanted = genres.map { normalizeForIndex(it).trim() }
-        fun genreOk(have: List<String>): Boolean {
-            if (wanted.isEmpty()) return true
-            val keys = have.map { normalizeForIndex(it).trim() }.toSet()
-            return wanted.all { it in keys }
-        }
+        fun genreOk(keys: Set<String>): Boolean = wanted.isEmpty() || wanted.all { it in keys }
         fun <T> Sequence<T>.cap() = if (tokens.isEmpty()) this else take(limit)
         val actorKey = actor?.let { normalizeForIndex(it).trim() }
         val actorKeys = if (actorKey != null) idx.movieActorKeys else emptyList()
@@ -383,13 +385,13 @@ class SearchIndexRepository(
                 .filter { (i, _) -> actorKey == null || actorKey in actorKeys[i] }
                 .map { it.value }
                 .filter { m ->
-                    matchesTokens(m.searchKey, m.searchWords, tokens, fuzzy) && genreOk(m.genres) &&
+                    matchesTokens(m.searchKey, m.searchWords, tokens, fuzzy) && genreOk(m.genreKeys) &&
                         (years.isEmpty() || m.year?.take(4)?.toIntOrNull() in years)
                 }.cap().toList()
             // Séries não trazem elenco no índice: com filtro de ator não entram.
             val series = (if (actorKey != null) emptySequence() else idx.series.asSequence())
                 .filter { sr ->
-                    matchesTokens(sr.searchKey, sr.searchWords, tokens, fuzzy) && genreOk(sr.genres) &&
+                    matchesTokens(sr.searchKey, sr.searchWords, tokens, fuzzy) && genreOk(sr.genreKeys) &&
                         (years.isEmpty() || sr.year in years)
                 }
                 .cap().toList()
@@ -425,20 +427,21 @@ class SearchIndexRepository(
         val idx = ensureLoaded() ?: return null
         if (idx.channelId != channelId) return null
         // Aceita o id do Bot API (como no índice) ou o do TDLib (deslocado 20 bits, usado nos mediaId).
-        return idx.movies.firstOrNull { it.videoMessageId == messageId || (it.videoMessageId shl 20) == messageId }
+        val byId = idx.movieByVideoMessage
+        return byId[messageId] ?: if (messageId > 0xFFFFF && (messageId and 0xFFFFF) == 0L) byId[messageId shr 20] else null
     }
 
     /** Busca local por título/título original (sem acento/caixa). Vazio se não cobrir o canal. */
-    suspend fun search(channelId: Long, query: String, limit: Int = 60): List<IndexMovie> {
-        val idx = ensureLoaded() ?: return emptyList()
-        if (idx.channelId != channelId) return emptyList()
+    suspend fun search(channelId: Long, query: String, limit: Int = 60): List<IndexMovie> = withContext(Dispatchers.Default) {
+        val idx = ensureLoaded() ?: return@withContext emptyList()
+        if (idx.channelId != channelId) return@withContext emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
-        if (tokens.isEmpty()) return emptyList()
+        if (tokens.isEmpty()) return@withContext emptyList()
         fun hits(fuzzy: Boolean) = idx.movies.asSequence()
             .filter { m -> matchesTokens(m.searchKey, m.searchWords, tokens, fuzzy) }
             .take(limit)
             .toList()
-        return hits(false).ifEmpty { hits(true) }
+        hits(false).ifEmpty { hits(true) }
     }
 }
 

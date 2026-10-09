@@ -397,7 +397,13 @@ class PlayerScreenViewModel(
             val r = castManager?.remote?.value
             if (mediaId != null && r != null && r.positionMs > 0L) {
                 val duration = r.durationMs.takeIf { it > 0L } ?: uiState.value.durationSeconds * 1_000L
-                kotlinx.coroutines.runBlocking { runCatching { progressStore?.onProgress(mediaId, r.positionMs, duration) } }
+                // Fora da Main e sem bloquear: o viewModelScope já foi cancelado aqui, e runBlocking
+                // na Main (duas gravações no Room) era risco de ANR.
+                val store = progressStore
+                @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { store?.onProgress(mediaId, r.positionMs, duration) }
+                }
             }
             casting.value = false
             streamServer?.stop()

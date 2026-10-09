@@ -265,7 +265,7 @@ private fun SeriesFilterChips(
     val episodes = series.seasons.sumOf { it.episodes.size }
     val quality = series.seasons.asSequence().flatMap { it.episodes.asSequence() }
         .firstNotNullOfOrNull { it.quality?.takeIf { q -> q.isNotBlank() } }
-        ?.trim()?.replace(Regex("\\s*,\\s*"), " • ")
+        ?.trim()?.replace(RX_COMMA_SEP, " • ")
     val genres = series.genres.map { it.trim() }.filter { it.isNotEmpty() }
     if (seasons == 0 && quality == null && series.year == null && genres.isEmpty()) return
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -496,3 +496,7 @@ private fun MediaItemSummary.episodeCode(): String {
     val e = episodeNumber
     return if (s != null && e != null) "S%02dE%02d".format(s, e) else (title.ifBlank { "Episódio" })
 }
+
+
+// Regex compilados uma vez (criar a cada chamada custava CPU no Fire TV, em caminhos por item/página).
+private val RX_COMMA_SEP = Regex("\\s*,\\s*")

@@ -173,8 +173,8 @@ object MovieMetadataParser {
             body.joinToString(" ").trim().ifBlank { null }
         }
 
-        val seasonLabel = get(SEASON_KEYS)?.let { Regex("\\d+").find(it)?.value?.toIntOrNull() }
-        val episodeLabel = get(EPISODE_KEYS)?.let { Regex("\\d+").find(it)?.value?.toIntOrNull() }
+        val seasonLabel = get(SEASON_KEYS)?.let { RX_DIGITS.find(it)?.value?.toIntOrNull() }
+        val episodeLabel = get(EPISODE_KEYS)?.let { RX_DIGITS.find(it)?.value?.toIntOrNull() }
         val code = listOfNotNull(title, freeLines.firstOrNull())
             .firstNotNullOfOrNull { extractEpisodeCode(it) }
         val seasonNumber = seasonLabel ?: code?.first
@@ -183,14 +183,14 @@ object MovieMetadataParser {
         return MovieMeta(
             title = title?.trim()?.ifBlank { null },
             synopsis = synopsis,
-            year = get(YEAR_KEYS)?.let { Regex("\\d{4}").find(it)?.value?.toIntOrNull() },
+            year = get(YEAR_KEYS)?.let { RX_YEAR4.find(it)?.value?.toIntOrNull() },
             director = get(DIRECTOR_KEYS),
             audio = get(AUDIO_KEYS),
             genres = get(GENRE_KEYS),
             originalTitle = get(ORIGINAL_KEYS),
             type = get(TYPE_KEYS),
-            durationMin = get(DURATION_KEYS)?.let { Regex("\\d+").find(it)?.value?.toIntOrNull() },
-            rating = get(RATING_KEYS)?.replace(',', '.')?.let { Regex("\\d+(\\.\\d+)?").find(it)?.value?.toDoubleOrNull() },
+            durationMin = get(DURATION_KEYS)?.let { RX_DIGITS.find(it)?.value?.toIntOrNull() },
+            rating = get(RATING_KEYS)?.replace(',', '.')?.let { RX_DECIMAL.find(it)?.value?.toDoubleOrNull() },
             ageRating = get(AGE_KEYS),
             category = get(CATEGORY_KEYS),
             collection = get(COLLECTION_KEYS),
@@ -242,8 +242,8 @@ object MovieMetadataParser {
         val line = rawLine.trim()
         if (line.isBlank()) return Line.Skip
         val withoutSeparators = line.replace("|", " ").trim()
-        if (withoutSeparators.split(Regex("\\s+")).all { it.startsWith("@") }) return Line.Skip
-        if (withoutSeparators.split(Regex("\\s+")).all { it.startsWith("#") }) return Line.Skip
+        if (withoutSeparators.split(RX_WHITESPACE).all { it.startsWith("@") }) return Line.Skip
+        if (withoutSeparators.split(RX_WHITESPACE).all { it.startsWith("#") }) return Line.Skip
 
         val colon = line.indexOf(':')
         if (colon > 0) {
@@ -265,4 +265,12 @@ object MovieMetadataParser {
 }
 
 internal fun stripAccentsInternal(s: String): String =
-    Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+    Normalizer.normalize(s, Normalizer.Form.NFD).replace(RX_COMBINING_MARKS, "")
+
+
+// Regex compilados uma vez (criar a cada chamada custava CPU no Fire TV, em caminhos por item/página).
+private val RX_COMBINING_MARKS = Regex("\\p{Mn}+")
+private val RX_DECIMAL = Regex("\\d+(\\.\\d+)?")
+private val RX_DIGITS = Regex("\\d+")
+private val RX_WHITESPACE = Regex("\\s+")
+private val RX_YEAR4 = Regex("\\d{4}")

@@ -527,9 +527,9 @@ class RealTdlibGateway(
     /** Heurística: o nome parece de episódio de série (número no início, "Episódio", "EP", "Cap"…). */
     private fun looksLikeEpisode(name: String): Boolean {
         // Número no início: "1. Ausência", "2) ...", "03 - ...".
-        if (Regex("^\\s*\\d{1,3}\\s*[.)\\-]\\s").containsMatchIn(name)) return true
-        val n = Normalizer.normalize(name.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
-        return Regex("epis|\\bep\\b|\\bep\\.?\\s*\\d|\\bcap\\b|capitulo|temporada|\\bs\\d+\\s*e\\d+\\b|\\bt\\d+\\b").containsMatchIn(n)
+        if (RX_NUMBERED_PREFIX.containsMatchIn(name)) return true
+        val n = Normalizer.normalize(name.lowercase(), Normalizer.Form.NFD).replace(RX_COMBINING_MARKS, "")
+        return RX_EPISODE_WORDS.containsMatchIn(n)
     }
 
     /** Casa dois títulos por conjunto de tokens (ignora acentos, [MKV], stopwords e tags técnicas). */
@@ -547,10 +547,10 @@ class RealTdlibGateway(
 
     private fun titleTokens(s: String): Set<String> =
         Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
-            .replace(Regex("\\[.*?\\]|\\(.*?\\)"), " ")
-            .replace(Regex("[^a-z0-9 ]"), " ")
-            .split(Regex("\\s+"))
+            .replace(RX_COMBINING_MARKS, "")
+            .replace(RX_BRACKETED, " ")
+            .replace(RX_NON_ALNUM_SPACE, " ")
+            .split(RX_WHITESPACE)
             .filter { it.length >= 2 && it !in TITLE_STOPWORDS && it !in VIDEO_TECH_TAGS }
             .toSet()
 
@@ -1345,7 +1345,7 @@ internal val VIDEO_EXTENSION_REGEX =
 /** Normaliza para busca: sem acentos e em caixa baixa (para comparar termos de forma tolerante). */
 internal fun normalizeForSearch(raw: String): String =
     java.text.Normalizer.normalize(raw, java.text.Normalizer.Form.NFD)
-        .replace(Regex("\\p{Mn}+"), "")
+        .replace(RX_COMBINING_MARKS, "")
         .lowercase()
 
 /**
@@ -1357,16 +1357,26 @@ internal fun cleanDisplayName(raw: String): String {
     val noExt = VIDEO_EXTENSION_REGEX.replace(raw.trim(), "")
     val spaced = noExt.replace('_', ' ').replace('.', ' ')
     val kept = spaced
-        .split(Regex("\\s+"))
+        .split(RX_WHITESPACE)
         .filter { it.isNotBlank() }
         .filterNot { token ->
             val normalized = token.trim('(', ')', '[', ']', '{', '}').lowercase()
             normalized in VIDEO_TECH_TAGS
         }
     return kept.joinToString(" ")
-        .replace(Regex("\\(\\s*\\)|\\[\\s*\\]"), "")
-        .replace(Regex("\\s+"), " ")
+        .replace(RX_EMPTY_BRACKETS, "")
+        .replace(RX_WHITESPACE, " ")
         .trim()
         .trim('-', '|', '•', '_', ' ')
         .trim()
 }
+
+
+// Regex compilados uma vez (criar a cada chamada custava CPU no Fire TV, em caminhos por item/página).
+private val RX_BRACKETED = Regex("\\[.*?\\]|\\(.*?\\)")
+private val RX_COMBINING_MARKS = Regex("\\p{Mn}+")
+private val RX_EMPTY_BRACKETS = Regex("\\(\\s*\\)|\\[\\s*\\]")
+private val RX_EPISODE_WORDS = Regex("epis|\\bep\\b|\\bep\\.?\\s*\\d|\\bcap\\b|capitulo|temporada|\\bs\\d+\\s*e\\d+\\b|\\bt\\d+\\b")
+private val RX_NON_ALNUM_SPACE = Regex("[^a-z0-9 ]")
+private val RX_NUMBERED_PREFIX = Regex("^\\s*\\d{1,3}\\s*[.)\\-]\\s")
+private val RX_WHITESPACE = Regex("\\s+")

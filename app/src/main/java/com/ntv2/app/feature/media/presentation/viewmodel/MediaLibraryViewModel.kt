@@ -88,6 +88,9 @@ sealed interface MediaLibraryAction {
 /** Teto padrão de cards mantidos por canal (o AppNavHost ajusta por aparelho; ver loadPrevious). */
 private const val MAX_RETAINED_ITEMS = 1_000
 
+/** Espera antes de recalcular as recomendações (agrupa disparos seguidos). */
+private const val RECOMMEND_DEBOUNCE_MS = 250L
+
 class MediaLibraryViewModel(
     private val mediaRepository: MediaRepository,
     private val channelRepository: ChannelRepository,
@@ -102,6 +105,8 @@ class MediaLibraryViewModel(
     // Índice de busca (canal rico) para busca local instantânea; null = sem índice.
     private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    // Trabalho de CPU que cresce com o catálogo (mapear/ordenar/deduplicar): nunca na Main.
+    private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
     // Pré-download do início do vídeo na tela de Detalhes (null = desligado, ex.: testes).
     private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null,
     // Teto de cards mantidos por canal (menor só nos testes, para exercitar o descarte/volta).
@@ -549,8 +554,10 @@ class MediaLibraryViewModel(
                 }
                 return@launch
             }
-            val series = runCatching { idx.allSeries(channelId) }.getOrDefault(emptyList())
-                .map { it.toSeriesSummary(channelId, channelTitle) }
+            val series = withContext(computeDispatcher) {
+                runCatching { idx.allSeries(channelId) }.getOrDefault(emptyList())
+                    .map { it.toSeriesSummary(channelId, channelTitle) }
+            }
             val (genres, years) = runCatching { idx.filterOptions(channelId) }.getOrDefault(emptyList<String>() to emptyList())
             if (_uiState.value.activeChannelId != channelId) return@launch
             _uiState.update {
@@ -848,17 +855,20 @@ class MediaLibraryViewModel(
         movies: List<com.ntv2.app.feature.media.data.index.IndexMovie>,
         seriesHits: List<com.ntv2.app.feature.media.data.index.IndexSeries>
     ) {
-        val summaries = dedupByKey(movies.map { it.toSummary(activeId, title) }).newestFirst()
-        val series = seriesHits.map { it.toSeriesSummary(activeId, title) }
-        val episodeIds = series.flatMap { s -> s.seasons.flatMap { it.episodes.map { e -> e.mediaId } } }
+        // Busca só por filtro devolve o catálogo inteiro: montar/ordenar fora da Main (ANR no Fire TV).
+        val (summaries, series, episodeIds) = withContext(computeDispatcher) {
+            val sums = dedupByKey(movies.map { it.toSummary(activeId, title) }).newestFirst()
+            val ser = seriesHits.map { it.toSeriesSummary(activeId, title) }
+            Triple(sums, ser, ser.flatMap { s -> s.seasons.flatMap { it.episodes.map { e -> e.mediaId } } })
+        }
         val saved = withContext(ioDispatcher) {
             progressStore.savedPositions(summaries.map { it.mediaId } + episodeIds)
         }
-        val epProgress = episodeIds.associateWith { id ->
+        val (epProgress, cards) = withContext(computeDispatcher) {
             // saved traz posição em ms; sem duração aqui, tratamos >0 como "iniciado".
-            if ((saved[id] ?: 0L) > 0L) 0.01f else 0f
+            episodeIds.associateWith { id -> if ((saved[id] ?: 0L) > 0L) 0.01f else 0f } to
+                summaries.map { it.toCard(saved[it.mediaId] ?: 0L) }
         }
-        val cards = summaries.map { it.toCard(saved[it.mediaId] ?: 0L) }
         var stored = false
         _uiState.update { current ->
             if (current.searchQuery.trim() != query || current.searchFilters != filters) current
@@ -890,7 +900,8 @@ class MediaLibraryViewModel(
         viewModelScope.launch {
             val fresh = refreshSearchProgress(s.searchResults, s.searchSeries)
             _uiState.update { current ->
-                if (current.searchResults.map { it.mediaId } != s.searchResults.map { it.mediaId }) current
+                // Mesma lista (referência) que foi atualizada: evita comparar milhares de ids na Main.
+                if (current.searchResults !== s.searchResults) current
                 else current.copy(searchResults = fresh.first, episodeProgress = fresh.second)
             }
             if (shown != null) {
@@ -912,13 +923,14 @@ class MediaLibraryViewModel(
         val episodeIds = series.flatMap { s -> s.seasons.flatMap { it.episodes.map { e -> e.mediaId } } }
         if (cards.isEmpty() && episodeIds.isEmpty()) return cards to emptyMap()
         val saved = withContext(ioDispatcher) { progressStore.savedPositions(cards.map { it.mediaId } + episodeIds) }
-        val fresh = cards.map { card ->
-            val total = card.durationSeconds * 1_000L
-            val pos = saved[card.mediaId] ?: 0L
-            card.copy(progress = if (total > 0L && pos > 0L) (pos.toFloat() / total).coerceIn(0f, 1f) else 0f)
+        return withContext(computeDispatcher) {
+            val fresh = cards.map { card ->
+                val total = card.durationSeconds * 1_000L
+                val pos = saved[card.mediaId] ?: 0L
+                card.copy(progress = if (total > 0L && pos > 0L) (pos.toFloat() / total).coerceIn(0f, 1f) else 0f)
+            }
+            fresh to episodeIds.associateWith { id -> if ((saved[id] ?: 0L) > 0L) 0.01f else 0f }
         }
-        val epProgress = episodeIds.associateWith { id -> if ((saved[id] ?: 0L) > 0L) 0.01f else 0f }
-        return fresh to epProgress
     }
 
     /** Aplica filtros da busca (botão de filtro ou chip dos Detalhes) e refaz a busca, só no canal ativo. */
@@ -1105,8 +1117,10 @@ class MediaLibraryViewModel(
                 }
             }.onSuccess { page ->
                 val existing = channelItems[channelId].orEmpty()
-                val seen = existing.mapTo(HashSet()) { it.mediaId }
-                val merged = dedupByKey(existing + page.items.filter { seen.add(it.mediaId) })
+                val merged = withContext(computeDispatcher) {
+                    val seen = existing.mapTo(HashSet()) { it.mediaId }
+                    dedupByKey(existing + page.items.filter { seen.add(it.mediaId) })
+                }
                 // Teto de memória: grade é não-lazy, então limitamos os itens mantidos, descartando
                 // os mais antigos (do topo) e preservando os recém-carregados (do fim).
                 if (merged.size > maxRetainedItems) {
@@ -1159,11 +1173,13 @@ class MediaLibraryViewModel(
                 }
             }.onSuccess { page ->
                 val existing = channelItems[channelId].orEmpty()
-                val seen = existing.mapTo(HashSet()) { it.mediaId }
-                val newer = page.items.filter { seen.add(it.mediaId) }
+                val (newer, merged) = withContext(computeDispatcher) {
+                    val seen = existing.mapTo(HashSet()) { it.mediaId }
+                    val n = page.items.filter { seen.add(it.mediaId) }
+                    n to dedupByKey(n + existing)
+                }
                 // Nada mais novo: chegou ao início real do canal.
                 if (newer.isEmpty()) headTrimmed -= channelId
-                val merged = dedupByKey(newer + existing)
                 if (merged.size > maxRetainedItems) {
                     val kept = merged.take(maxRetainedItems)
                     channelItems[channelId] = kept
@@ -1211,8 +1227,21 @@ class MediaLibraryViewModel(
                     runCatching { progressStore.savedPositions(listOf(mediaId))[mediaId] }.getOrNull()
                 } ?: 0L
                 val progress = if (totalMs > 0L && savedMs > 0L) (savedMs.toFloat() / totalMs).coerceIn(0f, 1f) else 0f
-                _uiState.update { it.copy(progressOverrides = it.progressOverrides + (mediaId to progress)) }
-                projectSections()
+                // Só o card que mudou: reprojetar a grade inteira (até 1000 cards + leitura de todo o
+                // progresso) a cada gravação pesava na Main do Fire TV.
+                _uiState.update { st ->
+                    fun List<MediaCardUi>.patched() =
+                        if (none { it.mediaId == mediaId }) this
+                        else map { if (it.mediaId == mediaId) it.copy(progress = progress) else it }
+                    st.copy(
+                        progressOverrides = st.progressOverrides + (mediaId to progress),
+                        items = st.items.patched(),
+                        sections = st.sections.map { sec ->
+                            val p = sec.items.patched()
+                            if (p === sec.items) sec else sec.copy(items = p)
+                        }
+                    )
+                }
             }
         }
     }
@@ -1253,28 +1282,36 @@ class MediaLibraryViewModel(
             if (_uiState.value.recommendations.isNotEmpty()) _uiState.update { it.copy(recommendations = emptyList()) }
             return
         }
-        // Filmes (episódios NÃO entram soltos) + séries (uma por card, pôster único, como na grade).
-        val movies = channelOrder.flatMap { channelItems[it].orEmpty() }
-            .filter { it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
+        // Só referências na Main (listas imutáveis); achatar/filtrar o catálogo vai para Default.
+        val pages = channelOrder.map { channelItems[it].orEmpty() }
         val series = _uiState.value.series
-        if (movies.isEmpty() && series.isEmpty()) {
-            if (_uiState.value.recommendations.isNotEmpty()) _uiState.update { it.copy(recommendations = emptyList()) }
-            return
-        }
-        val exclude = favoriteIdsSet + watchedIds
+        val favs = favoriteIdsSet
+        val watched = watchedIds
         val day = java.time.LocalDate.now().toEpochDay() // varia por dia, estável durante o dia
         recommendJob?.cancel()
         recommendJob = viewModelScope.launch {
+            // Várias fontes disparam em sequência (histórico, favoritos, página): espera assentar.
+            delay(RECOMMEND_DEBOUNCE_MS)
+            // Filmes (episódios NÃO entram soltos) + séries (uma por card, pôster único, como na grade).
+            val movies = withContext(computeDispatcher) {
+                pages.flatten().filter { it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
+            }
+            if (movies.isEmpty() && series.isEmpty()) {
+                if (_uiState.value.recommendations.isNotEmpty()) _uiState.update { it.copy(recommendations = emptyList()) }
+                return@launch
+            }
             // Pontuar todo o catálogo é trabalho pesado (parse de gêneros + ordenação): fora da Main.
-            val ids = withContext(Dispatchers.Default) {
+            val ids = withContext(computeDispatcher) {
+                val exclude = favs + watched
                 val movieCandidates = movies.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
                 val seriesCandidates = series.map {
                     RecommendationEngine.Candidate("series_${it.tmdbId}", it.genres.map { g -> g.trim().lowercase() }.toSet())
                 }
                 RecommendationEngine.recommend(taste, movieCandidates + seriesCandidates, exclude = exclude, limit = 20, seed = day)
             }
-            val movieById = movies.associateBy { it.mediaId }
-            val seriesById = series.associateBy { "series_${it.tmdbId}" }
+            val wanted = ids.toHashSet()
+            val movieById = movies.filter { it.mediaId in wanted }.associateBy { it.mediaId }
+            val seriesById = series.filter { "series_${it.tmdbId}" in wanted }.associateBy { "series_${it.tmdbId}" }
             val cards = ids.mapNotNull { id ->
                 seriesById[id]?.toRecommendationCard() ?: movieById[id]?.toCard(0L)
             }
@@ -1436,11 +1473,18 @@ class MediaLibraryViewModel(
     /** Monta as seções (canal ativo) aplicando o filtro de duração e o progresso salvo. */
     private suspend fun computeSections(): List<ChannelMediaSectionUi> {
         val minSeconds = _uiState.value.minDurationMinutes * 60
-        return withContext(ioDispatcher) {
-            val visibleIds = channelOrder.flatMap { id -> channelItems[id].orEmpty().map { it.mediaId } }
-            val savedPositions = progressStore.savedPositions(visibleIds)
-            channelOrder.mapNotNull { id ->
-                val items = channelItems[id] ?: return@mapNotNull null
+        // Cópia na Main: os mapas são mutados aqui (paginação/troca de canal); ler direto deles em
+        // outra thread era condição de corrida.
+        val order = channelOrder.toList()
+        val itemsById = order.associateWith { channelItems[it] }
+        val titles = order.associateWith { channelTitles[it] ?: "" }
+        val more = order.associateWith { (channelCursors[it] ?: 0L) != 0L }
+        val trimmed = headTrimmed.toSet()
+        val visibleIds = itemsById.values.flatMap { list -> list.orEmpty().map { it.mediaId } }
+        val savedPositions = withContext(ioDispatcher) { progressStore.savedPositions(visibleIds) }
+        return withContext(computeDispatcher) {
+            order.mapNotNull { id ->
+                val items = itemsById[id] ?: return@mapNotNull null
                 // Episódios de série não entram na grade de Filmes: vivem na aba Séries.
                 // Duração 0 = desconhecida (MKV enviado como documento): não esconde.
                 val filtered = items.filter {
@@ -1450,10 +1494,10 @@ class MediaLibraryViewModel(
                 if (filtered.isEmpty()) return@mapNotNull null
                 ChannelMediaSectionUi(
                     channelId = id,
-                    channelName = channelTitles[id] ?: "",
+                    channelName = titles[id] ?: "",
                     items = filtered.map { it.toCard(savedPositions[it.mediaId] ?: 0L) },
-                    hasMore = (channelCursors[id] ?: 0L) != 0L,
-                    hasPrevious = id in headTrimmed
+                    hasMore = more[id] ?: false,
+                    hasPrevious = id in trimmed
                 )
             }
         }
@@ -1509,7 +1553,7 @@ class MediaLibraryViewModel(
         val summaries = channelOrder.flatMap { channelItems[it].orEmpty() }
             .filter { it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
         if (summaries.isEmpty()) return emptyList()
-        val ids = withContext(Dispatchers.Default) {
+        val ids = withContext(computeDispatcher) {
             val candidates = summaries.map { RecommendationEngine.Candidate(it.mediaId, RecommendationEngine.parseGenres(it.genres)) }
             RecommendationEngine.recommend(taste, candidates, exclude = setOf(mediaId), limit = limit)
         }

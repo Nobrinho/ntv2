@@ -408,8 +408,8 @@ class SearchIndexRepository(
     }
 
     /** Gêneros (A-Z) e anos (mais recente primeiro) existentes no índice do canal, para o filtro. */
-    suspend fun filterOptions(channelId: Long): Pair<List<String>, List<Int>> {
-        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return emptyList<String>() to emptyList()
+    suspend fun filterOptions(channelId: Long): Pair<List<String>, List<Int>> = withContext(Dispatchers.Default) {
+        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext emptyList<String>() to emptyList()
         val genres = LinkedHashMap<String, String>()
         (idx.movies.flatMap { it.genres } + idx.series.flatMap { it.genres }).forEach { g ->
             val label = g.trim()
@@ -417,7 +417,7 @@ class SearchIndexRepository(
         }
         val years = (idx.movies.mapNotNull { it.year?.take(4)?.toIntOrNull() } + idx.series.mapNotNull { it.year })
             .toSortedSet(compareByDescending { it })
-        return genres.values.sortedBy { normalizeForIndex(it) } to years.toList()
+        genres.values.sortedBy { normalizeForIndex(it) } to years.toList()
     }
 
     /** Filme do índice pelo id da mensagem do vídeo (metadados dos Detalhes de itens fora da grade). */
@@ -458,7 +458,7 @@ private fun JSONObject.cleanString(key: String): String? =
 
 /** Palavras (só letras/dígitos) de uma chave de busca já normalizada. */
 internal fun wordsOf(key: String): Set<String> =
-    key.split(Regex("[^a-z0-9]+")).filterTo(HashSet()) { it.isNotEmpty() }
+    key.split(NON_WORD).filterTo(HashSet()) { it.isNotEmpty() }
 
 /**
  * Todas as palavras da busca precisam casar. Exato: trecho da chave. [fuzzy]: se não for trecho,
@@ -502,7 +502,12 @@ private fun editDistanceAtMost(a: String, b: String, max: Int): Boolean {
     return prev[b.length] <= max
 }
 
+// Compilados uma vez: criar o Regex a cada chamada travava a thread principal no Fire TV (ANR em
+// filterOptions, que normaliza milhares de gêneros).
+private val COMBINING_MARKS = Regex("\\p{Mn}+")
+private val NON_WORD = Regex("[^a-z0-9]+")
+
 internal fun normalizeForIndex(s: String): String =
     Normalizer.normalize(s, Normalizer.Form.NFD)
-        .replace(Regex("\\p{Mn}+"), "")
+        .replace(COMBINING_MARKS, "")
         .lowercase()

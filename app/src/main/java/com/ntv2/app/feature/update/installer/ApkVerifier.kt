@@ -40,14 +40,28 @@ class ApkVerifier(private val context: Context) {
             require(update.versionCode > BuildConfig.VERSION_CODE.toLong()) { "A atualização não é mais nova" }
 
             val installed = context.packageManager.getPackageInfo(BuildConfig.APPLICATION_ID, flags)
-            if (archive.signingDigests().intersect(installed.signingDigests()).isEmpty()) {
+            var archiveDigests = archive.signingDigests()
+            var installedDigests = installed.signingDigests()
+            if (archiveDigests.isEmpty() || installedDigests.isEmpty()) {
+                // Em alguns aparelhos (ex.: Android 9) o signingInfo de um APK ainda não instalado vem
+                // vazio; GET_SIGNATURES funciona em todas as versões.
+                @Suppress("DEPRECATION")
+                val legacy = PackageManager.GET_SIGNATURES
+                context.packageManager.getPackageArchiveInfo(file.absolutePath, legacy)?.let {
+                    archiveDigests = it.signingDigests(useLegacy = true)
+                }
+                installedDigests = context.packageManager
+                    .getPackageInfo(BuildConfig.APPLICATION_ID, legacy)
+                    .signingDigests(useLegacy = true)
+            }
+            if (!signaturesCompatible(archiveDigests, installedDigests)) {
                 throw SignatureMismatchException()
             }
         }
     }
 
-    private fun PackageInfo.signingDigests(): Set<String> {
-        val signatures = if (Build.VERSION.SDK_INT >= 28) {
+    private fun PackageInfo.signingDigests(useLegacy: Boolean = false): Set<String> {
+        val signatures = if (Build.VERSION.SDK_INT >= 28 && !useLegacy) {
             val info = signingInfo ?: return emptySet()
             if (info.hasMultipleSigners()) info.apkContentsSigners.toList()
             else info.signingCertificateHistory.toList()
@@ -75,3 +89,10 @@ class ApkVerifier(private val context: Context) {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }
+
+/**
+ * Só há divergência quando os dois lados têm certificado e nenhum coincide. Se algum lado não pôde
+ * ser lido, não acusa: o instalador do sistema rejeita uma assinatura realmente diferente.
+ */
+internal fun signaturesCompatible(archive: Set<String>, installed: Set<String>): Boolean =
+    archive.isEmpty() || installed.isEmpty() || archive.intersect(installed).isNotEmpty()

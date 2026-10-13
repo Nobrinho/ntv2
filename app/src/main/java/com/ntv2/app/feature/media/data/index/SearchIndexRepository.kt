@@ -453,6 +453,9 @@ class SearchIndexRepository(
      * Não baixa o índice: usa só o que já está em memória (o índice é pré-carregado no início da
      * sessão). Sem índice em memória devolve null e a tela mostra o título em texto.
      */
+    /** O índice do canal já está em memória? (sem baixar nada) */
+    fun loadedFor(channelId: Long): Boolean = cached?.channelId == channelId
+
     fun logoFor(channelId: Long, messageId: Long?, tmdbId: Long?): String? {
         val idx = cached?.takeIf { it.channelId == channelId } ?: return null
         if (messageId != null) {

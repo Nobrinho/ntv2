@@ -125,6 +125,13 @@ class MediaLibraryViewModel(
     /** Banners já achados no índice (o histórico reemite a cada gravação; não procurar de novo). */
     private val knownBackdrops = java.util.concurrent.ConcurrentHashMap<String, String>()
 
+    /** mediaIds em que o logo já foi procurado NO ÍNDICE JÁ CARREGADO (achado ou não): a tela de
+     *  Detalhes recompõe várias vezes e a procura varre os resumos do canal. Só entra aqui quando o
+     *  índice estava em memória — senão a procura não aconteceria de novo depois de ele baixar. */
+    private val logoLookedUp = java.util.Collections.newSetFromMap(
+        java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    )
+
     private var favoriteIdsSet: Set<String> = emptySet()
 
     // mediaId -> fileId com pré-download em andamento (cancelado se sair sem assistir).
@@ -840,7 +847,6 @@ class MediaLibraryViewModel(
             title = title,
             posterUrl = posterUrl,
             backdropUrl = backdropUrl,
-            logoUrl = logoUrl,
             genres = genres,
             year = year,
             seasons = seasons.map { season ->
@@ -1579,7 +1585,10 @@ class MediaLibraryViewModel(
      */
     private fun MovieDetails.withIndexLogo(mediaId: String): MovieDetails {
         val idx = searchIndexRepository ?: return this
+        if (mediaId in logoLookedUp) return this
         val channelId = mediaId.substringBeforeLast('_').toLongOrNull() ?: return this
+        if (!idx.loadedFor(channelId)) return this
+        logoLookedUp += mediaId
         val summary = channelItems[channelId].orEmpty().firstOrNull { it.mediaId == mediaId }
         val logo = runCatching {
             idx.logoFor(

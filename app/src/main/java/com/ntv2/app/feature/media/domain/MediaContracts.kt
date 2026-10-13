@@ -72,7 +72,6 @@ data class SeriesSummary(
     val title: String,
     val posterUrl: String?,
     val backdropUrl: String?,
-    val logoUrl: String? = null,
     val genres: List<String>,
     val seasons: List<SeasonSummary>,
     /** Ano da série (do 1º episódio com data), se o índice trouxer. */

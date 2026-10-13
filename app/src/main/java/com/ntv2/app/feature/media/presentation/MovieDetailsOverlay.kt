@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
@@ -585,8 +586,9 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
 /**
  * Título do filme/série: quando o índice/legenda traz o logo (PNG transparente do TMDB), mostra a
  * arte; sem logo — ou se a imagem falhar — cai no título em texto, que é o comportamento antigo.
- * A altura é limitada em dp (e não a largura) porque os logos variam muito de proporção: travar a
- * altura mantém todos com o mesmo peso visual na coluna.
+ * A altura é fixa em dp (e não a largura) porque os logos variam muito de proporção: travar a
+ * altura mantém todos com o mesmo peso visual na coluna. Fixa, e não máxima, para o espaço já estar
+ * reservado enquanto a imagem carrega — com heightIn a coluna pulava quando o logo chegava.
  */
 @Composable
 private fun DetailTitle(title: String, logo: String?) {
@@ -602,7 +604,7 @@ private fun DetailTitle(title: String, logo: String?) {
         contentScale = ContentScale.Fit,
         alignment = Alignment.CenterStart,
         onState = { if (it is coil.compose.AsyncImagePainter.State.Error) failed = true },
-        modifier = Modifier.heightIn(max = 76.dp).widthIn(max = 320.dp)
+        modifier = Modifier.height(76.dp).widthIn(max = 320.dp)
     )
 }
 

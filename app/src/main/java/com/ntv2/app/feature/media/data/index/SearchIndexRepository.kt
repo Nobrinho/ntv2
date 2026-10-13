@@ -105,6 +105,14 @@ private data class LoadedIndex(
 
     /** Filme pelo message_id do vídeo (Bot API), montado 1x: evita varrer o catálogo a cada consulta. */
     val movieByVideoMessage: Map<Long, IndexMovie> by lazy { movies.associateBy { it.videoMessageId } }
+
+    /** Logo por tmdb_id (filmes e séries), montado 1x: a grade vem do TDLib e resolve o logo por aqui. */
+    val logoByTmdb: Map<Long, String> by lazy {
+        buildMap {
+            movies.forEach { m -> m.logoUrl?.let { put(m.tmdbId, it) } }
+            series.forEach { sr -> sr.logoUrl?.let { put(sr.tmdbId, it) } }
+        }
+    }
 }
 
 /** Situação do índice para a tela de Configurações. */
@@ -435,6 +443,25 @@ class SearchIndexRepository(
         // Aceita o id do Bot API (como no índice) ou o do TDLib (deslocado 20 bits, usado nos mediaId).
         val byId = idx.movieByVideoMessage
         return byId[messageId] ?: if (messageId > 0xFFFFF && (messageId and 0xFFFFF) == 0L) byId[messageId shr 20] else null
+    }
+
+    /**
+     * Logo do título para um item que NÃO veio do índice (a grade e a busca do TDLib vêm das legendas
+     * do canal, que não trazem o logo). Tenta pelo message_id do vídeo e, se não achar, pelo tmdb_id
+     * — que também cobre episódio, cujo logo é o da série.
+     *
+     * Não baixa o índice: usa só o que já está em memória (o índice é pré-carregado no início da
+     * sessão). Sem índice em memória devolve null e a tela mostra o título em texto.
+     */
+    fun logoFor(channelId: Long, messageId: Long?, tmdbId: Long?): String? {
+        val idx = cached?.takeIf { it.channelId == channelId } ?: return null
+        if (messageId != null) {
+            val byId = idx.movieByVideoMessage
+            val filme = byId[messageId]
+                ?: if (messageId > 0xFFFFF && (messageId and 0xFFFFF) == 0L) byId[messageId shr 20] else null
+            filme?.logoUrl?.let { return it }
+        }
+        return tmdbId?.let { idx.logoByTmdb[it] }
     }
 
     /** Busca local por título/título original (sem acento/caixa). Vazio se não cobrir o canal. */

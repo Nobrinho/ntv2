@@ -1565,7 +1565,31 @@ class MediaLibraryViewModel(
     }
 
     /** Detalhes ricos para a tela de Detalhes (lidos do cache por mediaId). */
-    fun detailsFor(mediaId: String): MovieDetails? = mediaDetailsCache.get(mediaId)
+    fun detailsFor(mediaId: String): MovieDetails? {
+        val details = mediaDetailsCache.get(mediaId) ?: return null
+        return if (details.logoPath != null) details else details.withIndexLogo(mediaId)
+    }
+
+    /**
+     * Item vindo do TDLib (grade, busca por mensagem, recomendados) não tem logo: as legendas do
+     * canal não trazem o campo. Resolve pelo índice AQUI, e não na projeção do card, por duas
+     * razões: a primeira página é projetada antes do índice terminar de baixar (ficaria sem logo
+     * para sempre, porque a grade não é reprojetada), e assim a consulta acontece uma vez por tela
+     * aberta em vez de uma por card.
+     */
+    private fun MovieDetails.withIndexLogo(mediaId: String): MovieDetails {
+        val idx = searchIndexRepository ?: return this
+        val channelId = mediaId.substringBeforeLast('_').toLongOrNull() ?: return this
+        val summary = channelItems[channelId].orEmpty().firstOrNull { it.mediaId == mediaId }
+        val logo = runCatching {
+            idx.logoFor(
+                channelId = channelId,
+                messageId = mediaId.substringAfterLast('_').toLongOrNull(),
+                tmdbId = summary?.seriesTmdbId ?: summary?.tmdbId?.toLongOrNull()
+            )
+        }.getOrNull() ?: return this
+        return copy(logoPath = logo).also { mediaDetailsCache.put(mediaId, it) }
+    }
 
     /** "Porque você viu X": recomendações pelos gêneros DESTE título, dentro do catálogo do canal. */
     suspend fun recommendationsFor(mediaId: String, limit: Int = 12): List<MediaCardUi> {

@@ -614,7 +614,7 @@ class DefaultPlaybackCoordinator(
     }
 
     override fun discardMedia(fileId: Int) {
-        if (fileId <= 0) return
+        if (fileId <= 0 || isActiveFile(fileId)) return
         scope.launch { partsLookup.allFileIds(fileId).forEach { playbackDataSource.deleteFile(it) } }
     }
 
@@ -624,6 +624,27 @@ class DefaultPlaybackCoordinator(
         exoPlayer?.release()
         exoPlayer = null
         snapshotState.value = PlaybackSnapshot()
+    }
+
+    override fun releaseIfOwner(fileId: Int) {
+        if (!SessionOwnership.mayRelease(activeFileId = currentMedia?.fileId, ownerFileId = fileId)) return
+        release()
+    }
+
+    override suspend fun releasePrevious(nextFileId: Int) {
+        val media = currentMedia
+        if (media != null && SessionOwnership.isSwitch(activeFileId = media.fileId, nextFileId = nextFileId)) {
+            android.util.Log.i("NtvPlayer", "troca de vídeo: apagando fileId=${media.fileId} antes de abrir $nextFileId")
+            stopInternal(closeSession = true, deleteFile = true)
+        }
+        // Também espera a remoção pedida pelo release() da tela anterior, se ainda estiver rodando.
+        cleanupJob?.join()
+    }
+
+    /** [fileId] pertence ao vídeo em reprodução (inclui as partes de um filme dividido). */
+    private fun isActiveFile(fileId: Int): Boolean {
+        val media = currentMedia ?: return false
+        return fileId in partsLookup.allFileIds(media.fileId)
     }
 
     private fun observeFileState(media: PlaybackMedia) {
@@ -833,4 +854,15 @@ class DefaultPlaybackCoordinator(
             )
         }
     }
+}
+
+/** Regras de posse da sessão do player na troca de vídeo (a tela antiga morre depois da nova começar). */
+internal object SessionOwnership {
+    /** A tela do vídeo [ownerFileId] só encerra a sessão se ela ainda for dela (ou se não houver sessão). */
+    fun mayRelease(activeFileId: Int?, ownerFileId: Int): Boolean =
+        activeFileId == null || activeFileId == ownerFileId
+
+    /** Abrir [nextFileId] com outro vídeo ativo é troca: o anterior deve ser apagado antes. */
+    fun isSwitch(activeFileId: Int?, nextFileId: Int): Boolean =
+        activeFileId != null && activeFileId != nextFileId
 }

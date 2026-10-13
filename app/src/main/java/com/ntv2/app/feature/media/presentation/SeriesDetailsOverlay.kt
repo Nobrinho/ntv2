@@ -82,8 +82,8 @@ internal fun SeriesDetailsOverlay(
     series: SeriesSummary,
     episodeProgress: Map<String, Float>,
     showCovers: Boolean,
-    // (episódio, próximo da série ou null) — o próximo alimenta o autoplay no player.
-    onPlayEpisode: (MediaItemSummary, MediaItemSummary?) -> Unit,
+    // (episódio, seguintes da série em ordem) — alimentam o autoplay encadeado no player.
+    onPlayEpisode: (MediaItemSummary, List<MediaItemSummary>) -> Unit,
     onClose: () -> Unit,
     onFilterClick: (SearchFilter) -> Unit = {}
 ) {
@@ -98,9 +98,9 @@ internal fun SeriesDetailsOverlay(
         seasons.sortedBy { it.number }.flatMap { s -> s.episodes.sortedBy { it.episodeNumber } }
     }
     val nextEpisode = ordered.firstOrNull { (episodeProgress[it.mediaId] ?: 0f) <= 0f } ?: ordered.firstOrNull()
-    fun successorOf(ep: MediaItemSummary): MediaItemSummary? {
+    fun followingOf(ep: MediaItemSummary): List<MediaItemSummary> {
         val i = ordered.indexOfFirst { it.mediaId == ep.mediaId }
-        return if (i in 0 until ordered.lastIndex) ordered[i + 1] else null
+        return if (i >= 0) ordered.drop(i + 1) else emptyList()
     }
 
     val playFocus = remember { FocusRequester() }
@@ -148,7 +148,7 @@ internal fun SeriesDetailsOverlay(
                                 if (hasSeasonRow) down = seasonsFocus
                                 if (episodes.isNotEmpty()) right = listFocus
                             },
-                            onClick = { onPlayEpisode(ep, successorOf(ep)) }
+                            onClick = { onPlayEpisode(ep, followingOf(ep)) }
                         )
                     }
                     SeasonSelector(
@@ -181,7 +181,7 @@ internal fun SeriesDetailsOverlay(
                             showCovers = showCovers,
                             // O 1º item ganha o alvo de foco para o → do painel esquerdo cair aqui.
                             modifier = if (index == 0) Modifier.focusRequester(listFocus) else Modifier,
-                            onClick = { onPlayEpisode(ep, successorOf(ep)) }
+                            onClick = { onPlayEpisode(ep, followingOf(ep)) }
                         )
                     }
                 }
@@ -233,7 +233,7 @@ internal fun SeriesDetailsOverlay(
                                 PlayButton(
                                     label = "Assistir ${ep.episodeCode()}",
                                     focusRequester = playFocus,
-                                    onClick = { onPlayEpisode(ep, successorOf(ep)) }
+                                    onClick = { onPlayEpisode(ep, followingOf(ep)) }
                                 )
                             }
                         }
@@ -242,7 +242,7 @@ internal fun SeriesDetailsOverlay(
                 }
                 items(current?.episodes.orEmpty(), key = { it.mediaId }) { ep ->
                     EpisodeRow(ep, episodeProgress[ep.mediaId] ?: 0f, showCovers) {
-                        onPlayEpisode(ep, successorOf(ep))
+                        onPlayEpisode(ep, followingOf(ep))
                     }
                 }
             }

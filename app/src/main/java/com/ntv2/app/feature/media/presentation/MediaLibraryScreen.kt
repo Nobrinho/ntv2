@@ -944,9 +944,9 @@ fun MediaLibraryScreen(
                 series = series,
                 episodeProgress = state.episodeProgress,
                 showCovers = state.showCovers,
-                onPlayEpisode = { ep, next ->
+                onPlayEpisode = { ep, following ->
                     viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
-                    viewModel.onAction(MediaLibraryAction.OpenEpisode(ep, next))
+                    viewModel.onAction(MediaLibraryAction.OpenEpisode(ep, following))
                 },
                 onFilterClick = { filter ->
                     seriesFromSearch = true

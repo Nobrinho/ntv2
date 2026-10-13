@@ -48,10 +48,10 @@ sealed interface MediaLibraryAction {
     data class VideoFocused(val mediaId: String) : MediaLibraryAction
     data class OpenVideo(val media: MediaCardUi) : MediaLibraryAction
     /** Reproduz um episódio a partir do overlay de série (converte o summary em card e abre).
-     *  [next] = próximo episódio da mesma série, para o autoplay ao terminar o atual. */
+     *  [following] = episódios seguintes da série, em ordem, para o autoplay encadear até o fim. */
     data class OpenEpisode(
         val summary: MediaItemSummary,
-        val next: MediaItemSummary? = null
+        val following: List<MediaItemSummary> = emptyList()
     ) : MediaLibraryAction
     /** Toca do início: apaga o progresso salvo antes de abrir o player. */
     data class RestartVideo(val media: MediaCardUi) : MediaLibraryAction
@@ -131,6 +131,8 @@ class MediaLibraryViewModel(
     private val prefetching = mutableMapOf<String, Int>()
     // Cards do índice (sem fileId) já resolvidos no TDLib: reaproveitados ao apertar Assistir.
     private val resolvedVideos = mutableMapOf<String, MediaItemSummary>()
+    // Resolução da cadeia de autoplay da série aberta; trocada ao abrir outro episódio.
+    private var upNextJob: Job? = null
     private var detailsOpenMediaId: String? = null
     // Resolução do fileId (card do índice) em andamento; cancelada se os Detalhes fecharem antes.
     private var openVideoJob: Job? = null
@@ -327,7 +329,7 @@ class MediaLibraryViewModel(
             is MediaLibraryAction.OpenEpisode -> {
                 val saved = _uiState.value.episodeProgress[action.summary.mediaId] ?: 0f
                 openVideo(action.summary.toCard(0L).copy(progress = saved))
-                registerUpNext(action.summary.mediaId, action.next)
+                registerUpNext(action.summary.mediaId, action.following)
             }
             is MediaLibraryAction.RestartVideo -> {
                 prefetching.remove(action.media.mediaId)
@@ -724,37 +726,42 @@ class MediaLibraryViewModel(
         }
     }
 
-    /** Resolve o vídeo do próximo episódio no TDLib e o registra na fila de autoplay, sob a chave
-     *  do episódio atual. Sem próximo (fim da série) ou sem fila, não faz nada. */
-    private fun registerUpNext(currentMediaId: String, next: MediaItemSummary?) {
+    /**
+     * Registra na fila de autoplay a série a partir do episódio atual: cada episódio aponta para o
+     * seguinte (resolvidos no TDLib em ordem), para o autoplay seguir além do 1º episódio. Para no
+     * primeiro que não resolver; o último fica sem próximo.
+     */
+    private fun registerUpNext(currentMediaId: String, following: List<MediaItemSummary>) {
         val queue = upNextQueue ?: return
-        if (next == null) {
+        upNextJob?.cancel()
+        if (following.isEmpty()) {
             queue.clear(currentMediaId)
             return
         }
-        val messageId = next.mediaId.substringAfterLast('_').toLongOrNull() ?: return
-        viewModelScope.launch {
-            val resolved = resolvedVideos[next.mediaId] ?: withContext(ioDispatcher) {
-                runCatching { mediaRepository.getVideoByMessage(next.channelId, next.channelTitle, messageId) }.getOrNull()
-            } ?: return@launch
-            if (resolved.fileId == 0) return@launch
-            // Episódio dividido em partes: sem as partes registradas o autoplay tocaria só a 1ª.
-            val nextMessageId = next.mediaId.substringAfterLast('_').toLongOrNull() ?: return@launch
-            if (!withContext(ioDispatcher) { partsReady(next.channelId, nextMessageId, resolved.partCount) }) return@launch
-            resolvedVideos[next.mediaId] = resolved
-            queue.put(
-                currentMediaId,
-                com.ntv2.app.feature.media.domain.UpNextEpisode(
-                    mediaId = next.mediaId,
-                    fileId = resolved.fileId,
-                    title = next.title,
-                    channelName = next.channelTitle,
-                    durationSeconds = resolved.durationSeconds,
-                    fileName = resolved.fileName,
-                    thumbnailPath = next.posterPath ?: next.backdropPath
-                )
-            )
+        upNextJob = viewModelScope.launch {
+            queue.registerChain(currentMediaId, following) { resolveUpNext(it) }
         }
+    }
+
+    /** Resolve o vídeo de um episódio para a fila de autoplay; null se não der para tocar agora. */
+    private suspend fun resolveUpNext(next: MediaItemSummary): com.ntv2.app.feature.media.domain.UpNextEpisode? {
+        val messageId = next.mediaId.substringAfterLast('_').toLongOrNull() ?: return null
+        val resolved = resolvedVideos[next.mediaId] ?: withContext(ioDispatcher) {
+            runCatching { mediaRepository.getVideoByMessage(next.channelId, next.channelTitle, messageId) }.getOrNull()
+        } ?: return null
+        if (resolved.fileId == 0) return null
+        // Episódio dividido em partes: sem as partes registradas o autoplay tocaria só a 1ª.
+        if (!withContext(ioDispatcher) { partsReady(next.channelId, messageId, resolved.partCount) }) return null
+        resolvedVideos[next.mediaId] = resolved
+        return com.ntv2.app.feature.media.domain.UpNextEpisode(
+            mediaId = next.mediaId,
+            fileId = resolved.fileId,
+            title = next.title,
+            channelName = next.channelTitle,
+            durationSeconds = resolved.durationSeconds,
+            fileName = resolved.fileName,
+            thumbnailPath = next.posterPath ?: next.backdropPath
+        )
     }
 
     /**

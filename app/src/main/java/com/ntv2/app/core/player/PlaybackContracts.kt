@@ -121,13 +121,29 @@ interface PlaybackCoordinator {
     fun onAppResume()
     fun release()
 
+    /**
+     * [release] só se a sessão ativa for a do vídeo [fileId] (ou não houver sessão). A tela antiga do
+     * player é destruída depois de a nova começar (troca de episódio): sem isso ela derrubava o player
+     * e apagava o arquivo do vídeo novo.
+     */
+    fun releaseIfOwner(fileId: Int)
+
+    /**
+     * Antes de tocar [nextFileId]: se a sessão ativa é de OUTRO vídeo, encerra e apaga o arquivo dela, e
+     * espera a remoção terminar. Assim a checagem de espaço do próximo vê o disco já liberado.
+     */
+    suspend fun releasePrevious(nextFileId: Int)
+
     /** Seleciona a faixa de áudio pelo id de [MediaTrackOption]. */
     fun selectAudioTrack(id: String)
 
     /** Seleciona a legenda pelo id de [MediaTrackOption]; null desliga a legenda. */
     fun selectTextTrack(id: String?)
 
-    /** Cancela e remove o download de um arquivo, mesmo que a reprodução nunca tenha iniciado. */
+    /**
+     * Cancela e remove o download de um arquivo, mesmo que a reprodução nunca tenha iniciado. Não mexe
+     * no arquivo da sessão ativa (a tela antiga pode chamar isto depois de a nova já tocar).
+     */
     fun discardMedia(fileId: Int)
 
     /**

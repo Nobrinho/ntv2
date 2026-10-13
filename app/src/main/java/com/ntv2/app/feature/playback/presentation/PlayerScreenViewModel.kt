@@ -376,7 +376,7 @@ class PlayerScreenViewModel(
             // Transmitindo, sair do app não pausa: o vídeo segue no Chromecast.
             PlayerScreenAction.OnAppStop -> if (!uiState.value.isPlaceholderMode && !casting.value) playbackController.onAppStop()
             PlayerScreenAction.OnAppResume -> if (!uiState.value.isPlaceholderMode && !casting.value) playbackController.onAppResume()
-            PlayerScreenAction.Release -> playbackController.release()
+            PlayerScreenAction.Release -> playbackController.release(preparingFileId)
             PlayerScreenAction.RetryLoad -> {
                 val request = lastRequest ?: return
                 _uiState.update { it.copy(loadError = null, loadingHint = null) }
@@ -412,7 +412,8 @@ class PlayerScreenViewModel(
         observeJob?.cancel()
         prepareJob?.cancel()
         watchdogJob?.cancel()
-        playbackController.release()
+        // Só encerra se a sessão ainda for deste vídeo: na troca de episódio a tela nova já está tocando.
+        playbackController.release(preparingFileId)
         // Garante o cancelamento do download mesmo se a reprodução nunca iniciou (evita downloads
         // órfãos que acumulam e travam os próximos vídeos).
         playbackController.discardMedia(preparingFileId)

@@ -48,7 +48,9 @@ interface PlaybackController {
     fun seekTo(positionMs: Long)
     fun onAppStop()
     fun onAppResume()
-    fun release()
+
+    /** Encerra a sessão do vídeo [ownerFileId]; não faz nada se outro vídeo já estiver tocando. */
+    fun release(ownerFileId: Int)
     fun selectAudioTrack(id: String)
     fun selectTextTrack(id: String?)
     fun discardMedia(fileId: Int)
@@ -88,6 +90,9 @@ class DefaultPlaybackController(
     override val snapshot: StateFlow<PlaybackSnapshot> = coordinator.snapshot
 
     override suspend fun prepare(request: PlaybackPrepareRequest): PlaybackPrepareResult {
+        // Troca de vídeo (próximo episódio): apaga o anterior e espera, ANTES de checar o espaço — senão
+        // o arquivo do vídeo que acabou ainda ocupava o disco e o próximo era recusado por falta de espaço.
+        coordinator.releasePrevious(request.fileId)
         // Checagem ANTES de abrir o arquivo (abrir já começa a baixar): sem espaço, limpa caches;
         // se ainda faltar, não inicia — em vez de lotar o aparelho no meio do filme.
         // Checa só na 1ª tentativa de cada arquivo: o prepare é repetido a cada 1s enquanto o
@@ -152,9 +157,9 @@ class DefaultPlaybackController(
 
     override fun onAppResume() = coordinator.onAppResume()
 
-    override fun release() {
-        admittedFileId = 0
-        coordinator.release()
+    override fun release(ownerFileId: Int) {
+        if (admittedFileId == ownerFileId) admittedFileId = 0
+        coordinator.releaseIfOwner(ownerFileId)
     }
 
     override fun selectAudioTrack(id: String) = coordinator.selectAudioTrack(id)

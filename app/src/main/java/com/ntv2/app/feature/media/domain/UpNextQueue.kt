@@ -28,4 +28,23 @@ class UpNextQueue {
     fun clear(mediaId: String) {
         map.remove(mediaId)
     }
+
+    /**
+     * Encadeia a série a partir de [currentMediaId]: cada episódio de [following] (em ordem) vira o
+     * próximo do anterior, para o autoplay seguir até o fim. Para no primeiro que [resolve] não
+     * conseguir; o último resolvido fica sem próximo.
+     */
+    suspend fun <T> registerChain(
+        currentMediaId: String,
+        following: List<T>,
+        resolve: suspend (T) -> UpNextEpisode?
+    ) {
+        var after = currentMediaId
+        for (item in following) {
+            val episode = resolve(item) ?: return
+            put(after, episode)
+            after = episode.mediaId
+        }
+        clear(after)
+    }
 }

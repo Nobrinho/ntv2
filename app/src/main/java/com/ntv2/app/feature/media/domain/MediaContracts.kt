@@ -27,6 +27,8 @@ data class MediaItemSummary(
     // Formato rico (canal próprio).
     val originalTitle: String? = null,
     val backdropPath: String? = null,
+    /** Logo do título (PNG transparente); os Detalhes usam no lugar do título em texto. */
+    val logoPath: String? = null,
     val rating: Double? = null,
     val ageRating: String? = null,
     val country: String? = null,
@@ -70,6 +72,7 @@ data class SeriesSummary(
     val title: String,
     val posterUrl: String?,
     val backdropUrl: String?,
+    val logoUrl: String? = null,
     val genres: List<String>,
     val seasons: List<SeasonSummary>,
     /** Ano da série (do 1º episódio com data), se o índice trouxer. */

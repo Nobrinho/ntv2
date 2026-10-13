@@ -791,6 +791,7 @@ class MediaLibraryViewModel(
         genres = genres.joinToString(", ").ifBlank { null },
         originalTitle = originalTitle,
         backdropPath = backdropUrl,
+        logoPath = logoUrl,
         cast = cast,
         tmdbId = tmdbId.toString()
     )
@@ -816,6 +817,7 @@ class MediaLibraryViewModel(
         synopsis = overview,
         genres = series.genres.joinToString(", ").ifBlank { null },
         backdropPath = backdropUrl ?: series.backdropUrl,
+        logoPath = logoUrl ?: series.logoUrl,
         quality = quality,
         audio = audio,
         tmdbId = series.tmdbId.toString(),
@@ -838,6 +840,7 @@ class MediaLibraryViewModel(
             title = title,
             posterUrl = posterUrl,
             backdropUrl = backdropUrl,
+            logoUrl = logoUrl,
             genres = genres,
             year = year,
             seasons = seasons.map { season ->
@@ -1621,6 +1624,7 @@ class MediaLibraryViewModel(
                 genres = genres,
                 originalTitle = originalTitle,
                 backdropPath = backdropPath,
+                logoPath = logoPath,
                 durationSeconds = durationSeconds,
                 rating = rating,
                 ageRating = ageRating,

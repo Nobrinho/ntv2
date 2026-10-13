@@ -862,6 +862,7 @@ class RealTdlibGateway(
                     // elimina um download por item na busca/listagem.
                     val resolvedThumb = if (posterPath != null) null else resolveThumbnailPath(video.thumbnail)
                     val backdropPath = posterMeta?.backdropUrl
+                    val logoPath = posterMeta?.logoUrl ?: videoMeta.logoUrl
 
                     // Proporção real só é conhecida para a foto do Telegram; URL → desconhecida (0).
                     val posterAspect = photo?.sizes
@@ -897,6 +898,7 @@ class RealTdlibGateway(
                         genres = genres,
                         originalTitle = posterMeta?.originalTitle,
                         backdropPath = backdropPath,
+                        logoPath = logoPath,
                         rating = posterMeta?.rating,
                         ageRating = posterMeta?.ageRating,
                         country = posterMeta?.country,

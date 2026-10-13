@@ -12,6 +12,8 @@ data class MovieDetails(
     // Formato rico.
     val originalTitle: String? = null,
     val backdropPath: String? = null,
+    /** Logo do título (PNG transparente); os Detalhes usam no lugar do título em texto. */
+    val logoPath: String? = null,
     val durationSeconds: Int = 0,
     val rating: Double? = null,
     val ageRating: String? = null,

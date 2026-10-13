@@ -23,6 +23,7 @@ data class IndexMovie(
     val year: String?,
     val posterUrl: String?,
     val backdropUrl: String?,
+    val logoUrl: String?,
     val overview: String?,
     val genres: List<String>,
     val cast: List<CastMemberMeta>,
@@ -45,6 +46,7 @@ data class IndexEpisode(
     val durationMin: Int?,
     val posterUrl: String?,
     val backdropUrl: String?,
+    val logoUrl: String?,
     val quality: String?,
     val audio: String?,
     val videoMessageId: Long
@@ -63,6 +65,7 @@ data class IndexSeries(
     val originalTitle: String?,
     val posterUrl: String?,
     val backdropUrl: String?,
+    val logoUrl: String?,
     val overview: String?,
     val genres: List<String>,
     val seasons: List<IndexSeason>
@@ -274,6 +277,7 @@ class SearchIndexRepository(
             year = o.optString("year").ifBlank { null },
             posterUrl = o.optString("poster_url").ifBlank { null },
             backdropUrl = o.optString("backdrop_url").ifBlank { null },
+            logoUrl = o.tmdbImage("logo_url", TMDB_LOGO),
             overview = o.optString("overview").ifBlank { null },
             genres = genres,
             cast = cast,
@@ -290,6 +294,7 @@ class SearchIndexRepository(
             originalTitle = o.optString("original_title").ifBlank { null },
             posterUrl = o.optString("poster_url").ifBlank { null },
             backdropUrl = o.optString("backdrop_url").ifBlank { null },
+            logoUrl = o.tmdbImage("logo_url", TMDB_LOGO),
             overview = o.cleanString("overview"),
             genres = genres,
             seasons = parseSeasons(o.optJSONArray("seasons"))
@@ -328,6 +333,7 @@ class SearchIndexRepository(
                 durationMin = o.optInt("runtime", o.optInt("duration", 0)).takeIf { it != 0 },
                 posterUrl = o.optString("poster_url").ifBlank { null },
                 backdropUrl = o.optString("backdrop_url").ifBlank { null },
+                logoUrl = o.tmdbImage("logo_url", TMDB_LOGO),
                 quality = o.optString("quality").ifBlank { null },
                 audio = o.optString("audio").ifBlank { null },
                 videoMessageId = videoMsg
@@ -453,6 +459,18 @@ internal fun parseGeneratedAt(raw: String?): Long? {
     return runCatching { java.time.OffsetDateTime.parse(value).toInstant().toEpochMilli() }
         .recoverCatching { java.time.Instant.parse(value).toEpochMilli() }
         .getOrNull()
+}
+
+/** Base das imagens de logo quando o índice manda só o caminho TMDB ("/abc.png"). */
+private const val TMDB_LOGO = "https://image.tmdb.org/t/p/w500"
+
+/**
+ * Imagem do índice: aceita URL completa ou caminho TMDB ("/abc.png"), prefixando [base] nesse caso.
+ * Repetir o host em 3 mil itens custa ~30 bytes por campo no arquivo que todo aparelho baixa.
+ */
+internal fun JSONObject.tmdbImage(key: String, base: String): String? {
+    val v = cleanString(key) ?: return null
+    return if (v.startsWith("/")) base + v else v
 }
 
 /** optString tratando vazio e o literal "null"/"None" (comum em índices) como ausente. */

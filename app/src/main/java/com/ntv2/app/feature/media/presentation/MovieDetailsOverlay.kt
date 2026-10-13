@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -378,7 +379,7 @@ internal fun DetailsInfo(
     val durationSecs = details?.durationSeconds?.takeIf { it > 0 } ?: media.durationSeconds
     val showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning()
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(title, color = Color.White, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        DetailTitle(title, details?.logoPath)
         details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
             Text(it, color = Color(0xFFC9C9C9), style = MaterialTheme.typography.titleMedium)
         }
@@ -581,6 +582,30 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
 }
 
 // Sinopse: 2 linhas; focável pelo D-pad e OK expande/recolhe o texto completo.
+/**
+ * Título do filme/série: quando o índice/legenda traz o logo (PNG transparente do TMDB), mostra a
+ * arte; sem logo — ou se a imagem falhar — cai no título em texto, que é o comportamento antigo.
+ * A altura é limitada em dp (e não a largura) porque os logos variam muito de proporção: travar a
+ * altura mantém todos com o mesmo peso visual na coluna.
+ */
+@Composable
+private fun DetailTitle(title: String, logo: String?) {
+    val url = logo?.takeIf { it.isNotBlank() }?.let { tmdbAtWidth(it, "w500") }
+    var failed by remember(url) { mutableStateOf(false) }
+    if (url == null || failed) {
+        Text(title, color = Color.White, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        return
+    }
+    AsyncImage(
+        model = url,
+        contentDescription = title,
+        contentScale = ContentScale.Fit,
+        alignment = Alignment.CenterStart,
+        onState = { if (it is coil.compose.AsyncImagePainter.State.Error) failed = true },
+        modifier = Modifier.heightIn(max = 76.dp).widthIn(max = 320.dp)
+    )
+}
+
 @Composable
 internal fun SynopsisText(text: String) {
     var expanded by remember(text) { mutableStateOf(false) }

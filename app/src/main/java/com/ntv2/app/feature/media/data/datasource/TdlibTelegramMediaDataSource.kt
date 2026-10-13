@@ -62,6 +62,7 @@ class TdlibTelegramMediaDataSource(
         genres = genres,
         originalTitle = originalTitle,
         backdropPath = backdropPath,
+        logoPath = logoPath,
         rating = rating,
         ageRating = ageRating,
         country = country,

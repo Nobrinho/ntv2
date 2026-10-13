@@ -27,6 +27,8 @@ data class MovieMeta(
     val cast: List<CastMemberMeta> = emptyList(),
     val posterUrl: String? = null,
     val backdropUrl: String? = null,
+    /** Logo do titulo (PNG transparente); a tela de Detalhes usa no lugar do titulo em texto. */
+    val logoUrl: String? = null,
     val trailerUrl: String? = null,
     val tmdbId: String? = null,
     val tags: String? = null,
@@ -78,6 +80,7 @@ object MovieMetadataParser {
 
     private const val TMDB_POSTER = "https://image.tmdb.org/t/p/w342"
     private const val TMDB_BACKDROP = "https://image.tmdb.org/t/p/w780"
+    private const val TMDB_LOGO = "https://image.tmdb.org/t/p/w500"
     private const val TMDB_PROFILE = "https://image.tmdb.org/t/p/w92"
 
     private val TITLE_KEYS = setOf("filme", "titulo", "title")
@@ -98,6 +101,7 @@ object MovieMetadataParser {
     private val CAST_KEYS = setOf("elenco", "cast")
     private val POSTER_KEYS = setOf("poster", "capa")
     private val BACKDROP_KEYS = setOf("fundo", "backdrop")
+    private val LOGO_KEYS = setOf("logo")
     private val TRAILER_KEYS = setOf("trailer")
     private val TMDB_KEYS = setOf("tmdb")
     private val TAGS_KEYS = setOf("tags")
@@ -114,7 +118,7 @@ object MovieMetadataParser {
     private val allLabelKeys =
         TITLE_KEYS + ORIGINAL_KEYS + TYPE_KEYS + DIRECTOR_KEYS + AUDIO_KEYS + QUALITY_KEYS +
             YEAR_KEYS + DURATION_KEYS + RATING_KEYS + AGE_KEYS + GENRE_KEYS + CATEGORY_KEYS +
-            COLLECTION_KEYS + COUNTRY_KEYS + STUDIO_KEYS + CAST_KEYS + POSTER_KEYS + BACKDROP_KEYS +
+            COLLECTION_KEYS + COUNTRY_KEYS + STUDIO_KEYS + CAST_KEYS + POSTER_KEYS + BACKDROP_KEYS + LOGO_KEYS +
             TRAILER_KEYS + TMDB_KEYS + TAGS_KEYS + SYNOPSIS_KEYS + SERIES_KEYS + SEASON_KEYS +
             EPISODE_KEYS + EPISODE_TITLE_KEYS + AIRDATE_KEYS + TMDB_SERIES_KEYS + TMDB_EPISODE_KEYS +
             OTHER_KEYS
@@ -200,6 +204,7 @@ object MovieMetadataParser {
             cast = get(CAST_KEYS)?.let { parseCast(it) } ?: emptyList(),
             posterUrl = get(POSTER_KEYS)?.let { tmdbUrl(it, TMDB_POSTER) },
             backdropUrl = get(BACKDROP_KEYS)?.let { tmdbUrl(it, TMDB_BACKDROP) },
+            logoUrl = get(LOGO_KEYS)?.let { tmdbUrl(it, TMDB_LOGO) },
             trailerUrl = get(TRAILER_KEYS),
             tmdbId = get(TMDB_KEYS),
             tags = get(TAGS_KEYS),

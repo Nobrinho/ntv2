@@ -81,6 +81,27 @@ class MovieMetadataParserTest {
     }
 
     @Test
+    fun `logo aceita caminho TMDB e URL completa`() {
+        val porCaminho = MovieMetadataParser.parse(
+            """
+            Filme: Duna
+            Logo: /abc.png
+            """.trimIndent()
+        )
+        assertEquals("https://image.tmdb.org/t/p/w500/abc.png", porCaminho.logoUrl)
+
+        val porUrl = MovieMetadataParser.parse(
+            """
+            Filme: Duna
+            Logo: https://cdn.exemplo/duna.png
+            """.trimIndent()
+        )
+        assertEquals("https://cdn.exemplo/duna.png", porUrl.logoUrl)
+
+        assertNull(MovieMetadataParser.parse("Filme: Duna").logoUrl)
+    }
+
+    @Test
     fun `legenda vazia retorna vazio`() {
         val meta = MovieMetadataParser.parse(null)
         assertNull(meta.title)

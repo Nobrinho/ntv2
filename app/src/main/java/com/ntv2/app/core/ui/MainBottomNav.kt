@@ -1,14 +1,17 @@
 package com.ntv2.app.core.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -20,12 +23,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
+import androidx.tv.material3.Text
 
-private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
+/** Altura da barra, sem a área das teclas de navegação. Alvo de toque acima dos 48dp. */
+private val BarHeight = 68.dp
 
 enum class MainTab {
     Library,
@@ -45,54 +53,55 @@ fun MainBottomNav(
     // "Meu" (histórico/personalização): só aparece quando a tela fornece a ação.
     onMyStuff: (() -> Unit)? = null
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Color(0xF20C0C0C))
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MainBottomNavItem(
-            icon = Icons.Filled.Movie,
-            label = "Biblioteca",
-            selected = selected == MainTab.Library,
-            modifier = Modifier.weight(1f),
-            onClick = onLibrary
-        )
-        if (onSearch != null) {
+    Column(modifier = modifier.fillMaxWidth().background(BrandColors.Background.copy(alpha = 0.95f))) {
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BrandColors.SurfaceAlt))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .height(BarHeight),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             MainBottomNavItem(
-                icon = Icons.Filled.Search,
-                label = "Busca",
-                selected = false,
+                icon = Icons.Filled.Movie,
+                label = "Biblioteca",
+                selected = selected == MainTab.Library,
                 modifier = Modifier.weight(1f),
-                onClick = onSearch
+                onClick = onLibrary
+            )
+            if (onSearch != null) {
+                MainBottomNavItem(
+                    icon = Icons.Filled.Search,
+                    label = "Busca",
+                    selected = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = onSearch
+                )
+            }
+            if (onMyStuff != null) {
+                MainBottomNavItem(
+                    icon = Icons.Filled.Favorite,
+                    label = "Meu",
+                    selected = selected == MainTab.MyStuff,
+                    modifier = Modifier.weight(1f),
+                    onClick = onMyStuff
+                )
+            }
+            MainBottomNavItem(
+                icon = Icons.Filled.Subscriptions,
+                label = "Canais",
+                selected = selected == MainTab.Channels,
+                modifier = Modifier.weight(1f),
+                onClick = onChannels
+            )
+            MainBottomNavItem(
+                icon = Icons.Filled.Settings,
+                label = "Config",
+                selected = selected == MainTab.Settings,
+                modifier = Modifier.weight(1f),
+                onClick = onSettings
             )
         }
-        if (onMyStuff != null) {
-            MainBottomNavItem(
-                icon = Icons.Filled.Favorite,
-                label = "Meu",
-                selected = selected == MainTab.MyStuff,
-                modifier = Modifier.weight(1f),
-                onClick = onMyStuff
-            )
-        }
-        MainBottomNavItem(
-            icon = Icons.Filled.Subscriptions,
-            label = "Canais",
-            selected = selected == MainTab.Channels,
-            modifier = Modifier.weight(1f),
-            onClick = onChannels
-        )
-        MainBottomNavItem(
-            icon = Icons.Filled.Settings,
-            label = "Config",
-            selected = selected == MainTab.Settings,
-            modifier = Modifier.weight(1f),
-            onClick = onSettings
-        )
     }
 }
 
@@ -104,21 +113,37 @@ private fun MainBottomNavItem(
     modifier: Modifier,
     onClick: () -> Unit
 ) {
-    val content = if (selected) Color.Black else Color.White
-    val background = if (selected) BRAND else Color(0x22FFFFFF)
-    Row(
+    val content = if (selected) BrandColors.Accent else BrandColors.TextSecondary
+    Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .background(background)
-            .then(
-                if (selected) Modifier
-                else Modifier.border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
-            )
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
+            .fillMaxHeight()
+            .clickable(role = Role.Tab, onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = label, tint = content, modifier = Modifier.size(22.dp))
+        // Indicador do item ativo: faixa curta colada no topo da barra.
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .width(28.dp)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(bottomStart = 3.dp, bottomEnd = 3.dp))
+                    .background(BrandColors.Accent)
+            )
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(24.dp))
+            Text(
+                label,
+                color = content,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }

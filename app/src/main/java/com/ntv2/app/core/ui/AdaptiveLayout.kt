@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 @Immutable
 data class AdaptiveLayoutInfo(
@@ -18,6 +20,10 @@ data class AdaptiveLayoutInfo(
     val isExpanded: Boolean get() = widthDp >= 840
     val useTvLayout: Boolean get() = isTv || (isExpanded && !isPortrait)
     val usePhoneLayout: Boolean get() = !useTvLayout && isCompact
+
+    /** Área segura da TV (overscan): 5% da largura nas laterais e 5% da altura em cima e embaixo. */
+    val tvSafeHorizontal: Dp get() = (widthDp * 0.05f).dp
+    val tvSafeVertical: Dp get() = (heightDp * 0.05f).dp
 }
 
 @Composable

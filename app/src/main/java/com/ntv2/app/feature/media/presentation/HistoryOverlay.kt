@@ -84,6 +84,7 @@ internal fun MyListHistoryOverlay(
     focusMediaId: String? = null
 ) {
     BackHandler(enabled = true) { onClose() }
+    val adaptive = com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo()
     var confirmClear by remember { mutableStateOf(false) }
     // Sem pedir foco, o overlay abria "morto": o D-pad continuava na grade atrás e não dava para
     // navegar nem fechar. Ao abrir, o foco vai para a aba atual (ou para o card de onde se saiu).
@@ -111,7 +112,10 @@ internal fun MyListHistoryOverlay(
             .statusBarsPadding()
             .navigationBarsPadding()
             .trapFocus()
-            .padding(horizontal = if (useTvLayout) 48.dp else 16.dp, vertical = if (useTvLayout) 32.dp else 16.dp)
+            .padding(
+                horizontal = if (useTvLayout) adaptive.tvSafeHorizontal else 16.dp,
+                vertical = if (useTvLayout) adaptive.tvSafeVertical else 16.dp
+            )
     ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

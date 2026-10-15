@@ -166,8 +166,8 @@ fun SettingsScreen(
                     .fillMaxSize()
                     .then(if (useTvLayout) Modifier else Modifier.padding(bottom = 76.dp))
                     .padding(
-                        horizontal = if (useTvLayout) 40.dp else 16.dp,
-                        vertical = if (useTvLayout) 28.dp else 14.dp
+                        horizontal = if (useTvLayout) adaptive.tvSafeHorizontal else 16.dp,
+                        vertical = if (useTvLayout) adaptive.tvSafeVertical else 14.dp
                     )
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)

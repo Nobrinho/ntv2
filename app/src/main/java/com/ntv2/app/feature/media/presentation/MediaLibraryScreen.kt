@@ -463,8 +463,8 @@ fun MediaLibraryScreen(
                     .fillMaxSize()
                     .then(if (useTvLayout) Modifier else Modifier.statusBarsPadding())
                     .padding(
-                        horizontal = if (useTvLayout) 24.dp else 14.dp,
-                        vertical = if (useTvLayout) 20.dp else 12.dp
+                        horizontal = if (useTvLayout) adaptive.tvSafeHorizontal else 14.dp,
+                        vertical = if (useTvLayout) adaptive.tvSafeVertical else 12.dp
                     ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {

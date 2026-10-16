@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -589,7 +590,10 @@ private fun LibraryTabChip(label: String, active: Boolean, onClick: () -> Unit) 
             .clickable(onClick = onClick)
             .background(if (active) FOCUS_ACCENT else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .then(if (focused && !active) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
-            .padding(horizontal = 18.dp, vertical = 8.dp)
+            // Alvo de toque de 44dp no celular (antes ~36dp).
+            .heightIn(min = 44.dp)
+            .padding(horizontal = 18.dp),
+        contentAlignment = Alignment.Center
     ) {
         Text(
             label,

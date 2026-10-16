@@ -1374,10 +1374,11 @@ internal fun KeyButton(
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.SurfaceAlt else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+            // Foco igual ao resto do app: anel azul de marca (antes a tecla ficava toda branca).
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else Color(0x44FFFFFF),
+                width = if (focused) 3.dp else 1.dp,
+                color = if (focused) com.ntv2.app.core.ui.BrandColors.Accent else Color(0x44FFFFFF),
                 shape = RoundedCornerShape(8.dp)
             )
             .padding(horizontal = 8.dp),
@@ -1385,7 +1386,7 @@ internal fun KeyButton(
     ) {
         Text(
             text = label,
-            color = if (focused) Color.Black else Color.White,
+            color = Color.White,
             maxLines = 1
         )
     }

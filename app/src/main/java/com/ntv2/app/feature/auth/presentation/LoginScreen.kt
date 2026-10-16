@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -130,6 +131,9 @@ fun LoginScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
+                // Teclado aberto (código / senha): o conteúdo sobe e rola, para o campo e o botão
+                // ficarem acima do teclado (antes o teclado cobria o botão de confirmar).
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = if (compact) 14.dp else 16.dp, vertical = if (compact) 20.dp else 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

@@ -51,6 +51,7 @@
             android:banner="@drawable/banner"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:supportsPictureInPicture="true"
+            android:windowSoftInputMode="adjustResize"
             android:resizeableActivity="true"
             android:exported="true">
             <intent-filter>

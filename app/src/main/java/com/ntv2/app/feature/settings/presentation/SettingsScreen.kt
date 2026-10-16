@@ -629,7 +629,8 @@ private fun SettingCardShell(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = BRAND, modifier = Modifier.size(28.dp))
+        // Ação destrutiva (Sair da conta): ícone na mesma cor vermelha do título.
+        Icon(icon, contentDescription = null, tint = if (titleColor == Color.White) BRAND else titleColor, modifier = Modifier.size(28.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, color = titleColor, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)

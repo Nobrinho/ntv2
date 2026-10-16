@@ -893,8 +893,9 @@ internal fun Scrubber(
                 )
             }
             // Reproduzido
+            // Trecho assistido e marcador em azul da marca (antes branco), como as barras de progresso dos cards.
             drawRoundRect(
-                color = Color.White,
+                color = com.ntv2.app.core.ui.BrandColors.Accent,
                 topLeft = Offset(0f, cy - trackH / 2f),
                 size = Size(w * played, trackH),
                 cornerRadius = radius
@@ -902,9 +903,9 @@ internal fun Scrubber(
             // Knob
             val knobR = if (focused) 13.dp.toPx() else 7.dp.toPx()
             if (focused) {
-                drawCircle(color = Color(0x55FFFFFF), radius = knobR + 6.dp.toPx(), center = Offset(w * played, cy))
+                drawCircle(color = com.ntv2.app.core.ui.BrandColors.Accent.copy(alpha = 0.33f), radius = knobR + 6.dp.toPx(), center = Offset(w * played, cy))
             }
-            drawCircle(color = Color.White, radius = knobR, center = Offset(w * played, cy))
+            drawCircle(color = com.ntv2.app.core.ui.BrandColors.Accent, radius = knobR, center = Offset(w * played, cy))
         }
         // Tempo sobre o knob enquanto a linha do tempo está focada (TV).
         if (showTimeBubble && focused) {

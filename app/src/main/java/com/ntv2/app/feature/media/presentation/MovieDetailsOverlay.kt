@@ -337,7 +337,7 @@ internal fun MovieDetailsOverlay(
 internal fun DetailsCloseButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .size(40.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .background(Color(0x80000000))
             .clickable(onClick = onClick),

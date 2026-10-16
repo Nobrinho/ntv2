@@ -209,7 +209,7 @@ internal fun SeriesDetailsOverlay(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
-                                modifier = Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClose),
+                                modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClose),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = Color.White, modifier = Modifier.size(28.dp))
@@ -478,7 +478,7 @@ internal fun BackChip(onClose: () -> Unit, modifier: Modifier) {
     val gliding = glideActive()
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(48.dp)
             .glideTarget(22.dp)
             .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }

@@ -320,7 +320,7 @@ private fun EmptyState(message: String) {
 @Composable
 private fun PlayPill(onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).background(BRAND_ACCENT),
+        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).background(BRAND_ACCENT),
         contentAlignment = Alignment.Center
     ) {
         Icon(Icons.Filled.PlayArrow, contentDescription = "Continuar", tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(18.dp))
@@ -343,7 +343,7 @@ private fun TextPill(icon: androidx.compose.ui.graphics.vector.ImageVector, labe
 @Composable
 private fun CircleIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size(40.dp).clip(CircleShape).clickable(onClick = onClick).background(Color(0x1FFFFFFF)),
+        modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClick).background(Color(0x1FFFFFFF)),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription = description, tint = com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(20.dp))

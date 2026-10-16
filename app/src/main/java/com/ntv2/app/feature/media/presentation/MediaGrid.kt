@@ -137,7 +137,7 @@ internal fun LoadMoreButton(
 // 6 colunas: card horizontal (2 col) cabe 3 por linha; retrato (1 col) até 6 por linha.
 // Colunas pela largura DISPONÍVEL da grade (dp): ~130dp por card. Cards menores no celular
 // (2 no retrato, ~5 na paisagem) e ~6 na TV (teto). Evita card gigante em telas largas.
-internal const val GRID_TARGET_COL_DP = 130f
+internal const val GRID_TARGET_COL_DP = 115f
 internal fun columnsForWidthDp(widthDp: Float): Int =
     (widthDp / GRID_TARGET_COL_DP).toInt().coerceIn(2, 6)
 internal val GRID_GAP = 12.dp

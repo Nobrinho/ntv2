@@ -60,7 +60,7 @@ internal fun ContinueWatchingRow(
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
             "Continuar assistindo",
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
             color = Color.White
         )
         LazyRow(
@@ -186,7 +186,7 @@ internal fun PosterTrackRow(
     if (items.isEmpty()) return
     val posterWidth = if (useTvLayout) 132.dp else 112.dp
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(label, style = MaterialTheme.typography.titleLarge, color = Color.White)
+        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = Color.White)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(if (useTvLayout) 16.dp else 12.dp),
             contentPadding = PaddingValues(vertical = 4.dp)

@@ -724,7 +724,8 @@ internal fun DetailsActionRow(
 private fun continueLabel(media: MediaCardUi): String {
     if (media.durationSeconds <= 0) return "Continuar"
     val watched = (media.durationSeconds * media.progress).toInt()
-    if (watched <= 0) return "Continuar"
+    // Menos de 1 minuto assistido: sem o tempo (antes aparecia "Continuar • 0min").
+    if (watched < 60) return "Continuar"
     return "Continuar • ${durationLabel(watched)}"
 }
 

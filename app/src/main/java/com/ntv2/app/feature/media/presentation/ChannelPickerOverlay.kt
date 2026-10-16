@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.media.presentation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,6 +62,9 @@ internal fun ChannelPickerOverlay(
 ) {
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    // Voltar por gesto/botão do celular: fecha o seletor. Sem isto o Voltar ia para a raiz e abria
+    // "Deseja fechar o aplicativo?" por cima do seletor (a tecla Back da TV já era tratada abaixo).
+    BackHandler(enabled = true) { onDismiss() }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -91,8 +95,9 @@ internal fun ChannelPickerOverlay(
         )
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                // widthIn antes do fillMaxWidth: na ordem inversa o limite era ignorado na TV.
                 .widthIn(max = 680.dp)
+                .fillMaxWidth(0.92f)
                 .padding(vertical = 24.dp)
                 .trapFocus()
                 .clip(RoundedCornerShape(6.dp))

@@ -698,7 +698,7 @@ internal fun PortraitTopIcon(
 
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(48.dp)
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
@@ -718,7 +718,7 @@ internal fun PortraitTopIcon(
 internal fun FullscreenControlButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(48.dp)
             .clip(RoundedCornerShape(6.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center

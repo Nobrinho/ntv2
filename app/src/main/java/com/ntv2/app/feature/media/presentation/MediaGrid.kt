@@ -70,6 +70,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -471,7 +472,28 @@ internal fun MediaCard(
                     }
                 }
 
-                // Selos de resolução/duração removidos para não cobrir a arte das capas.
+                // Selos nos cantos, em pílula escura: resolução no topo esquerdo, duração embaixo à direita
+                // (acima da barra de progresso). Só aparecem quando o dado é conhecido.
+                val resolutionBadge = when {
+                    media.videoHeight >= 2000 -> "4K"
+                    media.videoHeight >= 1000 -> "1080p"
+                    media.videoHeight > 0 -> "${media.videoHeight}p"
+                    else -> null
+                }
+                if (resolutionBadge != null) {
+                    CardBadge(
+                        text = resolutionBadge,
+                        modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
+                    )
+                }
+                if (media.durationSeconds > 0) {
+                    CardBadge(
+                        text = durationLabel(media.durationSeconds),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 6.dp, bottom = if (media.progress > 0f) 10.dp else 6.dp)
+                    )
+                }
 
                 if (media.progress > 0f) {
                     Box(
@@ -524,6 +546,22 @@ internal fun MediaCard(
             }
         }
     }
+}
+
+/** Selo do card: pílula escura de cantos baixos para o texto ler sobre qualquer capa. */
+@Composable
+private fun CardBadge(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        color = Color.White,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(Color(0xCC090B0F))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    )
 }
 
 /** Seletor de abas Filmes/Séries (segmented). Mostrado só quando o canal tem séries. */

@@ -117,7 +117,13 @@ internal fun MyListHistoryOverlay(
                 vertical = if (useTvLayout) adaptive.tvSafeVertical else 16.dp
             )
     ) {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(
+                "Meu",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+            )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ShelfTab.entries.forEach { t ->
                     ShelfTabPill(
@@ -165,7 +171,7 @@ internal fun MyListHistoryOverlay(
                         item(key = "h_$label") {
                             Text(
                                 label.uppercase(),
-                                color = Color(0xFF6A6A6A),
+                                color = com.ntv2.app.core.ui.BrandColors.TextMuted,
                                 style = MaterialTheme.typography.labelMedium,
                                 modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp)
                             )
@@ -212,11 +218,19 @@ private fun ShelfTabPill(label: String, selected: Boolean, modifier: Modifier, o
                 if (it.isFocused && !selected) onSelect()
             }
             .clickable(onClick = onSelect)
-            .background(if (selected) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .then(if (focused) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(4.dp)) else Modifier)
+            .background(if (selected) BRAND_ACCENT else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+            .then(
+                if (focused) Modifier.border(3.dp, if (selected) Color.White else BRAND_ACCENT, RoundedCornerShape(4.dp))
+                else Modifier
+            )
             .padding(horizontal = 20.dp, vertical = 10.dp)
     ) {
-        Text(label, color = if (selected) Color.Black else Color.White, style = MaterialTheme.typography.titleMedium)
+        Text(
+            label,
+            color = if (selected) com.ntv2.app.core.ui.BrandColors.OnCta else Color.White,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.SemiBold else null
+        )
     }
 }
 
@@ -241,19 +255,29 @@ private fun MyListGrid(
     LazyVerticalGrid(
         state = gridState,
         // Mesmo tamanho das capas das trilhas da grade principal.
-        columns = GridCells.FixedSize(132.dp),
+        columns = GridCells.FixedSize(160.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
     ) {
         gridItems(items, key = { it.mediaId }) { media ->
-            PosterCard(
-                media = media,
-                showCovers = showCovers,
-                width = 132.dp,
-                modifier = Modifier.focusRequester(focusFor(media.mediaId)),
-                onClick = { onOpenDetails(media) }
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PosterCard(
+                    media = media,
+                    showCovers = showCovers,
+                    width = 160.dp,
+                    modifier = Modifier.focusRequester(focusFor(media.mediaId)),
+                    onClick = { onOpenDetails(media) }
+                )
+                Text(
+                    media.title,
+                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.width(160.dp)
+                )
+            }
         }
     }
 }
@@ -272,6 +296,7 @@ private fun HistoryRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
             .background(com.ntv2.app.core.ui.BrandColors.Surface)
+            .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(6.dp))
             .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -280,7 +305,7 @@ private fun HistoryRow(
             modifier = Modifier
                 .width(132.dp)
                 .height(74.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(4.dp))
                 .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
         ) {
             if (showCovers && cover != null) {
@@ -298,8 +323,8 @@ private fun HistoryRow(
         }
         if (entry.completed) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(18.dp))
-                Text("Assistido", color = BRAND_ACCENT, style = MaterialTheme.typography.labelMedium)
+                Icon(Icons.Filled.Check, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Success, modifier = Modifier.size(18.dp))
+                Text("Assistido", color = com.ntv2.app.core.ui.BrandColors.Success, style = MaterialTheme.typography.labelMedium)
             }
         } else {
             HistoryTextButton(icon = Icons.Filled.PlayArrow, label = "Continuar", destructive = false, onClick = onContinue)
@@ -331,7 +356,7 @@ private fun HistoryTextButton(
 ) {
     var focused by remember { mutableStateOf(false) }
     val content = when {
-        destructive -> Color(0xFFFF7A7A)
+        destructive -> com.ntv2.app.core.ui.BrandColors.Error
         else -> Color.White
     }
     Row(
@@ -360,14 +385,15 @@ private fun HistoryIconButton(
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
-            .size(40.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle),
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.SurfaceAlt else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+            .then(if (focused) Modifier.border(3.dp, BRAND_ACCENT, CircleShape) else Modifier),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = description, tint = if (focused) Color.Black else com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = description, tint = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(20.dp))
     }
 }
 

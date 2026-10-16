@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.channels.presentation
 
+import com.ntv2.app.core.ui.reserveMainBottomNav
 import com.ntv2.app.core.ui.brandBackdrop
 import androidx.compose.runtime.withFrameNanos
 
@@ -381,7 +382,7 @@ private fun ChannelContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .then(if (compact) Modifier.padding(bottom = 76.dp) else Modifier)
+            .then(if (compact) Modifier.reserveMainBottomNav() else Modifier)
             .padding(horizontal = if (compact) 16.dp else 24.dp, vertical = if (compact) 16.dp else 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {

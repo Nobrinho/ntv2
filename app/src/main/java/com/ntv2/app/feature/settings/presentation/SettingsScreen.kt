@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.settings.presentation
 
+import com.ntv2.app.core.ui.reserveMainBottomNav
 import com.ntv2.app.core.ui.BrandBackdrop
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableIntStateOf
@@ -164,7 +165,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (useTvLayout) Modifier else Modifier.padding(bottom = 76.dp))
+                    .then(if (useTvLayout) Modifier else Modifier.reserveMainBottomNav())
                     .padding(
                         horizontal = if (useTvLayout) adaptive.tvSafeHorizontal else 16.dp,
                         vertical = if (useTvLayout) adaptive.tvSafeVertical else 14.dp

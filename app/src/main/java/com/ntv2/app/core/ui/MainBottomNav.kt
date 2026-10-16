@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +35,13 @@ import androidx.tv.material3.Text
 
 /** Altura da barra, sem a área das teclas de navegação. Alvo de toque acima dos 48dp. */
 private val BarHeight = 68.dp
+
+/**
+ * Reserva o espaço da barra (altura + divisória + teclas de navegação) para o conteúdo da tela
+ * não ficar atrás dela, sem número fixo em cada tela.
+ */
+fun Modifier.reserveMainBottomNav(): Modifier =
+    this.padding(bottom = BarHeight + 1.dp).navigationBarsPadding()
 
 enum class MainTab {
     Library,

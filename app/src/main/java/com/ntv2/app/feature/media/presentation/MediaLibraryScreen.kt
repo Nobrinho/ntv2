@@ -5,6 +5,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import com.ntv2.app.core.ui.reserveMainBottomNav
 import com.ntv2.app.core.ui.BrandBackdrop
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -560,7 +561,7 @@ fun MediaLibraryScreen(
                         },
                         modifier = Modifier
                             .fillMaxSize()
-                            .then(if (useTvLayout) Modifier else Modifier.padding(bottom = 76.dp))
+                            .then(if (useTvLayout) Modifier else Modifier.reserveMainBottomNav())
                     )
                 } else when {
                     state.isLoading -> MediaGridSkeleton(
@@ -633,7 +634,7 @@ fun MediaLibraryScreen(
                             state = gridState,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .then(if (useTvLayout) Modifier else Modifier.padding(bottom = 76.dp)),
+                                .then(if (useTvLayout) Modifier else Modifier.reserveMainBottomNav()),
                             focusRequesterFor = { id ->
                                 cardFocusRequesters.getOrPut(id) { FocusRequester() }
                             },

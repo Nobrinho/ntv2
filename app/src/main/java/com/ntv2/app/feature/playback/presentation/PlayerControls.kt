@@ -309,9 +309,10 @@ internal fun LandscapeControlsOverlay(
             left?.let { this.left = it }
             right?.let { this.right = it }
         }
-    // Margem lateral: TV respeita a área segura de overscan (48dp); celular usa quase toda a
+    // Margem lateral: TV respeita a área segura de overscan (5% da largura); celular usa quase toda a
     // largura, somando o recorte da câmera quando ele fica na lateral.
-    val sidePadding = if (isTv) 48.dp else 24.dp
+    val tvSafeSide = com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo().tvSafeHorizontal
+    val sidePadding = if (isTv) tvSafeSide else 24.dp
     Box(
         modifier = modifier
             .background(Color(0x26000000))

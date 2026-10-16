@@ -474,12 +474,7 @@ internal fun MediaCard(
 
                 // Selos nos cantos, em pílula escura: resolução no topo esquerdo, duração embaixo à direita
                 // (acima da barra de progresso). Só aparecem quando o dado é conhecido.
-                val resolutionBadge = when {
-                    media.videoHeight >= 2000 -> "4K"
-                    media.videoHeight >= 1000 -> "1080p"
-                    media.videoHeight > 0 -> "${media.videoHeight}p"
-                    else -> null
-                }
+                val resolutionBadge = com.ntv2.app.core.player.VideoResolution.label(height = media.videoHeight)
                 if (resolutionBadge != null) {
                     CardBadge(
                         text = resolutionBadge,

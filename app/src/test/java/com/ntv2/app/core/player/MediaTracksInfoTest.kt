@@ -28,8 +28,8 @@ class MediaTracksInfoTest {
     @Test
     fun `rotulo do formato`() {
         assertEquals("Dolby Vision 4K", MediaTracksInfo(videoMimeType = "video/dolby-vision", videoHeight = 2160).videoFormatLabel)
-        assertEquals("HEVC 1080p", MediaTracksInfo(videoMimeType = "video/hevc", videoHeight = 1080).videoFormatLabel)
-        assertEquals("H.264 720p", MediaTracksInfo(videoMimeType = "video/avc", videoHeight = 720).videoFormatLabel)
+        assertEquals("HEVC FHD", MediaTracksInfo(videoMimeType = "video/hevc", videoHeight = 1080).videoFormatLabel)
+        assertEquals("H.264 HD", MediaTracksInfo(videoMimeType = "video/avc", videoHeight = 720).videoFormatLabel)
         assertEquals("AV1", MediaTracksInfo(videoMimeType = "video/av01").videoFormatLabel)
         assertEquals("foo", MediaTracksInfo(videoMimeType = "video/foo").videoFormatLabel)
         assertEquals("4K", MediaTracksInfo(videoHeight = 2160).videoFormatLabel)

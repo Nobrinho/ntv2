@@ -72,12 +72,7 @@ data class MediaTracksInfo(
                 null -> null
                 else -> videoMimeType.substringAfter('/')
             }
-            val resolution = when {
-                videoHeight >= 2000 -> "4K"
-                videoHeight >= 1000 -> "1080p"
-                videoHeight > 0 -> "${videoHeight}p"
-                else -> null
-            }
+            val resolution = VideoResolution.label(width = videoWidth, height = videoHeight)
             return listOfNotNull(codec, resolution).joinToString(" ").ifEmpty { null }
         }
 

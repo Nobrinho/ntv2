@@ -755,7 +755,13 @@ private fun DetailMetaRow(
             }
             if (durationSecs > 0) MetaText(durationLabel(durationSecs))
             details?.ageRating?.takeIf { it.isNotBlank() }?.let { MetaChip(it.trim().replace(bullet, " • ")) }
-            details?.quality?.takeIf { it.isNotBlank() }?.let { MetaChip(it.trim().replace(bullet, " • ")) }
+            // Mesmo selo da grade (SD/HD/FHD/4K); só cai no texto do canal quando ele não diz a resolução.
+            details?.quality?.takeIf { it.isNotBlank() }?.let { q ->
+                val badge = com.ntv2.app.core.player.VideoResolution.label(
+                    height = com.ntv2.app.feature.media.domain.QualityText.heightOf(q)
+                )
+                MetaChip(badge ?: q.trim().replace(bullet, " • "))
+            }
             if (partCount >= 2) MetaChip("$partCount partes")
         }
         if (details?.year != null || genres.isNotEmpty()) {

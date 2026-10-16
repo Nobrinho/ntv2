@@ -581,9 +581,10 @@ internal fun PortraitControlsOverlay(
             Text(
                 text = title,
                 color = Color.White,
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 3,
+                // headlineSmall: em displaySmall o título tomava metade da área de cima em 2–3 linhas.
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }

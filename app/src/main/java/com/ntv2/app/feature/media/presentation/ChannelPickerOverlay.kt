@@ -129,15 +129,16 @@ internal fun ChannelPickerOverlay(
                             .clickable { onSelect(ch.id) }
                             .background(
                                 when {
-                                    focused -> com.ntv2.app.core.ui.BrandColors.Border
+                                    focused -> com.ntv2.app.core.ui.BrandColors.SurfaceAlt
                                     selected -> Color(0x1F66D9FF)
                                     else -> com.ntv2.app.core.ui.BrandColors.Fill
                                 }
                             )
                             .border(
-                                width = if (focused || selected) 2.dp else 1.dp,
+                                // Foco com anel azul de 3dp, igual ao resto do app (antes era borda branca).
+                                width = if (focused) 3.dp else if (selected) 2.dp else 1.dp,
                                 color = when {
-                                    focused -> Color.White
+                                    focused -> accent
                                     selected -> accent
                                     else -> com.ntv2.app.core.ui.BrandColors.Border
                                 },
@@ -190,10 +191,10 @@ internal fun ChannelPickerOverlay(
                     .clip(RoundedCornerShape(6.dp))
                     .onFocusChanged { closeFocused = it.isFocused }
                     .clickable(onClick = onDismiss)
-                    .background(if (closeFocused) com.ntv2.app.core.ui.BrandColors.Border else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+                    .background(if (closeFocused) com.ntv2.app.core.ui.BrandColors.SurfaceAlt else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
                     .border(
-                        width = if (closeFocused) 2.dp else 1.dp,
-                        color = if (closeFocused) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
+                        width = if (closeFocused) 3.dp else 1.dp,
+                        color = if (closeFocused) com.ntv2.app.core.ui.BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.Border,
                         shape = RoundedCornerShape(6.dp)
                     )
                     .padding(horizontal = 18.dp, vertical = 10.dp),

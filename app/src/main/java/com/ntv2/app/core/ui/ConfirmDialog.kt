@@ -162,7 +162,7 @@ private fun DialogButton(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable { onClick() }
-            .background(if (focused) accent else Color(0x14FFFFFF))
+            .background(if (focused) accent else com.ntv2.app.core.ui.BrandColors.Fill)
             .border(
                 width = if (focused) 2.dp else 1.dp,
                 color = if (focused) accent else com.ntv2.app.core.ui.BrandColors.Border,

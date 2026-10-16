@@ -619,8 +619,8 @@ internal fun SynopsisText(text: String) {
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable { expanded = !expanded }
-            .background(if (focused) Color(0x1FFFFFFF) else Color.Transparent)
-            .then(if (focused && !gliding) Modifier.border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp)) else Modifier)
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color.Transparent)
+            .then(if (focused && !gliding) Modifier.border(1.dp, com.ntv2.app.core.ui.BrandColors.ContentDisabled, RoundedCornerShape(8.dp)) else Modifier)
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -844,7 +844,7 @@ internal fun DetailIconButton(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(Color(0x1FFFFFFF))
+            .background(com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .then(
                 if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp))
                 else Modifier.border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
@@ -868,7 +868,7 @@ internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (isFavorite) Color(0x2466D9FF) else Color(0x1FFFFFFF))
+            .background(if (isFavorite) Color(0x2466D9FF) else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
                 color = if (focused && !gliding) Color.White else border,
@@ -899,7 +899,7 @@ internal fun DetailButton(
     val bg = when {
         primary -> com.ntv2.app.core.ui.BrandColors.Cta
         focused -> com.ntv2.app.core.ui.BrandColors.Border
-        else -> Color(0x1FFFFFFF)
+        else -> com.ntv2.app.core.ui.BrandColors.BorderSubtle
     }
     val content = if (primary) com.ntv2.app.core.ui.BrandColors.OnCta else Color.White
     Row(

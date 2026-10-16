@@ -110,7 +110,7 @@ fun RailButton(
     val cta = primary && enabled // botão de ação em destaque
     val onCta = com.ntv2.app.core.ui.BrandColors.OnCta // conteúdo escuro sobre o CTA branco
     val tint = when {
-        !enabled -> Color(0x44FFFFFF)
+        !enabled -> com.ntv2.app.core.ui.BrandColors.BorderStrong
         cta -> onCta
         active -> BRAND
         else -> Color.White
@@ -142,7 +142,7 @@ fun RailButton(
         Text(
             label,
             color = when {
-                !enabled -> Color(0x44FFFFFF)
+                !enabled -> com.ntv2.app.core.ui.BrandColors.BorderStrong
                 cta -> onCta
                 active -> BRAND
                 else -> com.ntv2.app.core.ui.BrandColors.TextSecondary

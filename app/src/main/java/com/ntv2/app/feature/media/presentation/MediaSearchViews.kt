@@ -326,8 +326,8 @@ internal fun TvSearchOverlay(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp))
-                            .background(Color(0x11FFFFFF))
+                            .border(1.dp, com.ntv2.app.core.ui.BrandColors.ContentDisabled, RoundedCornerShape(8.dp))
+                            .background(com.ntv2.app.core.ui.BrandColors.Fill)
                             .padding(horizontal = 16.dp, vertical = 14.dp)
                     ) {
                         Text(
@@ -1378,7 +1378,7 @@ internal fun KeyButton(
             // Foco igual ao resto do app: anel azul de marca (antes a tecla ficava toda branca).
             .border(
                 width = if (focused) 3.dp else 1.dp,
-                color = if (focused) com.ntv2.app.core.ui.BrandColors.Accent else Color(0x44FFFFFF),
+                color = if (focused) com.ntv2.app.core.ui.BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.BorderStrong,
                 shape = RoundedCornerShape(8.dp)
             )
             .padding(horizontal = 8.dp),

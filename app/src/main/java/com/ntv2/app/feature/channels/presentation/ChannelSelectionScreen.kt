@@ -317,10 +317,10 @@ private fun ChannelNavItem(
     val bg = when {
         primary -> com.ntv2.app.core.ui.BrandColors.Accent
         focused -> com.ntv2.app.core.ui.BrandColors.Border
-        else -> Color(0x14FFFFFF)
+        else -> com.ntv2.app.core.ui.BrandColors.Fill
     }
     val fg = when {
-        !enabled -> Color(0x66FFFFFF)
+        !enabled -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
         primary -> com.ntv2.app.core.ui.BrandColors.OnCta
         else -> Color.White
     }
@@ -331,7 +331,7 @@ private fun ChannelNavItem(
             .background(bg)
             .border(
                 if (focused) 2.dp else 1.dp,
-                if (focused) com.ntv2.app.core.ui.BrandColors.Accent else Color(0x1FFFFFFF),
+                if (focused) com.ntv2.app.core.ui.BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.BorderSubtle,
                 RoundedCornerShape(4.dp)
             )
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
@@ -353,7 +353,7 @@ private fun CompactActionChip(
     onClick: () -> Unit
 ) {
     val background = when {
-        !enabled -> Color(0x14FFFFFF)
+        !enabled -> com.ntv2.app.core.ui.BrandColors.Fill
         primary -> MaterialTheme.colorScheme.primary
         else -> com.ntv2.app.core.ui.BrandColors.BorderSubtle
     }
@@ -367,7 +367,7 @@ private fun CompactActionChip(
             .padding(horizontal = 20.dp, vertical = 13.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = if (enabled) content else Color(0x66FFFFFF), style = MaterialTheme.typography.titleSmall)
+        Text(label, color = if (enabled) content else com.ntv2.app.core.ui.BrandColors.ContentDisabled, style = MaterialTheme.typography.titleSmall)
     }
 }
 
@@ -464,7 +464,7 @@ private fun ChannelsGridSkeleton(compact: Boolean) {
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x11FFFFFF))
+                            .background(com.ntv2.app.core.ui.BrandColors.Fill)
                             .padding(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -522,7 +522,7 @@ private fun ChannelCard(
                 when {
                     focused -> com.ntv2.app.core.ui.BrandColors.Border
                     selected -> Color(0x22000000)
-                    else -> Color(0x11FFFFFF)
+                    else -> com.ntv2.app.core.ui.BrandColors.Fill
                 }
             )
             .border(
@@ -530,7 +530,7 @@ private fun ChannelCard(
                 color = when {
                     focused && !gliding -> Color.White
                     selected -> accent
-                    else -> Color(0x44FFFFFF)
+                    else -> com.ntv2.app.core.ui.BrandColors.BorderStrong
                 },
                 shape = RoundedCornerShape(6.dp)
             )

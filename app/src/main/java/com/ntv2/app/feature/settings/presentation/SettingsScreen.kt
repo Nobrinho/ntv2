@@ -459,7 +459,7 @@ private fun StepperSettingCard(
                 }
             }
             .focusable()
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color(0x11FFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else com.ntv2.app.core.ui.BrandColors.Fill)
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
                 color = if (focused && !gliding) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
@@ -570,7 +570,7 @@ private fun StepTouchButton(
             .background(if (enabled) Color(0x2BFFFFFF) else Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = if (enabled) Color.White else Color(0x44FFFFFF), style = MaterialTheme.typography.titleMedium)
+        Text(label, color = if (enabled) Color.White else com.ntv2.app.core.ui.BrandColors.BorderStrong, style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -619,7 +619,7 @@ private fun SettingCardShell(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color(0x11FFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else com.ntv2.app.core.ui.BrandColors.Fill)
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
                 color = if (focused && !gliding) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
@@ -721,7 +721,7 @@ private fun PrivacyCloseButton(onClose: () -> Unit) {
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClose)
-            .background(if (focused) Color.White else Color(0x1FFFFFFF)),
+            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -845,7 +845,7 @@ private fun CardLoadingOption(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color(0x11FFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else com.ntv2.app.core.ui.BrandColors.Fill)
             .border(
                 width = if ((focused && !gliding) || selected) 2.dp else 1.dp,
                 color = when {

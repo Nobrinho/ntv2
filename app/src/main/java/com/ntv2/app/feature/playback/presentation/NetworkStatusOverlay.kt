@@ -140,7 +140,7 @@ internal fun NetworkStatusOverlay(
 
             Text(
                 fileName ?: "arquivo #$fileId",
-                color = Color(0x66FFFFFF),
+                color = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

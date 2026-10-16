@@ -212,7 +212,7 @@ private fun ShelfTabPill(label: String, selected: Boolean, modifier: Modifier, o
                 if (it.isFocused && !selected) onSelect()
             }
             .clickable(onClick = onSelect)
-            .background(if (selected) Color.White else Color(0x1FFFFFFF))
+            .background(if (selected) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .then(if (focused) Modifier.border(2.dp, BRAND_ACCENT, RoundedCornerShape(4.dp)) else Modifier)
             .padding(horizontal = 20.dp, vertical = 10.dp)
     ) {
@@ -339,7 +339,7 @@ private fun HistoryTextButton(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else Color(0x1FFFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .then(if (focused) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
             .padding(horizontal = 14.dp, vertical = 9.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -364,7 +364,7 @@ private fun HistoryIconButton(
             .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color(0x1FFFFFFF)),
+            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription = description, tint = if (focused) Color.Black else com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(20.dp))

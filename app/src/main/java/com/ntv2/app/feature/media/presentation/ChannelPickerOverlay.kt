@@ -131,7 +131,7 @@ internal fun ChannelPickerOverlay(
                                 when {
                                     focused -> com.ntv2.app.core.ui.BrandColors.Border
                                     selected -> Color(0x1F66D9FF)
-                                    else -> Color(0x14FFFFFF)
+                                    else -> com.ntv2.app.core.ui.BrandColors.Fill
                                 }
                             )
                             .border(
@@ -190,7 +190,7 @@ internal fun ChannelPickerOverlay(
                     .clip(RoundedCornerShape(6.dp))
                     .onFocusChanged { closeFocused = it.isFocused }
                     .clickable(onClick = onDismiss)
-                    .background(if (closeFocused) com.ntv2.app.core.ui.BrandColors.Border else Color(0x1FFFFFFF))
+                    .background(if (closeFocused) com.ntv2.app.core.ui.BrandColors.Border else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
                     .border(
                         width = if (closeFocused) 2.dp else 1.dp,
                         color = if (closeFocused) Color.White else com.ntv2.app.core.ui.BrandColors.Border,

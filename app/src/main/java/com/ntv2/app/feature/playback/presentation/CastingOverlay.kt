@@ -84,7 +84,7 @@ internal fun CastingOverlay(
                 modifier = Modifier
                     .padding(top = 6.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp))
+                    .border(1.dp, com.ntv2.app.core.ui.BrandColors.ContentDisabled, RoundedCornerShape(8.dp))
                     .clickable(onClick = onStop)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

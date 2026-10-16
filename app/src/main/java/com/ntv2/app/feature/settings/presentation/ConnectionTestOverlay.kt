@@ -146,7 +146,7 @@ private fun CheckRow(icon: ImageVector, label: String, result: CheckResult) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
-            .background(Color(0x0FFFFFFF))
+            .background(com.ntv2.app.core.ui.BrandColors.Fill)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -197,7 +197,7 @@ private fun TestButton(
         val content = when {
             focused -> Color.Black
             enabled -> Color.White
-            else -> Color(0x66FFFFFF)
+            else -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
         }
         Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
         Text(label, color = content, style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)

@@ -111,10 +111,10 @@ internal fun LoadMoreButton(
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(enabled = !loading, onClick = onClick)
-            .background(if (focused) accent else Color(0x1FFFFFFF))
+            .background(if (focused) accent else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .border(
                 width = if (focused) 2.dp else 1.dp,
-                color = if (focused) accent else Color(0x44FFFFFF),
+                color = if (focused) accent else com.ntv2.app.core.ui.BrandColors.BorderStrong,
                 shape = RoundedCornerShape(8.dp)
             )
             .padding(horizontal = 28.dp),
@@ -432,7 +432,7 @@ internal fun MediaCard(
             .clip(RoundedCornerShape(6.dp))
             .drawBehind {
                 if (showTitle || focusFraction > 0f) {
-                    drawRect(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), com.ntv2.app.core.ui.BrandColors.BorderSubtle, focusFraction))
+                    drawRect(androidx.compose.ui.graphics.lerp(com.ntv2.app.core.ui.BrandColors.Fill, com.ntv2.app.core.ui.BrandColors.BorderSubtle, focusFraction))
                 }
             }
             .drawWithContent {
@@ -467,7 +467,7 @@ internal fun MediaCard(
                         Icon(
                             Icons.Filled.Movie,
                             contentDescription = null,
-                            tint = Color(0x66FFFFFF),
+                            tint = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
                             modifier = Modifier.size(48.dp)
                         )
                     }
@@ -678,7 +678,7 @@ private fun SeriesGridCard(
                 scaleX = sc; scaleY = sc
             }
             .clip(RoundedCornerShape(6.dp))
-            .background(Color(0x0FFFFFFF))
+            .background(com.ntv2.app.core.ui.BrandColors.Fill)
             .drawWithContent {
                 drawContent()
                 drawIdleBorder(focusFraction)
@@ -706,7 +706,7 @@ private fun SeriesGridCard(
                         Icon(
                             Icons.Filled.Movie,
                             contentDescription = null,
-                            tint = Color(0x66FFFFFF),
+                            tint = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
                             modifier = Modifier.size(48.dp)
                         )
                     }

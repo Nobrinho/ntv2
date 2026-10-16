@@ -331,7 +331,7 @@ private fun PlayPill(onClick: () -> Unit) {
 private fun TextPill(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, destructive: Boolean, onClick: () -> Unit) {
     val content = if (destructive) Color(0xFFFF7A7A) else Color.White
     Row(
-        modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).background(Color(0x1FFFFFFF)).padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).background(com.ntv2.app.core.ui.BrandColors.BorderSubtle).padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -343,7 +343,7 @@ private fun TextPill(icon: androidx.compose.ui.graphics.vector.ImageVector, labe
 @Composable
 private fun CircleIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClick).background(Color(0x1FFFFFFF)),
+        modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClick).background(com.ntv2.app.core.ui.BrandColors.BorderSubtle),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription = description, tint = com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(20.dp))

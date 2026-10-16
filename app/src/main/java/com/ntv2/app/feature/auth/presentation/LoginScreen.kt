@@ -229,7 +229,7 @@ private fun Card(compact: Boolean, content: @Composable () -> Unit) {
             .widthIn(max = CARD_WIDTH_DP.dp)
             .clip(BrandShapes.Lg)
             .background(com.ntv2.app.core.ui.BrandColors.Surface)
-            .border(1.dp, Color(0x1FFFFFFF), BrandShapes.Lg)
+            .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, BrandShapes.Lg)
             .padding(horizontal = if (compact) 18.dp else 28.dp, vertical = if (compact) 18.dp else 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp)

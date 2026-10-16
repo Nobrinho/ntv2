@@ -691,9 +691,9 @@ internal fun PortraitTopIcon(
     var focused by remember { mutableStateOf(false) }
     val tint = when {
         focused -> Color.Black
-        !enabled -> Color(0x66FFFFFF)
+        !enabled -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
         active -> Color.White
-        else -> Color(0x66FFFFFF)
+        else -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
     }
 
     Box(
@@ -886,7 +886,7 @@ internal fun Scrubber(
             // Buffer
             if (buffered > 0f) {
                 drawRoundRect(
-                    color = Color(0x66FFFFFF),
+                    color = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
                     topLeft = Offset(0f, cy - trackH / 2f),
                     size = Size(w * buffered, trackH),
                     cornerRadius = radius
@@ -1047,7 +1047,7 @@ internal fun PlayerSettingsRow(
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(enabled = enabled, onClick = onClick)
-            .background(if (focused) Color(0x1FFFFFFF) else Color.Transparent)
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color.Transparent)
             .padding(horizontal = 26.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1163,7 +1163,7 @@ internal fun TrackRow(
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else Color(0x14FFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else com.ntv2.app.core.ui.BrandColors.Fill)
             .border(
                 width = if (focused) 2.dp else 1.dp,
                 color = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.Border,

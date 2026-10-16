@@ -358,7 +358,7 @@ internal fun ErrorActionButton(
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .border(1.dp, if (focused) Color.White else Color(0x44FFFFFF), RoundedCornerShape(6.dp))
+            .border(1.dp, if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderStrong, RoundedCornerShape(6.dp))
             .padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically

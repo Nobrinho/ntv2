@@ -140,7 +140,7 @@ private fun ReportReasonRow(reason: MediaReportReason, modifier: Modifier, onCli
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color(0x14FFFFFF))
+            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.Fill)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

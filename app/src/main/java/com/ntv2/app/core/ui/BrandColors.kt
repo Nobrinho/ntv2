@@ -22,6 +22,12 @@ object BrandColors {
     val Border = Color(0x33FFFFFF)
     /** Contorno discreto de itens em repouso. */
     val BorderSubtle = Color(0x22FFFFFF)
+    /** Contorno de itens interativos em destaque leve (campos, teclas). */
+    val BorderStrong = Color(0x44FFFFFF)
+    /** Preenchimento translúcido de botões e itens em repouso sobre o fundo. */
+    val Fill = Color(0x14FFFFFF)
+    /** Texto e ícones de itens desabilitados. */
+    val ContentDisabled = Color(0x66FFFFFF)
     val Cyan = Color(0xFF31F2E0)
     /** NBR Premium / informação especial. */
     val Violet = Color(0xFF9B7CFF)

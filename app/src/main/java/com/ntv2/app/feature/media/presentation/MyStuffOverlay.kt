@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -285,26 +286,36 @@ private fun PosterGrid(
         EmptyState(emptyMessage); return
     }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        // 3 colunas com o título embaixo, como a grade da biblioteca (antes 2 capas sem título).
+        columns = GridCells.Fixed(3),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         gridItems(items, key = { it.mediaId }) { media ->
             val cover = media.posterPath ?: media.thumbnailPath
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(246.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable(onClick = { onCardClick(media) })
-                    .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
+            androidx.compose.foundation.layout.Column(
+                modifier = Modifier.clickable(onClick = { onCardClick(media) }),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (showCovers && cover != null) {
-                    AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                } else {
-                    Text(media.title, color = Color.White, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
+                ) {
+                    if (showCovers && cover != null) {
+                        AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    }
                 }
+                Text(
+                    media.title,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

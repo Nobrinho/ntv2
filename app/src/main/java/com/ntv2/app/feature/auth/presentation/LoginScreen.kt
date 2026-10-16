@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -82,6 +84,8 @@ import com.ntv2.app.feature.auth.presentation.viewmodel.LoginViewModel
 
 private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 private const val CARD_WIDTH_DP = 560
+// TV: cartão largo com QR à esquerda e telefone à direita (como no protótipo).
+private const val CARD_WIDTH_TV_DP = 900
 
 private enum class LoginStep { Qr, Phone, Code, Password, Success }
 
@@ -119,8 +123,8 @@ fun LoginScreen(
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(com.ntv2.app.core.ui.BrandColors.Background)) {
         BrandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Glow)
         val compact = adaptive.usePhoneLayout || maxWidth < 600.dp
-        val logoGlow = if (compact) 124.dp else 180.dp
-        val logoSize = if (compact) 86.dp else 124.dp
+        val logoGlow = if (compact) 124.dp else 120.dp
+        val logoSize = if (compact) 86.dp else 84.dp
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -129,7 +133,7 @@ fun LoginScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = if (compact) 14.dp else 16.dp, vertical = if (compact) 20.dp else 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically)
+            verticalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 12.dp, Alignment.CenterVertically)
         ) {
             // Logo com glow discreto (azul NBR) por trás.
             Box(contentAlignment = Alignment.Center) {
@@ -198,8 +202,8 @@ fun LoginScreen(
 private fun SessionEndedBanner(compact: Boolean) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
             .widthIn(max = CARD_WIDTH_DP.dp)
+            .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
             .background(Color(0x26FFBE55))
             .border(1.dp, Color(0x66FFBE55), RoundedCornerShape(6.dp))
@@ -225,8 +229,8 @@ private fun SessionEndedBanner(compact: Boolean) {
 private fun Card(compact: Boolean, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
+            .widthIn(max = if (compact) CARD_WIDTH_DP.dp else CARD_WIDTH_TV_DP.dp)
             .fillMaxWidth()
-            .widthIn(max = CARD_WIDTH_DP.dp)
             .clip(BrandShapes.Lg)
             .background(com.ntv2.app.core.ui.BrandColors.Surface)
             .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, BrandShapes.Lg)
@@ -243,13 +247,20 @@ private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhon
     val restoreSignal = com.ntv2.app.core.ui.LocalFocusRestoreSignal.current
     LaunchedEffect(restoreSignal) { runCatching { phoneFocus.requestFocus() } }
 
-    Text("Entre na sua conta", style = MaterialTheme.typography.headlineSmall, color = Color.White)
     Text(
-        "Método 1 — QR Code",
-        style = MaterialTheme.typography.titleSmall,
-        color = BRAND,
-        textAlign = TextAlign.Center
+        "Entre na sua conta",
+        style = MaterialTheme.typography.headlineSmall,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        color = Color.White
     )
+    if (compact) {
+        Text(
+            "Método 1 — QR Code",
+            style = MaterialTheme.typography.titleSmall,
+            color = BRAND,
+            textAlign = TextAlign.Center
+        )
+    }
 
     val qr = remember(payload) { payload?.let { generateQrBitmap(it, 400) } }
     val qrBoxSize = if (compact) 184.dp else 200.dp
@@ -302,13 +313,43 @@ private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhon
         }
     } else {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min),
+            horizontalArrangement = Arrangement.spacedBy(28.dp)
         ) {
-            qrContent()
-            instructions(Modifier.weight(1f))
+            Column(modifier = Modifier.weight(1.4f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                SectionLabel("Método 1 · QR Code (recomendado)", BRAND)
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    qrContent()
+                    instructions(Modifier.weight(1f))
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+            )
+            Column(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)
+            ) {
+                SectionLabel("Método 2 · Número de telefone", com.ntv2.app.core.ui.BrandColors.TextSecondary)
+                Text(
+                    "Prefere receber um código? Entre com o seu número do Telegram.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary
+                )
+                LoginButton(
+                    modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
+                    primary = false,
+                    onClick = onUsePhone
+                ) {
+                    BrandButtonLabel("Entrar com telefone")
+                }
+            }
         }
+        error?.let { ErrorText(it) }
+        return
     }
 
     error?.let { ErrorText(it) }
@@ -328,6 +369,18 @@ private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhon
     ) {
         BrandButtonLabel("Entrar com telefone")
     }
+}
+
+/** Rótulo de método no login da TV (caixa alta, espaçado). */
+@Composable
+private fun SectionLabel(text: String, color: Color) {
+    Text(
+        text.uppercase(),
+        color = color,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        letterSpacing = androidx.compose.ui.unit.TextUnit(1.2f, androidx.compose.ui.unit.TextUnitType.Sp)
+    )
 }
 
 @Composable

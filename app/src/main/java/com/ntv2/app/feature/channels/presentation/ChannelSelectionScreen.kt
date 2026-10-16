@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Deselect
@@ -514,34 +516,60 @@ private fun ChannelCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            // Altura mínima igual para todos: nomes de 1 e 2 linhas não desalinham a grade.
+            .heightIn(min = 88.dp)
             .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onToggle)
             .background(
                 when {
-                    focused -> com.ntv2.app.core.ui.BrandColors.Border
-                    selected -> Color(0x22000000)
-                    else -> com.ntv2.app.core.ui.BrandColors.Fill
+                    focused -> com.ntv2.app.core.ui.BrandColors.SurfaceAlt
+                    selected -> accent.copy(alpha = 0.10f)
+                    else -> com.ntv2.app.core.ui.BrandColors.Surface
                 }
             )
+            // Foco: anel azul de 3dp (antes branco), igual ao resto do app.
             .border(
-                width = if ((focused && !gliding) || selected) 2.dp else 1.dp,
+                width = if (focused && !gliding) 3.dp else if (selected) 2.dp else 1.dp,
                 color = when {
-                    focused && !gliding -> Color.White
+                    focused && !gliding -> accent
                     selected -> accent
-                    else -> com.ntv2.app.core.ui.BrandColors.BorderStrong
+                    else -> com.ntv2.app.core.ui.BrandColors.BorderSubtle
                 },
-                shape = RoundedCornerShape(6.dp)
+                shape = RoundedCornerShape(8.dp)
             )
-            .padding(12.dp)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        contentAlignment = Alignment.CenterStart
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ChannelAvatar(avatarPath = item.avatarPath, title = item.title)
+            // Selo de seleção no canto do avatar: não rouba largura do nome (uma caixa à direita
+            // cortava os nomes no meio da palavra).
+            Box {
+                ChannelAvatar(avatarPath = item.avatarPath, title = item.title)
+                if (selected) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(accent)
+                            .border(2.dp, com.ntv2.app.core.ui.BrandColors.Background, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = com.ntv2.app.core.ui.BrandColors.OnCta,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)

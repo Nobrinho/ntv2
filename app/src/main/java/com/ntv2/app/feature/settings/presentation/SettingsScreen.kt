@@ -66,6 +66,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -180,6 +181,7 @@ fun SettingsScreen(
                     modifier = Modifier.focusGroup(),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    SettingsSectionLabel("Interface")
                     ToggleCard(
                         icon = Icons.Filled.Image,
                         title = "Capas",
@@ -216,11 +218,6 @@ fun SettingsScreen(
                         modifier = itemMod(2),
                         onToggle = { onToggleCastPhotos(!castPhotos) }
                     )
-                    DurationCard(
-                        modifier = itemMod(3),
-                        value = minDurationMinutes,
-                        onChange = onChangeMinDuration
-                    )
                     NavCard(
                         icon = Icons.Filled.Animation,
                         title = "Animação dos cards",
@@ -228,6 +225,12 @@ fun SettingsScreen(
                         destructive = false,
                         modifier = itemMod(4),
                         onClick = { showCardLoadingPicker = true }
+                    )
+                    SettingsSectionLabel("Conteúdo", topGap = true)
+                    DurationCard(
+                        modifier = itemMod(3),
+                        value = minDurationMinutes,
+                        onChange = onChangeMinDuration
                     )
                     NavCard(
                         icon = Icons.Filled.Tv,
@@ -247,6 +250,7 @@ fun SettingsScreen(
                             onClick = { if (!indexStatus.refreshing) onRefreshIndex() }
                         )
                     }
+                    SettingsSectionLabel("Conta e app", topGap = true)
                     if (runConnectionTest != null) {
                         NavCard(
                             icon = Icons.Filled.NetworkCheck,
@@ -877,4 +881,17 @@ private fun CardLoadingOption(
             maxLines = 3
         )
     }
+}
+
+/** Rótulo de grupo da lista de configurações (não recebe foco). */
+@Composable
+private fun SettingsSectionLabel(text: String, topGap: Boolean = false) {
+    Text(
+        text.uppercase(),
+        color = com.ntv2.app.core.ui.BrandColors.Accent,
+        fontSize = 12.sp,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(top = if (topGap) 10.dp else 0.dp)
+    )
 }

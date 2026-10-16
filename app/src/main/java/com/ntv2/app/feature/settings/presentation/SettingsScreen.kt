@@ -166,7 +166,8 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (useTvLayout) Modifier else Modifier.reserveMainBottomNav())
+                    // Celular: respeita a barra de status (o título "Configurações" ficava por baixo da hora).
+                    .then(if (useTvLayout) Modifier else Modifier.statusBarsPadding().reserveMainBottomNav())
                     .padding(
                         horizontal = if (useTvLayout) adaptive.tvSafeHorizontal else 16.dp,
                         vertical = if (useTvLayout) adaptive.tvSafeVertical else 14.dp

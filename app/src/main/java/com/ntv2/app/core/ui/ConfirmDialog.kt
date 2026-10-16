@@ -91,8 +91,10 @@ fun ConfirmDialog(
     ) {
         Column(
             modifier = Modifier
+                // widthIn antes do fillMaxWidth: na ordem inversa o limite de 460dp era ignorado e a
+                // caixa ocupava 92% da TV.
+                .widthIn(max = 460.dp)
                 .fillMaxWidth(0.92f)
-                .widthIn(max = 420.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(BrandColors.Surface)
                 .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(8.dp))
@@ -162,17 +164,20 @@ private fun DialogButton(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable { onClick() }
-            .background(if (focused) accent else com.ntv2.app.core.ui.BrandColors.Fill)
+            // Foco igual ao resto do app: superfície mais clara + anel azul de 3dp (antes o botão
+            // inteiro virava branco/vermelho).
+            .background(if (focused) BrandColors.SurfaceAlt else com.ntv2.app.core.ui.BrandColors.Fill)
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) accent else com.ntv2.app.core.ui.BrandColors.Border,
+                width = if (focused) 3.dp else 1.dp,
+                color = if (focused) BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.Border,
                 shape = RoundedCornerShape(6.dp)
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val content = if (focused) BrandColors.OnCta else Color.White
+        // Ação destrutiva mantém a cor dela (vermelho); as demais ficam brancas.
+        val content = if (accent == Color.White) Color.White else accent
         Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
         Text(
             label,

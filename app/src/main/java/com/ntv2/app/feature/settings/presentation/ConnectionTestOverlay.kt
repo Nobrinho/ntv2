@@ -75,7 +75,7 @@ internal fun ConnectionTestOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xE6000000))
+            .background(Color(0xCC000000))
             .clickable(enabled = !report.running, onClick = onClose)
             .trapFocus(),
         contentAlignment = Alignment.Center
@@ -85,15 +85,20 @@ internal fun ConnectionTestOverlay(
                 .padding(16.dp)
                 .widthIn(max = 520.dp)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF141414))
-                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(8.dp))
+                .background(com.ntv2.app.core.ui.BrandColors.Surface)
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(8.dp))
                 .clickable(enabled = false) {}
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp),
+                .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Teste de conexão", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Teste de conexão",
+                color = Color.White,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+            )
             CheckRow(Icons.Filled.Wifi, "Rede", report.network)
             CheckRow(Icons.Filled.Cloud, "Internet", report.internet)
             CheckRow(Icons.Filled.Send, "Telegram", report.telegram)
@@ -120,6 +125,7 @@ internal fun ConnectionTestOverlay(
                         icon = Icons.Filled.Refresh,
                         label = if (report.running) "Testando…" else "Testar de novo",
                         enabled = !report.running,
+                        primary = true,
                         modifier = m.focusRequester(actionFocus),
                         onClick = { run++ }
                     )
@@ -146,16 +152,16 @@ private fun CheckRow(icon: ImageVector, label: String, result: CheckResult) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
-            .background(com.ntv2.app.core.ui.BrandColors.Fill)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Accent, modifier = Modifier.size(22.dp))
         Text(label, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f))
         when (result) {
-            CheckResult.Pending -> Text("—", color = Color(0xFF6A6A6A), style = MaterialTheme.typography.titleSmall)
-            CheckResult.Running -> CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+            CheckResult.Pending -> Text("—", color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.titleSmall)
+            CheckResult.Running -> CircularProgressIndicator(color = com.ntv2.app.core.ui.BrandColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
             is CheckResult.Ok -> StatusValue(
                 result.value,
                 if (result.good) OK_GREEN else WARN_YELLOW,
@@ -180,22 +186,39 @@ private fun TestButton(
     label: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    primary: Boolean = false,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val filled = primary && enabled
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             // Continua focável quando "desligado" (o foco não pode sumir no dpad); só ignora o clique.
             .clickable { if (enabled) onClick() }
-            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+            .background(
+                when {
+                    filled -> com.ntv2.app.core.ui.BrandColors.Cta
+                    focused -> com.ntv2.app.core.ui.BrandColors.SurfaceAlt
+                    else -> com.ntv2.app.core.ui.BrandColors.Fill
+                }
+            )
+            .border(
+                if (focused) 3.dp else 1.dp,
+                when {
+                    focused -> com.ntv2.app.core.ui.BrandColors.Accent
+                    filled -> com.ntv2.app.core.ui.BrandColors.Cta
+                    else -> com.ntv2.app.core.ui.BrandColors.Border
+                },
+                RoundedCornerShape(6.dp)
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val content = when {
-            focused -> Color.Black
+            filled -> com.ntv2.app.core.ui.BrandColors.OnCta
             enabled -> Color.White
             else -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
         }

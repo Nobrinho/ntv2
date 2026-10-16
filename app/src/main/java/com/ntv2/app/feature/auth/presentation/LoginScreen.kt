@@ -210,7 +210,7 @@ private fun SessionEndedBanner(compact: Boolean) {
         Icon(
             imageVector = Icons.Filled.Info,
             contentDescription = null,
-            tint = Color(0xFFFFBE55),
+            tint = com.ntv2.app.core.ui.BrandColors.Warning,
             modifier = Modifier.size(if (compact) 20.dp else 22.dp)
         )
         Text(
@@ -271,7 +271,7 @@ private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhon
             Text(
                 if (qr != null) "● Aguardando conexão…" else "Gerando QR…",
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (qr != null) BRAND else Color(0xFF8E98A8)
+                color = if (qr != null) BRAND else com.ntv2.app.core.ui.BrandColors.TextMuted
             )
         }
     }
@@ -318,7 +318,7 @@ private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhon
     Text(
         "Método 2 — Entrar com o número de telefone",
         style = MaterialTheme.typography.bodySmall,
-        color = Color(0xFF8E98A8),
+        color = com.ntv2.app.core.ui.BrandColors.TextMuted,
         textAlign = TextAlign.Center
     )
     LoginButton(
@@ -390,7 +390,7 @@ private fun PhoneStep(
     Text(
         "Método 2 — Entrar com QR Code",
         style = MaterialTheme.typography.bodySmall,
-        color = Color(0xFF8E98A8),
+        color = com.ntv2.app.core.ui.BrandColors.TextMuted,
         textAlign = TextAlign.Center
     )
     LoginButton(modifier = Modifier.fillMaxWidth(), primary = false, onClick = onUseQr) { BrandButtonLabel("Entrar com QR Code") }
@@ -492,15 +492,15 @@ private fun Divider(label: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(modifier = Modifier.weight(1f).height(1.dp).background(Color(0x33FFFFFF)))
-        Text(label, color = Color(0xFF8E98A8), style = MaterialTheme.typography.labelMedium)
-        Box(modifier = Modifier.weight(1f).height(1.dp).background(Color(0x33FFFFFF)))
+        Box(modifier = Modifier.weight(1f).height(1.dp).background(com.ntv2.app.core.ui.BrandColors.Border))
+        Text(label, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+        Box(modifier = Modifier.weight(1f).height(1.dp).background(com.ntv2.app.core.ui.BrandColors.Border))
     }
 }
 
 @Composable
 private fun ErrorText(message: String) {
-    Text(message, color = Color(0xFFFF626D), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+    Text(message, color = com.ntv2.app.core.ui.BrandColors.Error, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
 }
 
 private fun maskPhone(phone: String): String {

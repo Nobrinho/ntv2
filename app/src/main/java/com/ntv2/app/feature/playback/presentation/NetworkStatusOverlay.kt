@@ -92,7 +92,7 @@ internal fun NetworkStatusOverlay(
                 .widthIn(max = 320.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xF20E1526))
-                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(6.dp))
                 .clickable(onClick = {})
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -194,7 +194,7 @@ private fun PartsMap(parts: PartsSnapshot) {
                     PartStatus.CURRENT -> Color.White
                     PartStatus.DOWNLOADED -> accent
                     PartStatus.PARTIAL -> accent.copy(alpha = 0.25f + 0.5f * cell.fraction)
-                    PartStatus.PENDING -> Color(0x22FFFFFF)
+                    PartStatus.PENDING -> com.ntv2.app.core.ui.BrandColors.BorderSubtle
                 }
                 Box(
                     modifier = Modifier

@@ -358,7 +358,7 @@ private fun ToggleCard(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .background(if (value) BRAND else Color(0x33FFFFFF))
+                .background(if (value) BRAND else com.ntv2.app.core.ui.BrandColors.Border)
                 .padding(horizontal = 16.dp, vertical = 6.dp)
         ) {
             Text(
@@ -459,10 +459,10 @@ private fun StepperSettingCard(
                 }
             }
             .focusable()
-            .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color(0x11FFFFFF))
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
-                color = if (focused && !gliding) Color.White else Color(0x33FFFFFF),
+                color = if (focused && !gliding) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
                 shape = RoundedCornerShape(6.dp)
             )
             .padding(horizontal = 18.dp, vertical = 16.dp)
@@ -535,7 +535,7 @@ private fun StepperControl(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0x16000000))
-            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+            .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(8.dp))
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -588,7 +588,7 @@ private fun NavCard(
         title = title,
         subtitle = subtitle,
         modifier = modifier,
-        titleColor = if (destructive) Color(0xFFFF626D) else Color.White,
+        titleColor = if (destructive) com.ntv2.app.core.ui.BrandColors.Error else Color.White,
         onClick = onClick
     ) {
         Icon(
@@ -619,10 +619,10 @@ private fun SettingCardShell(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color(0x11FFFFFF))
             .border(
                 width = if (focused && !gliding) 2.dp else 1.dp,
-                color = if (focused && !gliding) Color.White else Color(0x33FFFFFF),
+                color = if (focused && !gliding) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
                 shape = RoundedCornerShape(6.dp)
             )
             .padding(horizontal = 20.dp, vertical = 18.dp),
@@ -679,7 +679,7 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
                     .weight(1f)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(6.dp))
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                    .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
                     .focusRequester(focus)
                     .focusable()
                     .onKeyEvent { e ->
@@ -705,7 +705,7 @@ private fun PrivacyPolicyOverlay(onClose: () -> Unit) {
             }
             Text(
                 if (compact) "Deslize para rolar · toque no X para fechar" else "Use ↑ / ↓ para rolar · ↑ no topo vai ao X · Voltar para fechar",
-                color = Color(0xFF8E98A8),
+                color = com.ntv2.app.core.ui.BrandColors.TextMuted,
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -845,13 +845,13 @@ private fun CardLoadingOption(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color(0x22FFFFFF) else Color(0x11FFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color(0x11FFFFFF))
             .border(
                 width = if ((focused && !gliding) || selected) 2.dp else 1.dp,
                 color = when {
                     focused && !gliding -> Color.White
                     selected -> BRAND
-                    else -> Color(0x33FFFFFF)
+                    else -> com.ntv2.app.core.ui.BrandColors.Border
                 },
                 shape = RoundedCornerShape(6.dp)
             )
@@ -876,7 +876,7 @@ private fun CardLoadingOption(
         )
         Text(
             style.description,
-            color = Color(0xFF8E98A8),
+            color = com.ntv2.app.core.ui.BrandColors.TextMuted,
             style = MaterialTheme.typography.labelSmall,
             maxLines = 3
         )

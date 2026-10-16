@@ -151,7 +151,7 @@ internal fun MyListHistoryOverlay(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         "Nada por aqui ainda. Os títulos que você assistir aparecem no histórico.",
-                        color = Color(0xFF8E98A8),
+                        color = com.ntv2.app.core.ui.BrandColors.TextMuted,
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -232,7 +232,7 @@ private fun MyListGrid(
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 "Sua lista está vazia. Use o coração nos detalhes de um filme para salvá-lo.",
-                color = Color(0xFF8E98A8),
+                color = com.ntv2.app.core.ui.BrandColors.TextMuted,
                 style = MaterialTheme.typography.bodyLarge
             )
         }
@@ -294,7 +294,7 @@ private fun HistoryRow(
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(media.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(historySubtitle(entry), color = Color(0xFF8E98A8), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(historySubtitle(entry), color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (entry.completed) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -339,7 +339,7 @@ private fun HistoryTextButton(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color(0x33FFFFFF) else Color(0x1FFFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else Color(0x1FFFFFFF))
             .then(if (focused) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
             .padding(horizontal = 14.dp, vertical = 9.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),

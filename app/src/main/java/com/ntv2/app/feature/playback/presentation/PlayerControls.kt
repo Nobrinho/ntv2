@@ -136,7 +136,7 @@ internal fun GestureAdjustmentOverlay(
                 .width(48.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xB3000000))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
                 .padding(vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -148,7 +148,7 @@ internal fun GestureAdjustmentOverlay(
                     .height(96.dp)
                     .width(10.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x33FFFFFF)),
+                    .background(com.ntv2.app.core.ui.BrandColors.Border),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Box(
@@ -758,7 +758,7 @@ internal fun OverlayRoundButton(
             )
             .border(
                 width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else Color(0x33FFFFFF),
+                color = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
                 shape = CircleShape
             ),
         contentAlignment = Alignment.Center
@@ -785,7 +785,7 @@ internal fun OverlayChip(
     val tint = if (focused) Color.Black else if (enabled) Color.White else Color(0xB3FFFFFF)
     val background = when {
         focused -> Color.White
-        enabled -> Color(0x33FFFFFF)
+        enabled -> com.ntv2.app.core.ui.BrandColors.Border
         else -> Color(0x22000000)
     }
     val baseModifier = Modifier
@@ -793,7 +793,7 @@ internal fun OverlayChip(
         .onFocusChanged { focused = it.isFocused }
         .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
         .background(background)
-        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(4.dp))
+        .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(4.dp))
 
     if (!showLabel) {
         Box(
@@ -1038,7 +1038,7 @@ internal fun PlayerSettingsRow(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val contentColor = if (enabled) Color.White else Color(0xFF8E98A8)
+    val contentColor = if (enabled) Color.White else com.ntv2.app.core.ui.BrandColors.TextMuted
 
     Row(
         modifier = modifier
@@ -1093,7 +1093,7 @@ internal fun TrackPickerOverlay(
                 .widthIn(max = 460.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(com.ntv2.app.core.ui.BrandColors.Surface)
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
                 .clickable(onClick = {})
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1136,8 +1136,8 @@ internal fun CloseTrackPickerButton(onClick: () -> Unit) {
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color(0x22FFFFFF))
-            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+            .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(8.dp))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -1163,10 +1163,10 @@ internal fun TrackRow(
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color(0x33FFFFFF) else Color(0x14FFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else Color(0x14FFFFFF))
             .border(
                 width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else Color(0x33FFFFFF),
+                color = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
                 shape = RoundedCornerShape(8.dp)
             )
             .padding(horizontal = 16.dp, vertical = 12.dp)

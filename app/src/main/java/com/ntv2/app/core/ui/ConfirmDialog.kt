@@ -43,7 +43,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
 private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
-private val DESTRUCTIVE = Color(0xFFFF626D)
+private val DESTRUCTIVE = com.ntv2.app.core.ui.BrandColors.Error
 
 /**
  * Diálogo de confirmação padronizado do app.
@@ -95,7 +95,7 @@ fun ConfirmDialog(
                 .widthIn(max = 420.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(BrandColors.Surface)
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(8.dp))
                 .padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -165,7 +165,7 @@ private fun DialogButton(
             .background(if (focused) accent else Color(0x14FFFFFF))
             .border(
                 width = if (focused) 2.dp else 1.dp,
-                color = if (focused) accent else Color(0x33FFFFFF),
+                color = if (focused) accent else com.ntv2.app.core.ui.BrandColors.Border,
                 shape = RoundedCornerShape(6.dp)
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),

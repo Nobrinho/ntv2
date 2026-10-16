@@ -84,7 +84,7 @@ internal fun ReportMediaDialog(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF141414))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
                 // Absorve o toque: clicar dentro do cartão não fecha.
                 .clickable(enabled = false) {}
                 .padding(20.dp),
@@ -106,7 +106,7 @@ internal fun ReportMediaDialog(
                 Text("Reportar problema", color = Color.White, style = MaterialTheme.typography.titleLarge)
                 Text(
                     title,
-                    color = Color(0xFF8E98A8),
+                    color = com.ntv2.app.core.ui.BrandColors.TextMuted,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -148,7 +148,7 @@ private fun ReportReasonRow(reason: MediaReportReason, modifier: Modifier, onCli
             Text(reason.label, color = if (focused) Color.Black else Color.White, style = MaterialTheme.typography.titleMedium)
             Text(
                 reason.hint,
-                color = if (focused) Color(0xFF404040) else Color(0xFF8E98A8),
+                color = if (focused) Color(0xFF404040) else com.ntv2.app.core.ui.BrandColors.TextMuted,
                 style = MaterialTheme.typography.bodySmall
             )
         }

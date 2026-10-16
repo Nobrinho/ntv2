@@ -374,7 +374,7 @@ private fun SeasonSelector(
                     .clip(RoundedCornerShape(4.dp))
                     .onFocusChanged { focused = it.isFocused }
                     .clickable { onSelect(s.number) }
-                    .background(if (isSel) BRAND_ACCENT else Color(0x22FFFFFF))
+                    .background(if (isSel) BRAND_ACCENT else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
                     .then(if (focused && !isSel && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             )
@@ -454,7 +454,7 @@ private fun EpisodeRow(
             if (episode.durationSeconds > 0) {
                 Text(
                     durationLabel(episode.durationSeconds),
-                    color = Color(0xFF8E98A8),
+                    color = com.ntv2.app.core.ui.BrandColors.TextMuted,
                     style = MaterialTheme.typography.labelMedium
                 )
             }
@@ -483,7 +483,7 @@ internal fun BackChip(onClose: () -> Unit, modifier: Modifier) {
             .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClose)
-            .background(if (focused) Color(0x33FFFFFF) else Color(0x1AFFFFFF))
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else Color(0x1AFFFFFF))
             .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, CircleShape) else Modifier),
         contentAlignment = Alignment.Center
     ) {

@@ -163,7 +163,7 @@ private fun Segment(label: String, selected: Boolean, modifier: Modifier, onClic
     ) {
         Text(
             label,
-            color = if (selected) com.ntv2.app.core.ui.BrandColors.OnCta else Color(0xFF8E98A8),
+            color = if (selected) com.ntv2.app.core.ui.BrandColors.OnCta else com.ntv2.app.core.ui.BrandColors.TextMuted,
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1
         )
@@ -268,7 +268,7 @@ private fun ThumbRow(
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(media.title, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            subtitle?.let { Text(it, color = Color(0xFF8E98A8), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            subtitle?.let { Text(it, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         trailing()
     }
@@ -313,7 +313,7 @@ private fun PosterGrid(
 @Composable
 private fun EmptyState(message: String) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(message, color = Color(0xFF8E98A8), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 24.dp))
+        Text(message, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 24.dp))
     }
 }
 

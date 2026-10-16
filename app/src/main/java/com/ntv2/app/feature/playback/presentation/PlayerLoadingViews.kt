@@ -277,13 +277,13 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
                 .widthIn(max = 560.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xF21B1E22))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
                 .padding(horizontal = 20.dp, vertical = 24.dp)
                 .trapFocus(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Icon(Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFFBE55), modifier = Modifier.size(40.dp))
+            Icon(Icons.Filled.Warning, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Warning, modifier = Modifier.size(40.dp))
             Text(
                 error.title,
                 color = Color.White,
@@ -300,7 +300,7 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
             error.detail?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     it,
-                    color = Color(0xFF8E98A8),
+                    color = com.ntv2.app.core.ui.BrandColors.TextMuted,
                     style = MaterialTheme.typography.labelSmall,
                     textAlign = TextAlign.Center,
                     maxLines = 3,
@@ -357,7 +357,7 @@ internal fun ErrorActionButton(
             .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color(0x22FFFFFF))
+            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .border(1.dp, if (focused) Color.White else Color(0x44FFFFFF), RoundedCornerShape(6.dp))
             .padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),

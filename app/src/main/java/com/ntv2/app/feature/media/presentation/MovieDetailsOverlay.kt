@@ -635,7 +635,7 @@ internal fun SynopsisText(text: String) {
         // composição, a altura do conteúdo mudava a cada foco e o fundo (Crop) dava zoom junto.
         Text(
             if (expanded) "OK para recolher" else "OK para ler tudo",
-            color = if (focused) Color(0xFF8E98A8) else Color.Transparent,
+            color = if (focused) com.ntv2.app.core.ui.BrandColors.TextMuted else Color.Transparent,
             style = MaterialTheme.typography.labelSmall
         )
     }
@@ -778,14 +778,14 @@ private fun DetailMetaRow(
 @Composable
 private fun MetaText(text: String, onClick: (() -> Unit)? = null) {
     if (onClick == null) {
-        Text(text, color = Color(0xFF8E98A8), style = MaterialTheme.typography.titleSmall)
+        Text(text, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.titleSmall)
         return
     }
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
     Text(
         text,
-        color = if (focused) Color.White else Color(0xFF8E98A8),
+        color = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.TextMuted,
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier
             .glideTarget(4.dp)
@@ -847,7 +847,7 @@ internal fun DetailIconButton(
             .background(Color(0x1FFFFFFF))
             .then(
                 if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp))
-                else Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                else Modifier.border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
             ),
         contentAlignment = Alignment.Center
     ) {
@@ -860,7 +860,7 @@ internal fun DetailIconButton(
 internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
-    val border = if (isFavorite) BRAND_ACCENT else Color(0x33FFFFFF)
+    val border = if (isFavorite) BRAND_ACCENT else com.ntv2.app.core.ui.BrandColors.Border
     Box(
         modifier = Modifier
             .size(48.dp)
@@ -898,7 +898,7 @@ internal fun DetailButton(
     val gliding = glideActive()
     val bg = when {
         primary -> com.ntv2.app.core.ui.BrandColors.Cta
-        focused -> Color(0x33FFFFFF)
+        focused -> com.ntv2.app.core.ui.BrandColors.Border
         else -> Color(0x1FFFFFFF)
     }
     val content = if (primary) com.ntv2.app.core.ui.BrandColors.OnCta else Color.White

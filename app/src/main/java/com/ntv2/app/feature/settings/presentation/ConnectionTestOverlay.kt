@@ -53,8 +53,8 @@ import com.ntv2.app.core.ui.trapFocus
 import kotlinx.coroutines.flow.Flow
 
 private val OK_GREEN = com.ntv2.app.core.ui.BrandColors.Accent
-private val WARN_YELLOW = Color(0xFFFFBE55)
-private val FAIL_RED = Color(0xFFFF626D)
+private val WARN_YELLOW = com.ntv2.app.core.ui.BrandColors.Warning
+private val FAIL_RED = com.ntv2.app.core.ui.BrandColors.Error
 
 /** Teste de conexão: roda ao abrir; cada etapa mostra o resultado assim que termina. */
 @Composable
@@ -87,7 +87,7 @@ internal fun ConnectionTestOverlay(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF141414))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
                 .clickable(enabled = false) {}
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp),
@@ -189,7 +189,7 @@ private fun TestButton(
             .onFocusChanged { focused = it.isFocused }
             // Continua focável quando "desligado" (o foco não pode sumir no dpad); só ignora o clique.
             .clickable { if (enabled) onClick() }
-            .background(if (focused) Color.White else Color(0x22FFFFFF))
+            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically

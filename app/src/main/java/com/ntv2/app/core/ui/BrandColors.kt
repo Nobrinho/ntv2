@@ -16,6 +16,12 @@ object BrandColors {
     val Surface = Color(0xFF151A22)
     val SurfaceAlt = Color(0xFF1C222C)
     val TextSecondary = Color(0xFFB6BFCC)
+    /** Texto de apoio mais discreto: dicas, campos vazios, legendas de baixo contraste. */
+    val TextMuted = Color(0xFF8E98A8)
+    /** Contorno padrão de campos e painéis sobre o fundo escuro. */
+    val Border = Color(0x33FFFFFF)
+    /** Contorno discreto de itens em repouso. */
+    val BorderSubtle = Color(0x22FFFFFF)
     val Cyan = Color(0xFF31F2E0)
     /** NBR Premium / informação especial. */
     val Violet = Color(0xFF9B7CFF)

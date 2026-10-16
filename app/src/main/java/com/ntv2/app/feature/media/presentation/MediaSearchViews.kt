@@ -336,7 +336,7 @@ internal fun TvSearchOverlay(
                                 query.isEmpty() -> "Digite para buscar por título, canal ou arquivo"
                                 else -> "$query|"
                             },
-                            color = if (query.isEmpty() || !textEnabled) Color(0xFF8E98A8) else Color.White,
+                            color = if (query.isEmpty() || !textEnabled) com.ntv2.app.core.ui.BrandColors.TextMuted else Color.White,
                             style = if (query.isEmpty() || !textEnabled) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleLarge,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -684,7 +684,7 @@ private fun TvFilterPanel(
 @Composable
 private fun TvFilterSection(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title, color = Color(0xFF8E98A8), style = MaterialTheme.typography.labelLarge)
+        Text(title, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.labelLarge)
         androidx.compose.foundation.layout.FlowRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -812,7 +812,7 @@ internal fun TouchSearchOverlay(
                             if (query.isEmpty()) {
                                 androidx.compose.material3.Text(
                                     if (actorMode) "Elenco: ${filters.actor}" else "Pesquisar",
-                                    color = Color(0xFF8E98A8),
+                                    color = com.ntv2.app.core.ui.BrandColors.TextMuted,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     style = androidx.compose.material3.MaterialTheme.typography.titleMedium
@@ -1016,7 +1016,7 @@ private fun FilterSection(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         androidx.compose.material3.Text(
             title,
-            color = Color(0xFF8E98A8),
+            color = com.ntv2.app.core.ui.BrandColors.TextMuted,
             style = androidx.compose.material3.MaterialTheme.typography.labelLarge
         )
         androidx.compose.foundation.layout.FlowRow(
@@ -1374,7 +1374,7 @@ internal fun KeyButton(
             .clip(RoundedCornerShape(8.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) Color.White else Color(0x22FFFFFF))
+            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .border(
                 width = if (focused) 2.dp else 1.dp,
                 color = if (focused) Color.White else Color(0x44FFFFFF),

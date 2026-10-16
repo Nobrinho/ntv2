@@ -316,7 +316,7 @@ private fun ChannelNavItem(
     var focused by remember { mutableStateOf(false) }
     val bg = when {
         primary -> com.ntv2.app.core.ui.BrandColors.Accent
-        focused -> Color(0x33FFFFFF)
+        focused -> com.ntv2.app.core.ui.BrandColors.Border
         else -> Color(0x14FFFFFF)
     }
     val fg = when {
@@ -355,7 +355,7 @@ private fun CompactActionChip(
     val background = when {
         !enabled -> Color(0x14FFFFFF)
         primary -> MaterialTheme.colorScheme.primary
-        else -> Color(0x22FFFFFF)
+        else -> com.ntv2.app.core.ui.BrandColors.BorderSubtle
     }
     val content = if (primary && enabled) Color.Black else Color.White
     Box(
@@ -520,7 +520,7 @@ private fun ChannelCard(
             .clickable(onClick = onToggle)
             .background(
                 when {
-                    focused -> Color(0x33FFFFFF)
+                    focused -> com.ntv2.app.core.ui.BrandColors.Border
                     selected -> Color(0x22000000)
                     else -> Color(0x11FFFFFF)
                 }
@@ -567,7 +567,7 @@ private fun ChannelCard(
                     }
                     Text(
                         text = if (selected) "Selecionado" else "Selecionar",
-                        color = if (selected) accent else Color(0xFF8E98A8),
+                        color = if (selected) accent else com.ntv2.app.core.ui.BrandColors.TextMuted,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

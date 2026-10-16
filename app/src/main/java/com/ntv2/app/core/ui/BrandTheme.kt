@@ -147,7 +147,7 @@ fun BrandButton(
     val line: Color
     when (style) {
         BrandButtonStyle.Primary -> { fill = BrandColors.Accent; fg = BrandColors.OnCta; line = BrandColors.Accent }
-        BrandButtonStyle.Secondary -> { fill = Color(0x14FFFFFF); fg = Color(0xFFF7F9FC); line = Color(0x33FFFFFF) }
+        BrandButtonStyle.Secondary -> { fill = Color(0x14FFFFFF); fg = Color(0xFFF7F9FC); line = com.ntv2.app.core.ui.BrandColors.Border }
         BrandButtonStyle.Destructive -> { fill = Color(0x1FFF626D); fg = BrandColors.Error; line = BrandColors.Error }
         BrandButtonStyle.Premium -> { fill = BrandColors.Violet; fg = BrandColors.OnCta; line = BrandColors.Violet }
     }

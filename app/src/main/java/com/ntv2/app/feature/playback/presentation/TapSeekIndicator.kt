@@ -43,7 +43,7 @@ internal fun TapSeekIndicator(feedback: TapSeekFeedback, modifier: Modifier = Mo
                 .fillMaxWidth(0.38f)
                 .fillMaxHeight()
                 .clip(shape)
-                .background(Color(0x33FFFFFF)),
+                .background(com.ntv2.app.core.ui.BrandColors.Border),
             contentAlignment = Alignment.Center
         ) {
             Column(

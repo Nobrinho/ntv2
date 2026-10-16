@@ -383,7 +383,7 @@ private fun DrawScope.drawIdleBorder(fraction: Float) {
     if (fraction >= 1f) return
     val line = 1.dp.toPx()
     drawRoundRect(
-        color = Color(0x33FFFFFF).copy(alpha = 0x33 / 255f * (1f - fraction)),
+        color = com.ntv2.app.core.ui.BrandColors.Border.copy(alpha = 0x33 / 255f * (1f - fraction)),
         topLeft = androidx.compose.ui.geometry.Offset(line / 2, line / 2),
         size = androidx.compose.ui.geometry.Size(size.width - line, size.height - line),
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx() - line / 2),
@@ -431,7 +431,7 @@ internal fun MediaCard(
             .clip(RoundedCornerShape(6.dp))
             .drawBehind {
                 if (showTitle || focusFraction > 0f) {
-                    drawRect(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), Color(0x22FFFFFF), focusFraction))
+                    drawRect(androidx.compose.ui.graphics.lerp(Color(0x0FFFFFFF), com.ntv2.app.core.ui.BrandColors.BorderSubtle, focusFraction))
                 }
             }
             .drawWithContent {
@@ -524,7 +524,7 @@ internal fun MediaCard(
                         Icon(
                             Icons.Filled.Warning,
                             contentDescription = "Pode não reproduzir vídeo neste aparelho",
-                            tint = Color(0xFFFFBE55),
+                            tint = com.ntv2.app.core.ui.BrandColors.Warning,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -592,7 +592,7 @@ private fun LibraryTabChip(label: String, active: Boolean, onClick: () -> Unit) 
             .clip(RoundedCornerShape(4.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (active) FOCUS_ACCENT else Color(0x22FFFFFF))
+            .background(if (active) FOCUS_ACCENT else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
             .then(if (focused && !active) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
             .padding(horizontal = 18.dp, vertical = 8.dp)
     ) {

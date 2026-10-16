@@ -415,7 +415,7 @@ private fun PhoneStep(
     val focus = remember { FocusRequester() }
     LaunchedEffect(autoFocus) { if (autoFocus) runCatching { focus.requestFocus() } }
 
-    Text("Entre na sua conta", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+    Text("Entre na sua conta", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = Color.White)
     Text(
         "Método 1 — Número de telefone",
         style = MaterialTheme.typography.titleSmall,

@@ -106,6 +106,7 @@ interface AppContainer {
     /** Backend Supabase (desligado sem supabaseUrl/supabaseAnonKey). */
     val backendClient: com.ntv2.app.core.backend.SupabaseClient
     val backendSession: com.ntv2.app.core.backend.BackendSession
+    val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch
 }
 
 class DefaultAppContainer(
@@ -332,6 +333,17 @@ class DefaultAppContainer(
         com.ntv2.app.core.backend.BackendSession(
             backendClient,
             com.ntv2.app.core.backend.DataStoreBackendTokenStore(appContext)
+        )
+    }
+
+    // Busca no backend quando ligado (e flag remote_search não desligada); senão/erro/timeout, índice local.
+    override val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch by lazy {
+        val flag = com.ntv2.app.core.backend.catalog.RemoteSearchFlag(backendClient)
+        com.ntv2.app.feature.media.data.index.FallbackCatalogSearch(
+            remote = com.ntv2.app.core.backend.catalog.RemoteCatalogSearch(backendClient),
+            local = com.ntv2.app.feature.media.data.index.LocalCatalogSearch(searchIndexRepository),
+            backendEnabled = { backendClient.config.enabled },
+            remoteEnabled = { flag.isEnabled() }
         )
     }
 

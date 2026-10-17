@@ -284,6 +284,7 @@ fun AppNavHost(
                     maxRetainedItems = maxRetainedCards,
                     gridStep = mediaGridStep,
                     searchIndexRepository = appContainer.searchIndexRepository,
+                    catalogSearch = appContainer.catalogSearch,
                     videoPrefetcher = appContainer.videoPrefetcher,
                     mediaReporter = com.ntv2.app.feature.media.data.report.MediaReporter(appContainer.tdlibMediaGateway),
                     upNextQueue = appContainer.upNextQueue,

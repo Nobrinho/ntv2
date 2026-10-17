@@ -104,6 +104,8 @@ class MediaLibraryViewModel(
     private val gridStep: Int = 2,
     // Índice de busca (canal rico) para busca local instantânea; null = sem índice.
     private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
+    // Busca no catálogo (backend com fallback no índice); null = só o índice local.
+    private val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     // Trabalho de CPU que cresce com o catálogo (mapear/ordenar/deduplicar): nunca na Main.
     private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -1028,8 +1030,14 @@ class MediaLibraryViewModel(
             // Índice local (canal rico): busca instantânea por título, sem TDLib.
             val idx = searchIndexRepository
             if (idx != null && runCatching { idx.covers(activeId) }.getOrDefault(false)) {
+                val kind = when (filters.type) {
+                    com.ntv2.app.feature.media.presentation.state.SearchTypeFilter.ALL -> com.ntv2.app.feature.media.data.index.CatalogKind.ALL
+                    com.ntv2.app.feature.media.presentation.state.SearchTypeFilter.MOVIES -> com.ntv2.app.feature.media.data.index.CatalogKind.MOVIE
+                    com.ntv2.app.feature.media.presentation.state.SearchTypeFilter.SERIES -> com.ntv2.app.feature.media.data.index.CatalogKind.SERIES
+                }
+                val catalog = catalogSearch ?: com.ntv2.app.feature.media.data.index.LocalCatalogSearch(idx)
                 val (allMovies, allSeries) = runCatching {
-                    idx.searchFiltered(activeId, query, filters.genres, filters.years, filters.actor)
+                    catalog.search(activeId, query, filters.genres, filters.years, filters.actor, kind)
                 }.getOrDefault(emptyList<com.ntv2.app.feature.media.data.index.IndexMovie>() to
                     emptyList<com.ntv2.app.feature.media.data.index.IndexSeries>())
                 val movies = if (filters.type == com.ntv2.app.feature.media.presentation.state.SearchTypeFilter.SERIES) emptyList() else allMovies
@@ -1699,6 +1707,7 @@ class MediaLibraryViewModelFactory(
     private val mediaDetailsCache: MediaDetailsCache,
     private val gridStep: Int = 2,
     private val searchIndexRepository: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null,
+    private val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch? = null,
     private val videoPrefetcher: com.ntv2.app.core.player.prefetch.VideoPrefetcher? = null,
     private val maxRetainedItems: Int = MAX_RETAINED_ITEMS,
     private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null,
@@ -1717,6 +1726,7 @@ class MediaLibraryViewModelFactory(
                 mediaDetailsCache = mediaDetailsCache,
                 gridStep = gridStep,
                 searchIndexRepository = searchIndexRepository,
+                catalogSearch = catalogSearch,
                 videoPrefetcher = videoPrefetcher,
                 mediaReporter = mediaReporter,
                 maxRetainedItems = maxRetainedItems,

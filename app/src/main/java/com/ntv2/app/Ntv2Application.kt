@@ -27,6 +27,8 @@ class Ntv2Application : Application(), ImageLoaderFactory {
         // Limpeza automática do armazenamento (órfãos de sessões anteriores + tetos de cache).
         appContainer.storageJanitor.start()
         registerForegroundWatcher()
+        // Sincroniza a personalização na abertura (no-op com o backend desligado).
+        appContainer.personalizationSync?.requestNow()
     }
 
     /**
@@ -44,9 +46,15 @@ class Ntv2Application : Application(), ImageLoaderFactory {
                 ) {
                     runCatching { appContainer.tdlibPlaybackGateway.refreshNetwork() }
                 }
+                // Voltou do background: traz o que mudou nos outros aparelhos.
+                if (started == 1 && backgroundSince > 0L) appContainer.personalizationSync?.requestNow()
             }
             override fun onActivityStopped(activity: android.app.Activity) {
-                if (--started == 0) backgroundSince = android.os.SystemClock.elapsedRealtime()
+                if (--started == 0) {
+                    backgroundSince = android.os.SystemClock.elapsedRealtime()
+                    // Foi para o background: sobe o que ainda estava agrupado (ex.: último progresso).
+                    appContainer.personalizationSync?.requestNow()
+                }
             }
             override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) = Unit
             override fun onActivityResumed(activity: android.app.Activity) = Unit

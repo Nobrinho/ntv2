@@ -112,6 +112,7 @@ interface AppContainer {
 
     /** Sincronização da personalização; null com o backend desligado (o app fica só no Room). */
     val personalizationSync: com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler?
+    val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch
 }
 
 class DefaultAppContainer(
@@ -410,6 +411,17 @@ class DefaultAppContainer(
 
     private fun notifyPersonalizationChange(change: com.ntv2.app.core.backend.sync.LocalChange) {
         personalizationSync?.onLocalChange(change)
+    }
+
+    // Busca no backend quando ligado (e flag remote_search não desligada); senão/erro/timeout, índice local.
+    override val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch by lazy {
+        val flag = com.ntv2.app.core.backend.catalog.RemoteSearchFlag(backendClient)
+        com.ntv2.app.feature.media.data.index.FallbackCatalogSearch(
+            remote = com.ntv2.app.core.backend.catalog.RemoteCatalogSearch(backendClient),
+            local = com.ntv2.app.feature.media.data.index.LocalCatalogSearch(searchIndexRepository),
+            backendEnabled = { backendClient.config.enabled },
+            remoteEnabled = { flag.isEnabled() }
+        )
     }
 
     private companion object {

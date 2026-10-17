@@ -284,6 +284,7 @@ fun AppNavHost(
                     maxRetainedItems = maxRetainedCards,
                     gridStep = mediaGridStep,
                     searchIndexRepository = appContainer.searchIndexRepository,
+                    catalogSearch = appContainer.catalogSearch,
                     videoPrefetcher = appContainer.videoPrefetcher,
                     mediaReporter = appContainer.mediaReporter,
                     upNextQueue = appContainer.upNextQueue,

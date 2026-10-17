@@ -745,7 +745,9 @@ fun MediaLibraryScreen(
                     viewModel.onAction(MediaLibraryAction.OpenVideo(media))
                 },
                 onRestart = { viewModel.onAction(MediaLibraryAction.RestartVideo(media)) },
-                onReport = { reason -> viewModel.onAction(MediaLibraryAction.ReportMedia(media, reason)) },
+                onReport = { reason, note, onResult ->
+                    viewModel.onAction(MediaLibraryAction.ReportMedia(media, reason, note, onResult))
+                },
                 isTv = adaptive.isTv,
                 isFavorite = state.favoriteIds.contains(media.mediaId),
                 onToggleFavorite = { viewModel.onAction(MediaLibraryAction.ToggleFavorite(media)) },

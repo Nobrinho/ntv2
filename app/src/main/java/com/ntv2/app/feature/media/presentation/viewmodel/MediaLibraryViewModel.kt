@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -72,10 +74,15 @@ sealed interface MediaLibraryAction {
     data class DetailsOpened(val media: MediaCardUi) : MediaLibraryAction
     /** Fechou os Detalhes sem assistir: cancela o pré-download. */
     data class DetailsClosed(val mediaId: String) : MediaLibraryAction
-    /** Usuário reportou um problema na mídia (envio ao servidor/Telegram ainda a definir). */
+    /**
+     * Usuário reportou um problema na mídia: vai pelo backend (RPC submit_report) ou, sem ele, por DM
+     * no Telegram; o que não sair fica na fila. [onResult] recebe o resultado para o diálogo mostrar.
+     */
     data class ReportMedia(
         val media: MediaCardUi,
-        val reason: com.ntv2.app.feature.media.presentation.MediaReportReason
+        val reason: com.ntv2.app.feature.media.presentation.MediaReportReason,
+        val note: String? = null,
+        val onResult: (com.ntv2.app.feature.media.data.report.ReportOutcome) -> Unit = {}
     ) : MediaLibraryAction
     /** Adiciona/remove o título da "Minha lista". */
     data class ToggleFavorite(val media: MediaCardUi) : MediaLibraryAction
@@ -115,7 +122,9 @@ class MediaLibraryViewModel(
     // Fila "próximo episódio" para o autoplay no player (null em testes/sem séries).
     private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null,
     // Filmes divididos em partes: acha e registra as partes antes de abrir o player (null = sem suporte).
-    private val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer? = null
+    private val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer? = null,
+    // Eventos media_open/search_empty (null = sem telemetria, ex.: testes).
+    private val telemetry: com.ntv2.app.core.backend.telemetry.Telemetry? = null
 ) : ViewModel() {
 
     // Gosto do usuário para recomendações (gêneros crus de favoritos/histórico) + ids a excluir.
@@ -222,8 +231,34 @@ class MediaLibraryViewModel(
         // Pré-carrega o índice de busca em background para a 1ª busca já vir instantânea.
         searchIndexRepository?.let { repo -> viewModelScope.launch { runCatching { repo.covers(0L) } } }
         observeIndexUpdates()
+        observeEmptySearches()
     }
 
+
+    /**
+     * Telemetria `search_empty`: uma vez por termo, quando uma busca termina sem nenhum filme nem série.
+     * Só observa o estado (não mexe no fluxo da busca); exige ter visto o carregamento do mesmo termo.
+     */
+    private fun observeEmptySearches() {
+        val sink = telemetry ?: return
+        viewModelScope.launch {
+            var loadingQuery: String? = null
+            var lastLogged: String? = null
+            _uiState
+                .map { s -> Triple(s.searchQuery.trim(), s.isSearchLoading, s.searchResults.isEmpty() && s.searchSeries.isEmpty()) }
+                .distinctUntilChanged()
+                .collect { (q, loading, empty) ->
+                    when {
+                        q.isEmpty() -> { loadingQuery = null; lastLogged = null }
+                        loading -> loadingQuery = q
+                        empty && loadingQuery == q && lastLogged != q -> {
+                            lastLogged = q
+                            sink.log(com.ntv2.app.core.backend.telemetry.TelemetryEvents.SEARCH_EMPTY, mapOf("q" to q))
+                        }
+                    }
+                }
+        }
+    }
     /** Índice baixado de novo (ex.: botão em Configurações): recarrega as séries do canal ativo. */
     private fun observeIndexUpdates() {
         val repo = searchIndexRepository ?: return
@@ -360,15 +395,20 @@ class MediaLibraryViewModel(
                 val media = action.media
                 val details = mediaDetailsCache.get(media.mediaId)
                 val report = com.ntv2.app.feature.media.data.report.MediaReport(
+                    reason = action.reason.code,
                     reasonLabel = action.reason.label,
                     title = details?.title ?: media.title,
                     year = details?.year,
                     channelName = media.channelName,
-                    mediaId = media.mediaId
+                    mediaId = media.mediaId,
+                    note = action.note
                 )
                 viewModelScope.launch {
-                    val ok = withContext(ioDispatcher) { mediaReporter?.send(report) ?: false }
-                    android.util.Log.i("NtvReport", "reporte ${action.reason.name} mídia=${media.mediaId} enviado=$ok")
+                    val outcome = withContext(ioDispatcher) {
+                        mediaReporter?.send(report) ?: com.ntv2.app.feature.media.data.report.ReportOutcome.Failed
+                    }
+                    android.util.Log.i("NtvReport", "reporte ${action.reason.name} mídia=${media.mediaId} resultado=$outcome")
+                    action.onResult(outcome)
                 }
             }
 
@@ -608,6 +648,7 @@ class MediaLibraryViewModel(
     }
 
     private fun openVideo(media: MediaCardUi) {
+        telemetry?.log(com.ntv2.app.core.backend.telemetry.TelemetryEvents.MEDIA_OPEN, mapOf("media_id" to media.mediaId))
         recordOpened(media)
         // Filme dividido em partes: acha e registra as partes antes de abrir o player.
         if (media.fileId != 0 && media.partCount >= 2) {
@@ -1703,7 +1744,9 @@ class MediaLibraryViewModelFactory(
     private val maxRetainedItems: Int = MAX_RETAINED_ITEMS,
     private val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter? = null,
     private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null,
-    private val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer? = null
+    private val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer? = null,
+    // Eventos media_open/search_empty (null = sem telemetria, ex.: testes).
+    private val telemetry: com.ntv2.app.core.backend.telemetry.Telemetry? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1721,7 +1764,8 @@ class MediaLibraryViewModelFactory(
                 mediaReporter = mediaReporter,
                 maxRetainedItems = maxRetainedItems,
                 upNextQueue = upNextQueue,
-                multiPartPreparer = multiPartPreparer
+                multiPartPreparer = multiPartPreparer,
+                telemetry = telemetry
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

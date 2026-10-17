@@ -106,6 +106,9 @@ interface AppContainer {
     /** Backend Supabase (desligado sem supabaseUrl/supabaseAnonKey). */
     val backendClient: com.ntv2.app.core.backend.SupabaseClient
     val backendSession: com.ntv2.app.core.backend.BackendSession
+    val remoteConfigRepository: com.ntv2.app.core.backend.config.RemoteConfigRepository
+    val telemetryLogger: com.ntv2.app.core.backend.telemetry.TelemetryLogger
+    val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter
 }
 
 class DefaultAppContainer(
@@ -241,7 +244,13 @@ class DefaultAppContainer(
             videoDecoderPolicy = videoDecoderPolicy,
             decoderTroubleMemory = com.ntv2.app.core.player.exoplayer.SharedPrefsDecoderTroubleMemory(appContext),
             partsLookup = multiPartRegistry,
-            partsPlaybackState = multiPartPlaybackState
+            partsPlaybackState = multiPartPlaybackState,
+            onPlaybackError = { mediaId, code, decoder, codec ->
+                telemetryLogger.log(
+                    com.ntv2.app.core.backend.telemetry.TelemetryEvents.PLAYBACK_ERROR,
+                    mapOf("media_id" to mediaId, "code" to code, "decoder" to decoder, "codec" to codec)
+                )
+            }
         )
     }
 
@@ -310,7 +319,10 @@ class DefaultAppContainer(
     }
 
     override val updateRepository: UpdateRepository by lazy {
-        HttpUpdateRepository(manifestUrl = UPDATE_MANIFEST_URL)
+        com.ntv2.app.feature.update.data.MinVersionUpdateRepository(
+            delegate = HttpUpdateRepository(manifestUrl = UPDATE_MANIFEST_URL),
+            minVersionCode = { remoteConfigRepository.refresh().minVersionCode }
+        )
     }
 
     override val updateDownloadManager: ApkDownloadManager by lazy { ApkDownloadManager(appContext) }
@@ -332,6 +344,37 @@ class DefaultAppContainer(
         com.ntv2.app.core.backend.BackendSession(
             backendClient,
             com.ntv2.app.core.backend.DataStoreBackendTokenStore(appContext)
+        )
+    }
+
+    override val remoteConfigRepository: com.ntv2.app.core.backend.config.RemoteConfigRepository by lazy {
+        backendSession // liga o token do usuário no cliente antes da primeira chamada
+        com.ntv2.app.core.backend.config.RemoteConfigRepository(
+            backendClient,
+            com.ntv2.app.core.backend.config.DataStoreRemoteConfigCache(appContext)
+        )
+    }
+
+    override val telemetryLogger: com.ntv2.app.core.backend.telemetry.TelemetryLogger by lazy {
+        backendSession
+        com.ntv2.app.core.backend.telemetry.TelemetryLogger(
+            client = backendClient,
+            telemetryEnabled = { remoteConfigRepository.current.telemetryEnabled },
+            appVersion = com.ntv2.app.BuildConfig.VERSION_NAME,
+            deviceModel = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+        )
+    }
+
+    override val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter by lazy {
+        backendSession
+        com.ntv2.app.feature.media.data.report.MediaReporter(
+            client = backendClient,
+            directMessage = { to, text -> tdlibMediaGateway.sendDirectMessage(to, text) },
+            pending = com.ntv2.app.feature.media.data.report.FilePendingReportStore(
+                File(appContext.filesDir, "pending_reports.json")
+            ),
+            config = { remoteConfigRepository.current },
+            telemetry = telemetryLogger
         )
     }
 

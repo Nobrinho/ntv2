@@ -8,6 +8,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.ntv2.app.di.AppContainer
 import com.ntv2.app.di.DefaultAppContainer
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.security.KeyStore
 import java.security.cert.CertificateException
@@ -27,6 +28,24 @@ class Ntv2Application : Application(), ImageLoaderFactory {
         // Limpeza automática do armazenamento (órfãos de sessões anteriores + tetos de cache).
         appContainer.storageJanitor.start()
         registerForegroundWatcher()
+        startBackend()
+    }
+
+    /**
+     * Backend (desligado sem supabaseUrl/supabaseAnonKey: tudo vira no-op): atualiza a config remota,
+     * liga o envio da telemetria e reenvia os reportes que ficaram na fila.
+     */
+    private fun startBackend() {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val telemetry = appContainer.telemetryLogger
+        scope.launch {
+            runCatching { appContainer.remoteConfigRepository.refresh() }
+            telemetry.start(scope)
+            telemetry.log(com.ntv2.app.core.backend.telemetry.TelemetryEvents.APP_OPEN, emptyMap())
+            // Dá tempo ao TDLib de conectar: a fila pode precisar do fallback por DM.
+            kotlinx.coroutines.delay(REPORT_QUEUE_DELAY_MS)
+            runCatching { appContainer.mediaReporter.flushPending() }
+        }
     }
 
     /**
@@ -46,7 +65,10 @@ class Ntv2Application : Application(), ImageLoaderFactory {
                 }
             }
             override fun onActivityStopped(activity: android.app.Activity) {
-                if (--started == 0) backgroundSince = android.os.SystemClock.elapsedRealtime()
+                if (--started == 0) {
+                    backgroundSince = android.os.SystemClock.elapsedRealtime()
+                    runCatching { appContainer.telemetryLogger.onBackground() }
+                }
             }
             override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) = Unit
             override fun onActivityResumed(activity: android.app.Activity) = Unit
@@ -58,6 +80,7 @@ class Ntv2Application : Application(), ImageLoaderFactory {
 
     private companion object {
         const val RECONNECT_AFTER_BACKGROUND_MS = 60_000L
+        const val REPORT_QUEUE_DELAY_MS = 15_000L
     }
 
     // ImageLoader global do Coil, otimizado para TV (Fire TV tem RAM/CPU limitados):

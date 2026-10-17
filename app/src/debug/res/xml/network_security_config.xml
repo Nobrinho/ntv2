@@ -1,17 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Só no debug: igual ao de main + HTTP liberado para o Supabase local (supabase start).
-     Aparelho real na rede: adicione o IP do PC num <domain> abaixo. -->
+<!-- Só no debug: igual ao de main, mas com HTTP liberado para o Supabase local (supabase start)
+     no emulador (10.0.2.2) ou pelo IP do PC na rede. Sem <domain-config>: o CompositeX509TrustManager
+     do Ntv2Application não usa a checagem por hostname, que regras por domínio exigem. -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
             <certificates src="@raw/amazon_root_ca1" />
             <certificates src="@raw/starfield_g2" />
         </trust-anchors>
     </base-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">10.0.2.2</domain>
-        <domain includeSubdomains="false">127.0.0.1</domain>
-        <domain includeSubdomains="false">localhost</domain>
-    </domain-config>
 </network-security-config>

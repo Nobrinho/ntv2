@@ -86,7 +86,12 @@ class DefaultPlaybackCoordinator(
     /** Parte que o player está lendo em cada filme dividido (ver MultiPartDataSource). */
     private val partsPlaybackState: com.ntv2.app.core.multipart.MultiPartPlaybackState? = null,
     /** Erro final (sem recuperação): telemetria `playback_error`. Não altera o tratamento do erro. */
-    private val onPlaybackError: (mediaId: String, code: String, decoder: String, codec: String?) -> Unit = { _, _, _, _ -> }
+    private val onPlaybackError: (mediaId: String, code: String, decoder: String, codec: String?) -> Unit = { _, _, _, _ -> },
+    /**
+     * Pausou ou parou: a sincronização sobe o último progresso (o do pause é gravado no próximo ciclo
+     * do salvamento periódico, por isso quem escuta espera um pouco antes de enviar).
+     */
+    private val onPlaybackSettled: () -> Unit = {}
 ) : PlaybackCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -547,6 +552,7 @@ class DefaultPlaybackCoordinator(
     override fun pause() {
         exoPlayer?.playWhenReady = false
         snapshotState.update { it.copy(state = PlaybackState.Paused, isPlaying = false) }
+        onPlaybackSettled()
     }
 
     override fun seekTo(positionMs: Long) {
@@ -836,6 +842,7 @@ class DefaultPlaybackCoordinator(
             val positionMs = exoPlayer?.currentPosition ?: 0L
             val durationMs = exoPlayer?.duration?.takeIf { it > 0L } ?: media.durationMs
             scope.launch { progressStore.onProgress(media.mediaId, positionMs, durationMs) }
+            onPlaybackSettled()
         }
 
         exoPlayer?.playWhenReady = false

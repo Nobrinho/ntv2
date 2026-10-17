@@ -22,7 +22,7 @@ import com.ntv2.app.core.database.entity.WatchHistoryEntity
         FavoriteEntity::class,
         WatchHistoryEntity::class
     ],
-    version = 4,
+    version = 5,
     // Schema em app/schemas (no git): a cada versão nova, o JSON gerado é a referência da migração.
     exportSchema = true
 )
@@ -103,7 +103,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Sincronização da personalização: `updatedAt` (epoch ms) e `deleted` (tombstone) nas três
+         * tabelas sincronizadas. Favoritos antigos ganham `updatedAt = addedAt`; progresso e histórico
+         * já tinham `updatedAt`. Nada é apagado: as linhas existentes ficam com `deleted = 0`.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_4_5_SQL.forEach(db::execSQL)
+            }
+        }
+
+        // ALTER TABLE ... NOT NULL exige DEFAULT no SQLite; as entidades declaram o mesmo default.
+        internal val MIGRATION_4_5_SQL: List<String> = listOf(
+            "ALTER TABLE favorites ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0",
+            "UPDATE favorites SET updatedAt = addedAt",
+            "ALTER TABLE favorites ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE playback_progress ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE watch_history ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"
+        )
+
         /** Todas as migrações, em ordem. Toda versão nova do banco acrescenta a sua aqui. */
-        val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
     }
 }

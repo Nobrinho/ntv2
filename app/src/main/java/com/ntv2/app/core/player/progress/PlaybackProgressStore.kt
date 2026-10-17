@@ -1,5 +1,6 @@
 package com.ntv2.app.core.player.progress
 
+import com.ntv2.app.core.backend.sync.LocalChange
 import com.ntv2.app.core.database.dao.PlaybackProgressDao
 import com.ntv2.app.core.database.dao.WatchHistoryDao
 import com.ntv2.app.core.database.entity.PlaybackProgressEntity
@@ -77,7 +78,13 @@ interface PlaybackProgressStore {
 class RoomPlaybackProgressStore(
     private val dao: PlaybackProgressDao,
     // Opcional: quando ausente (ex.: testes de resume), o histórico simplesmente não é mantido.
-    private val historyDao: WatchHistoryDao? = null
+    private val historyDao: WatchHistoryDao? = null,
+    private val now: () -> Long = System::currentTimeMillis,
+    /**
+     * Avisa a sincronização de que algo mudou (no-op com o backend desligado). Os ticks do player
+     * chegam como [LocalChange.PROGRESS]: o Room grava cada um, mas a escrita remota é agrupada.
+     */
+    private val onLocalChange: (LocalChange) -> Unit = {}
 ) : PlaybackProgressStore {
 
     private val changesFlow = MutableSharedFlow<String>(extraBufferCapacity = 16)
@@ -95,23 +102,26 @@ class RoomPlaybackProgressStore(
                     mediaId = mediaId,
                     positionMs = action.positionMs,
                     durationMs = action.durationMs,
-                    updatedAt = System.currentTimeMillis()
+                    updatedAt = now(),
+                    deleted = false
                 )
             )
-            PlaybackProgressPolicy.SaveAction.Clear -> dao.delete(mediaId)
+            PlaybackProgressPolicy.SaveAction.Clear -> dao.markDeleted(mediaId, now())
             PlaybackProgressPolicy.SaveAction.Ignore -> {
                 // Ignorado para resume (começo demais), mas ainda atualiza a posição do histórico.
             }
         }
         // Atualiza a posição/estado do histórico (no-op se a linha não existir ou sem historyDao).
         val completed = durationMs > 0L && positionMs >= durationMs - PlaybackProgressPolicy.END_GUARD_MS
-        historyDao?.updateProgress(mediaId, positionMs, durationMs, completed, System.currentTimeMillis())
+        historyDao?.updateProgress(mediaId, positionMs, durationMs, completed, now())
         changesFlow.tryEmit(mediaId)
+        onLocalChange(LocalChange.PROGRESS)
     }
 
     override suspend fun clear(mediaId: String) {
-        dao.delete(mediaId)
+        dao.markDeleted(mediaId, now())
         changesFlow.tryEmit(mediaId)
+        onLocalChange(LocalChange.EDIT)
     }
 
     override suspend fun savedPositions(mediaIds: List<String>): Map<String, Long> {
@@ -142,10 +152,12 @@ class RoomPlaybackProgressStore(
                 lastPositionMs = existing?.lastPositionMs ?: 0L,
                 completed = existing?.completed ?: false,
                 genres = meta.genres ?: existing?.genres,
-                updatedAt = System.currentTimeMillis()
+                updatedAt = now(),
+                deleted = false
             )
         )
         changesFlow.tryEmit(meta.mediaId)
+        onLocalChange(LocalChange.EDIT)
     }
 
     override fun observeHistory(): Flow<List<WatchedItem>> =
@@ -166,14 +178,18 @@ class RoomPlaybackProgressStore(
     override suspend fun history(): List<WatchedItem> =
         historyDao?.getAll()?.map { it.toItem() } ?: emptyList()
 
+    // Remoções via tombstone: precisam chegar aos outros aparelhos.
     override suspend fun removeFromHistory(mediaId: String) {
-        historyDao?.delete(mediaId)
-        dao.delete(mediaId)
+        val t = now()
+        historyDao?.markDeleted(mediaId, t)
+        dao.markDeleted(mediaId, t)
         changesFlow.tryEmit(mediaId)
+        onLocalChange(LocalChange.EDIT)
     }
 
     override suspend fun clearHistory() {
-        historyDao?.clear()
+        historyDao?.markAllDeleted(now())
+        onLocalChange(LocalChange.EDIT)
     }
 
     private fun WatchHistoryEntity.toItem() = WatchedItem(

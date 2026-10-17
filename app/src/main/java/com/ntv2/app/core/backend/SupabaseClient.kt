@@ -63,7 +63,9 @@ class SupabaseClient(
     /** Fornece o access token do usuário; null = usa a anon key. Ligado pelo [BackendSession]. */
     var tokenProvider: suspend () -> String? = { null }
 
-    suspend fun get(path: String): String = send("GET", "/rest/v1/$path", null)
+    /** authenticated = false: leitura pública (ex.: app_config) sem criar a sessão anônima. */
+    suspend fun get(path: String, authenticated: Boolean = true): String =
+        send("GET", "/rest/v1/$path", null, authenticated = authenticated)
 
     suspend fun post(path: String, body: String, prefer: String? = null): String =
         send("POST", "/rest/v1/$path", body, prefer)

@@ -1,11 +1,10 @@
 package com.ntv2.app.core.player.progress
 
+import com.ntv2.app.core.backend.sync.LocalChange
+import com.ntv2.app.core.database.InMemoryHistoryDao
+import com.ntv2.app.core.database.InMemoryProgressDao
 import com.ntv2.app.core.database.dao.PlaybackProgressDao
-import com.ntv2.app.core.database.dao.WatchHistoryDao
 import com.ntv2.app.core.database.entity.PlaybackProgressEntity
-import com.ntv2.app.core.database.entity.WatchHistoryEntity
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,25 +23,9 @@ class RoomPlaybackProgressStoreTest {
             return rows.map { (id, pos) -> PlaybackProgressEntity(id, pos, 0L, 0L) }
         }
         override suspend fun upsert(entity: PlaybackProgressEntity) = Unit
-        override suspend fun delete(mediaId: String) { deleted += mediaId }
-    }
-
-    /** DAO de histórico em memória. updateProgress é no-op se a linha não existir (como no SQL). */
-    private class FakeHistoryDao : WatchHistoryDao {
-        val rows = linkedMapOf<String, WatchHistoryEntity>()
-        private val flow = MutableStateFlow<List<WatchHistoryEntity>>(emptyList())
-        private fun publish() { flow.value = rows.values.sortedByDescending { it.updatedAt } }
-        override fun observeAll(): Flow<List<WatchHistoryEntity>> = flow
-        override suspend fun getAll(): List<WatchHistoryEntity> = rows.values.sortedByDescending { it.updatedAt }
-        override suspend fun get(mediaId: String): WatchHistoryEntity? = rows[mediaId]
-        override suspend fun upsert(entity: WatchHistoryEntity) { rows[entity.mediaId] = entity; publish() }
-        override suspend fun updateProgress(mediaId: String, positionMs: Long, durationMs: Long, completed: Boolean, updatedAt: Long) {
-            val e = rows[mediaId] ?: return
-            rows[mediaId] = e.copy(lastPositionMs = positionMs, durationMs = durationMs, completed = completed, updatedAt = updatedAt)
-            publish()
-        }
-        override suspend fun delete(mediaId: String) { rows.remove(mediaId); publish() }
-        override suspend fun clear() { rows.clear(); publish() }
+        override suspend fun markDeleted(mediaId: String, updatedAt: Long) { deleted += mediaId }
+        override suspend fun getForSync(mediaId: String): PlaybackProgressEntity? = null
+        override suspend fun changedSince(sinceMs: Long): List<PlaybackProgressEntity> = emptyList()
     }
 
     private fun meta(id: String, durationSeconds: Int = 7200) = WatchedMediaMeta(
@@ -69,7 +52,7 @@ class RoomPlaybackProgressStoreTest {
 
     @Test
     fun `recordOpened cria a linha e progresso na janela util vira continuar assistindo`() = runTest {
-        val hist = FakeHistoryDao()
+        val hist = InMemoryHistoryDao()
         val store = RoomPlaybackProgressStore(RecordingDao(emptyMap()), hist)
 
         store.recordOpened(meta("a"))
@@ -85,7 +68,7 @@ class RoomPlaybackProgressStoreTest {
 
     @Test
     fun `perto do fim marca concluido, sai de continuar mas fica no historico`() = runTest {
-        val hist = FakeHistoryDao()
+        val hist = InMemoryHistoryDao()
         val store = RoomPlaybackProgressStore(RecordingDao(emptyMap()), hist)
 
         store.recordOpened(meta("a"))
@@ -100,7 +83,7 @@ class RoomPlaybackProgressStoreTest {
 
     @Test
     fun `posicao no comeco nao entra em continuar assistindo`() = runTest {
-        val hist = FakeHistoryDao()
+        val hist = InMemoryHistoryDao()
         val store = RoomPlaybackProgressStore(RecordingDao(emptyMap()), hist)
 
         store.recordOpened(meta("a"))
@@ -114,7 +97,7 @@ class RoomPlaybackProgressStoreTest {
 
     @Test
     fun `recordOpened preserva a posicao ja assistida`() = runTest {
-        val hist = FakeHistoryDao()
+        val hist = InMemoryHistoryDao()
         val store = RoomPlaybackProgressStore(RecordingDao(emptyMap()), hist)
 
         store.recordOpened(meta("a"))
@@ -127,7 +110,7 @@ class RoomPlaybackProgressStoreTest {
 
     @Test
     fun `remover do historico apaga do historico e do progresso`() = runTest {
-        val hist = FakeHistoryDao()
+        val hist = InMemoryHistoryDao()
         val prog = RecordingDao(emptyMap())
         val store = RoomPlaybackProgressStore(prog, hist)
 
@@ -141,7 +124,7 @@ class RoomPlaybackProgressStoreTest {
 
     @Test
     fun `limpar historico esvazia tudo`() = runTest {
-        val hist = FakeHistoryDao()
+        val hist = InMemoryHistoryDao()
         val store = RoomPlaybackProgressStore(RecordingDao(emptyMap()), hist)
         store.recordOpened(meta("a"))
         store.recordOpened(meta("b"))
@@ -156,5 +139,55 @@ class RoomPlaybackProgressStoreTest {
         assertTrue(store.history().isEmpty())
         assertTrue(store.continueWatching().isEmpty())
         assertNull(null) // sanidade
+    }
+
+    @Test
+    fun `remocoes viram tombstone com updatedAt e avisam a sincronizacao`() = runTest {
+        val hist = InMemoryHistoryDao()
+        val prog = InMemoryProgressDao()
+        val changes = mutableListOf<LocalChange>()
+        var clock = 1_000L
+        val store = RoomPlaybackProgressStore(prog, hist, now = { clock }, onLocalChange = { changes += it })
+
+        store.recordOpened(meta("a"))
+        clock = 2_000L
+        store.onProgress("a", positionMs = 30 * 60_000L, durationMs = 7200 * 1_000L)
+        clock = 3_000L
+        store.removeFromHistory("a")
+
+        // Some da UI, mas as linhas ficam marcadas para a remoção chegar aos outros aparelhos.
+        assertTrue(store.history().isEmpty())
+        assertEquals(0L, store.resumePositionMs("a", 7200 * 1_000L))
+        assertTrue(hist.rows.getValue("a").deleted)
+        assertEquals(3_000L, hist.rows.getValue("a").updatedAt)
+        assertTrue(prog.rows.getValue("a").deleted)
+        assertEquals(3_000L, prog.rows.getValue("a").updatedAt)
+        assertEquals(listOf(LocalChange.EDIT, LocalChange.PROGRESS, LocalChange.EDIT), changes)
+    }
+
+    @Test
+    fun `tick nao ressuscita historico removido, mas reabrir sim`() = runTest {
+        val hist = InMemoryHistoryDao()
+        val store = RoomPlaybackProgressStore(InMemoryProgressDao(), hist)
+        store.recordOpened(meta("a"))
+        store.clearHistory()
+        store.onProgress("a", positionMs = 30 * 60_000L, durationMs = 7200 * 1_000L)
+        assertTrue(store.history().isEmpty())
+
+        store.recordOpened(meta("a"))
+        assertEquals(listOf("a"), store.history().map { it.mediaId })
+        assertFalse(hist.rows.getValue("a").deleted)
+        // Removido antes: volta sem a posição antiga.
+        assertEquals(0L, store.history().first().lastPositionMs)
+    }
+
+    @Test
+    fun `assistido ate o fim apaga o progresso via tombstone`() = runTest {
+        val prog = InMemoryProgressDao()
+        val store = RoomPlaybackProgressStore(prog, now = { 5_000L })
+        store.onProgress("a", positionMs = 30 * 60_000L, durationMs = 7200 * 1_000L)
+        store.onProgress("a", positionMs = 7200 * 1_000L - 1_000L, durationMs = 7200 * 1_000L)
+        assertTrue(prog.rows.getValue("a").deleted)
+        assertEquals(emptyMap<String, Long>(), store.savedPositions(listOf("a")))
     }
 }

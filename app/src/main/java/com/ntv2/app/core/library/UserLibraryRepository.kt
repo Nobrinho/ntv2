@@ -1,5 +1,6 @@
 package com.ntv2.app.core.library
 
+import com.ntv2.app.core.backend.sync.LocalChange
 import com.ntv2.app.core.database.dao.FavoriteDao
 import com.ntv2.app.core.database.entity.FavoriteEntity
 import kotlinx.coroutines.flow.Flow
@@ -38,7 +39,10 @@ interface UserLibraryRepository {
 }
 
 class RoomUserLibraryRepository(
-    private val dao: FavoriteDao
+    private val dao: FavoriteDao,
+    private val now: () -> Long = System::currentTimeMillis,
+    /** Avisa a sincronização de que algo mudou (no-op com o backend desligado). */
+    private val onLocalChange: (LocalChange) -> Unit = {}
 ) : UserLibraryRepository {
 
     override fun observeFavorites(): Flow<List<FavoriteMedia>> =
@@ -49,16 +53,23 @@ class RoomUserLibraryRepository(
 
     override suspend fun isFavorite(mediaId: String): Boolean = dao.isFavorite(mediaId)
 
-    override suspend fun add(media: FavoriteMedia) = dao.upsert(media.toEntity())
+    override suspend fun add(media: FavoriteMedia) {
+        dao.upsert(media.toEntity())
+        onLocalChange(LocalChange.EDIT)
+    }
 
-    override suspend fun remove(mediaId: String) = dao.delete(mediaId)
+    // Tombstone em vez de DELETE: a remoção precisa chegar aos outros aparelhos.
+    override suspend fun remove(mediaId: String) {
+        dao.markDeleted(mediaId, now())
+        onLocalChange(LocalChange.EDIT)
+    }
 
     override suspend fun toggle(media: FavoriteMedia): Boolean =
         if (dao.isFavorite(media.mediaId)) {
-            dao.delete(media.mediaId)
+            remove(media.mediaId)
             false
         } else {
-            dao.upsert(media.toEntity())
+            add(media)
             true
         }
 
@@ -75,16 +86,21 @@ class RoomUserLibraryRepository(
         addedAt = addedAt
     )
 
-    private fun FavoriteMedia.toEntity() = FavoriteEntity(
-        mediaId = mediaId,
-        channelId = channelId,
-        channelTitle = channelTitle,
-        title = title,
-        posterPath = posterPath,
-        thumbnailPath = thumbnailPath,
-        durationSeconds = durationSeconds,
-        tmdbId = tmdbId,
-        genres = genres,
-        addedAt = if (addedAt > 0L) addedAt else System.currentTimeMillis()
-    )
+    private fun FavoriteMedia.toEntity(): FavoriteEntity {
+        val t = now()
+        return FavoriteEntity(
+            mediaId = mediaId,
+            channelId = channelId,
+            channelTitle = channelTitle,
+            title = title,
+            posterPath = posterPath,
+            thumbnailPath = thumbnailPath,
+            durationSeconds = durationSeconds,
+            tmdbId = tmdbId,
+            genres = genres,
+            addedAt = if (addedAt > 0L) addedAt else t,
+            updatedAt = t,
+            deleted = false
+        )
+    }
 }

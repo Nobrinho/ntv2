@@ -109,6 +109,9 @@ interface AppContainer {
     val remoteConfigRepository: com.ntv2.app.core.backend.config.RemoteConfigRepository
     val telemetryLogger: com.ntv2.app.core.backend.telemetry.TelemetryLogger
     val mediaReporter: com.ntv2.app.feature.media.data.report.MediaReporter
+
+    /** Sincronização da personalização; null com o backend desligado (o app fica só no Room). */
+    val personalizationSync: com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler?
 }
 
 class DefaultAppContainer(
@@ -226,11 +229,18 @@ class DefaultAppContainer(
     }
 
     override val playbackProgressStore: PlaybackProgressStore by lazy {
-        RoomPlaybackProgressStore(appDatabase.playbackProgressDao(), appDatabase.watchHistoryDao())
+        RoomPlaybackProgressStore(
+            appDatabase.playbackProgressDao(),
+            appDatabase.watchHistoryDao(),
+            onLocalChange = ::notifyPersonalizationChange
+        )
     }
 
     override val userLibraryRepository: com.ntv2.app.core.library.UserLibraryRepository by lazy {
-        com.ntv2.app.core.library.RoomUserLibraryRepository(appDatabase.favoriteDao())
+        com.ntv2.app.core.library.RoomUserLibraryRepository(
+            appDatabase.favoriteDao(),
+            onLocalChange = ::notifyPersonalizationChange
+        )
     }
 
     override val playbackCoordinator: PlaybackCoordinator by lazy {
@@ -250,6 +260,9 @@ class DefaultAppContainer(
                     com.ntv2.app.core.backend.telemetry.TelemetryEvents.PLAYBACK_ERROR,
                     mapOf("media_id" to mediaId, "code" to code, "decoder" to decoder, "codec" to codec)
                 )
+            },
+            onPlaybackSettled = {
+                notifyPersonalizationChange(com.ntv2.app.core.backend.sync.LocalChange.PLAYBACK_SETTLED)
             }
         )
     }
@@ -376,6 +389,27 @@ class DefaultAppContainer(
             config = { remoteConfigRepository.current },
             telemetry = telemetryLogger
         )
+    }
+
+    override val personalizationSync: com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler? by lazy {
+        if (!backendClient.config.enabled) return@lazy null
+        val syncer = com.ntv2.app.core.backend.sync.PersonalizationSyncer(
+            client = backendClient,
+            session = backendSession,
+            favoriteDao = appDatabase.favoriteDao(),
+            progressDao = appDatabase.playbackProgressDao(),
+            historyDao = appDatabase.watchHistoryDao(),
+            marks = com.ntv2.app.core.backend.sync.DataStoreSyncMarks(appContext)
+        )
+        com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler(
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO),
+            runSync = { syncer.sync() },
+            onError = { android.util.Log.w("NtvSync", "sincronização falhou: ${it.message}") }
+        )
+    }
+
+    private fun notifyPersonalizationChange(change: com.ntv2.app.core.backend.sync.LocalChange) {
+        personalizationSync?.onLocalChange(change)
     }
 
     private companion object {

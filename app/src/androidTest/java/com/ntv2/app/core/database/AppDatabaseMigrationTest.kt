@@ -98,10 +98,51 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
+    fun v4_preservaPersonalizacaoEPreencheUpdatedAtEDeleted() {
+        createDb(version = 4, schema = V4) { db ->
+            db.execSQL(
+                "INSERT INTO favorites (mediaId, channelId, channelTitle, title, posterPath, thumbnailPath, " +
+                    "durationSeconds, tmdbId, genres, addedAt) VALUES ('m1', 10, 'Filmes', 'Linha de Frente', " +
+                    "NULL, NULL, 7200, '42', 'Drama', 2000)"
+            )
+            db.execSQL(
+                "INSERT INTO watch_history (mediaId, channelId, channelTitle, title, posterPath, thumbnailPath, " +
+                    "durationMs, lastPositionMs, completed, genres, updatedAt) VALUES ('m1', 10, 'Filmes', " +
+                    "'Linha de Frente', NULL, NULL, 7200000, 82000, 0, NULL, 3000)"
+            )
+            db.execSQL(
+                "INSERT INTO playback_progress (mediaId, positionMs, durationMs, updatedAt) " +
+                    "VALUES ('m1', 82000, 7200000, 1000)"
+            )
+        }
+        withUpgradedDb { database ->
+            val fav = database.favoriteDao().getForSync("m1")!!
+            assertEquals(2000L, fav.updatedAt) // preenchido com addedAt
+            assertEquals(false, fav.deleted)
+            assertEquals(true, database.favoriteDao().isFavorite("m1"))
+            assertEquals(3000L, database.watchHistoryDao().get("m1")?.updatedAt)
+            assertEquals(82_000L, database.playbackProgressDao().get("m1")?.positionMs)
+
+            // Tombstone: some das consultas da UI, mas continua para a sincronização.
+            database.favoriteDao().markDeleted("m1", 5000L)
+            assertEquals(false, database.favoriteDao().isFavorite("m1"))
+            assertEquals(emptyList<Any>(), database.favoriteDao().observeAll().first())
+            assertEquals(true, database.favoriteDao().getForSync("m1")?.deleted)
+            assertEquals(listOf("m1"), database.favoriteDao().changedSince(4000L).map { it.mediaId })
+
+            database.watchHistoryDao().markAllDeleted(6000L)
+            assertEquals(emptyList<Any>(), database.watchHistoryDao().getAll())
+            database.playbackProgressDao().markDeleted("m1", 6000L)
+            assertNull(database.playbackProgressDao().get("m1"))
+            assertEquals(true, database.playbackProgressDao().getForSync("m1")?.deleted)
+        }
+    }
+
+    @Test
     fun bancoNovoAbreNaVersaoAtual() {
         withUpgradedDb { database ->
             assertEquals(emptyList<Any>(), database.watchHistoryDao().getAll())
-            assertEquals(4, database.openHelper.readableDatabase.version)
+            assertEquals(5, database.openHelper.readableDatabase.version)
         }
     }
 
@@ -141,5 +182,18 @@ class AppDatabaseMigrationTest {
         val V1 = listOf(SELECTED_CHANNELS_V1)
         val V2 = listOf(SELECTED_CHANNELS_V1, PLAYBACK_PROGRESS_V2)
         val V3 = listOf(SELECTED_CHANNELS_V3, PLAYBACK_PROGRESS_V2)
+
+        // v4 (app/schemas/.../4.json): Minha lista e histórico.
+        val FAVORITES_V4 =
+            "CREATE TABLE IF NOT EXISTS `favorites` (`mediaId` TEXT NOT NULL, `channelId` INTEGER NOT NULL, " +
+                "`channelTitle` TEXT NOT NULL, `title` TEXT NOT NULL, `posterPath` TEXT, `thumbnailPath` TEXT, " +
+                "`durationSeconds` INTEGER NOT NULL, `tmdbId` TEXT, `genres` TEXT, `addedAt` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`mediaId`))"
+        val WATCH_HISTORY_V4 =
+            "CREATE TABLE IF NOT EXISTS `watch_history` (`mediaId` TEXT NOT NULL, `channelId` INTEGER NOT NULL, " +
+                "`channelTitle` TEXT NOT NULL, `title` TEXT NOT NULL, `posterPath` TEXT, `thumbnailPath` TEXT, " +
+                "`durationMs` INTEGER NOT NULL, `lastPositionMs` INTEGER NOT NULL, `completed` INTEGER NOT NULL, " +
+                "`genres` TEXT, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`mediaId`))"
+        val V4 = listOf(SELECTED_CHANNELS_V3, PLAYBACK_PROGRESS_V2, FAVORITES_V4, WATCH_HISTORY_V4)
     }
 }

@@ -68,7 +68,11 @@ class BackendSession(
 
     init {
         client.tokenProvider = { accessToken() }
+        client.onUnauthorized = { invalidate() }
     }
+
+    /** Esquece a sessão atual; a próxima chamada cria uma sessão anônima nova. */
+    suspend fun invalidate() = mutex.withLock { store.clear() }
 
     val enabled: Boolean get() = client.config.enabled
 

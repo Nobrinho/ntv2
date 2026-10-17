@@ -98,8 +98,11 @@ class MediaReporter(
         if (backend != null && backend.config.enabled) {
             val viaBackend = runCatching { submit(backend, report) }
                 .onFailure { backendWarn(TAG, "submit_report falhou, tentando DM: ${it.message}", it) }
-                .getOrNull()
-            if (viaBackend != null) return viaBackend
+            // 429 = o backend está de pé e limitou: a DM furaria o limite (e lotaria a conversa do admin).
+            if ((viaBackend.exceptionOrNull() as? BackendException)?.isRateLimited == true) {
+                return ReportOutcome.RateLimited
+            }
+            viaBackend.getOrNull()?.let { return it }
         }
         val dm = runCatching { directMessage.send(config().reportRecipient, format(report)) }
             .onFailure { backendWarn(TAG, "falha ao enviar reporte por DM", it) }

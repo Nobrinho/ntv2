@@ -167,4 +167,15 @@ class MediaReporterTest {
         store.save(emptyList())
         assertFalse(file.exists())
     }
+
+    @Test
+    fun `429 do backend vira RateLimited sem DM e sem fila`() = runTest {
+        val transport = FakeTransport { BackendResponse(429, """{"code":"RATE_LIMITED"}""", retryAfterSeconds = 30) }
+        val dm = FakeDm()
+        val store = MemoryStore()
+        val outcome = reporter(transport, dm, store).send(report)
+        assertEquals(ReportOutcome.RateLimited, outcome)
+        assertTrue("a DM furaria o limite", dm.sent.isEmpty())
+        assertTrue(store.items.isEmpty())
+    }
 }

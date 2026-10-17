@@ -42,10 +42,23 @@ class PersonalizationSyncer(
 ) {
     private val mutex = Mutex()
 
+    /** Usuário com que a última passada começou (só lido dentro do [mutex]). */
+    private var runUserId: String? = null
+
     suspend fun sync(): SyncResult = mutex.withLock {
-        if (!client.config.enabled) return@withLock SyncResult(skipped = "backend desligado")
-        if (!syncFlag.isEnabled()) return@withLock SyncResult(skipped = "flag sync=false")
-        val userId = session.userId() ?: return@withLock SyncResult(skipped = "sem sessão")
+        runUserId = null
+        val first = syncOnce()
+        // Um 401 no meio (usuário apagado no servidor) recriou a sessão: refaz já com o usuário novo,
+        // que sobe tudo de novo, em vez de esperar o próximo disparo.
+        val started = runUserId
+        if (started != null && session.userId() != started) syncOnce() else first
+    }
+
+    private suspend fun syncOnce(): SyncResult {
+        if (!client.config.enabled) return SyncResult(skipped = "backend desligado")
+        if (!syncFlag.isEnabled()) return SyncResult(skipped = "flag sync=false")
+        val userId = session.userId() ?: return SyncResult(skipped = "sem sessão")
+        runUserId = userId
         // Sessão anônima nova (ex.: banco do servidor resetado): sobe tudo e baixa tudo de novo.
         if (marks.userId() != userId) marks.reset(userId)
 
@@ -71,7 +84,7 @@ class PersonalizationSyncer(
         pulled[PROGRESS] = pull(PROGRESS, ::applyProgress) { since ->
             progressDao.changedSince(since).map { it.mediaId to it.updatedAt }
         }
-        SyncResult(pushed = pushed, pulled = pulled)
+        return SyncResult(pushed = pushed, pulled = pulled)
     }
 
     private suspend fun <T> push(table: String, rows: List<T>, updatedAt: (T) -> Long, toJson: (T) -> JSONObject): Int {

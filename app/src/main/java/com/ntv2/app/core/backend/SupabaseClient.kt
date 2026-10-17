@@ -17,9 +17,13 @@ data class BackendRequest(
     val body: String?
 )
 
-data class BackendResponse(val code: Int, val body: String)
+/** [retryAfterSeconds]: cabeçalho Retry-After (vem com o 429 do rate limit do backend). */
+data class BackendResponse(val code: Int, val body: String, val retryAfterSeconds: Long? = null)
 
-class BackendException(val code: Int, message: String) : Exception(message)
+class BackendException(val code: Int, message: String) : Exception(message) {
+    /** 429: o backend limitou a frequência desta rota (ver PLANO-SEGURANCA-CUSTO.md). */
+    val isRateLimited: Boolean get() = code == 429
+}
 
 /** Transporte HTTP trocável nos testes. */
 fun interface HttpTransport {
@@ -44,7 +48,8 @@ class UrlConnectionTransport(
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            return BackendResponse(code, body)
+            val retryAfter = connection.getHeaderField("Retry-After")?.trim()?.toLongOrNull()
+            return BackendResponse(code, body, retryAfter)
         } finally {
             connection.disconnect()
         }
@@ -58,10 +63,23 @@ class UrlConnectionTransport(
 class SupabaseClient(
     val config: BackendConfig,
     private val transport: HttpTransport = UrlConnectionTransport(),
-    private val maxAttempts: Int = 2
+    private val maxAttempts: Int = 2,
+    private val now: () -> Long = System::currentTimeMillis
 ) {
+    /**
+     * Rota → até quando não chamar de novo, depois de um 429. Enquanto isso, falha na hora sem ir à
+     * rede: o app não insiste num limite que já estourou (e não gasta requisição à toa).
+     */
+    private val blockedUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     /** Fornece o access token do usuário; null = usa a anon key. Ligado pelo [BackendSession]. */
     var tokenProvider: suspend () -> String? = { null }
+
+    /**
+     * 401 com token de usuário (ex.: o usuário anônimo foi apagado no servidor): descarta a sessão.
+     * Ligado pelo [BackendSession]; a chamada é repetida uma vez com a sessão nova.
+     */
+    var onUnauthorized: suspend () -> Unit = {}
 
     /** authenticated = false: leitura pública (ex.: app_config) sem criar a sessão anônima. */
     suspend fun get(path: String, authenticated: Boolean = true): String =
@@ -85,7 +103,30 @@ class SupabaseClient(
         authenticated: Boolean = true
     ): String {
         check(config.enabled) { "Backend desligado" }
+        val route = method + " " + path.substringBefore('?')
+        blockedUntil[route]?.let { until ->
+            if (now() < until) throw BackendException(429, "limite de requisições: aguardando Retry-After ($route)")
+            blockedUntil.remove(route, until)
+        }
         val token = if (authenticated) tokenProvider() else null
+        try {
+            return execute(method, path, route, body, prefer, token)
+        } catch (e: BackendException) {
+            if (e.code != 401 || token == null) throw e
+            onUnauthorized()
+            val fresh = tokenProvider() ?: throw e
+            return execute(method, path, route, body, prefer, fresh)
+        }
+    }
+
+    private suspend fun execute(
+        method: String,
+        path: String,
+        route: String,
+        body: String?,
+        prefer: String?,
+        token: String?
+    ): String {
         val headers = buildMap {
             put("apikey", config.anonKey)
             put("Authorization", "Bearer ${token ?: config.anonKey}")
@@ -105,11 +146,20 @@ class SupabaseClient(
                 }
                 if (response.code in 200..299) return@withContext response.body
                 val error = BackendException(response.code, "HTTP ${response.code}: ${response.body.take(200)}")
+                if (response.code == 429) {
+                    val waitS = (response.retryAfterSeconds ?: DEFAULT_RETRY_AFTER_S).coerceIn(1, MAX_RETRY_AFTER_S)
+                    blockedUntil[route] = now() + waitS * 1000
+                }
                 // 5xx tenta de novo; 4xx é erro do pedido, não adianta repetir.
                 if (response.code < 500) throw error
                 last = error
             }
             throw last ?: IllegalStateException("falha sem causa")
         }
+    }
+
+    private companion object {
+        const val DEFAULT_RETRY_AFTER_S = 60L
+        const val MAX_RETRY_AFTER_S = 300L
     }
 }

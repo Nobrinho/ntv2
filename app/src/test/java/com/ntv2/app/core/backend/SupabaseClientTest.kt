@@ -91,4 +91,63 @@ class SupabaseClientTest {
         assertEquals(null, session.userId())
         assertTrue(transport.requests.isEmpty())
     }
+
+    @Test
+    fun `429 bloqueia so a rota ate o Retry-After passar`() = runTest {
+        var clock = 0L
+        val transport = FakeTransport(
+            BackendResponse(429, "limite", retryAfterSeconds = 20),
+            BackendResponse(200, "outra rota"),
+            BackendResponse(200, "depois")
+        )
+        val client = SupabaseClient(config, transport, now = { clock })
+        try { client.rpc("search_catalog", "{}"); fail() } catch (e: BackendException) { assertTrue(e.isRateLimited) }
+
+        clock = 19_000
+        try { client.rpc("search_catalog", "{}"); fail() } catch (e: BackendException) { assertTrue(e.isRateLimited) }
+        assertEquals("nao foi a rede durante o bloqueio", 1, transport.requests.size)
+        assertEquals("outra rota", client.rpc("log_events", "[]"))
+
+        clock = 20_000
+        assertEquals("depois", client.rpc("search_catalog", "{}"))
+        assertEquals(3, transport.requests.size)
+    }
+
+    @Test
+    fun `429 sem Retry-After espera 60 s e nao repete`() = runTest {
+        var clock = 0L
+        val transport = FakeTransport(BackendResponse(429, ""), BackendResponse(200, "ok"))
+        val client = SupabaseClient(config, transport, now = { clock })
+        try { client.get("app_config"); fail() } catch (e: BackendException) { assertEquals(429, e.code) }
+        assertEquals("429 nao e repetido como 5xx", 1, transport.requests.size)
+        clock = 59_999
+        try { client.get("app_config"); fail() } catch (e: BackendException) { assertEquals(429, e.code) }
+        clock = 60_000
+        assertEquals("ok", client.get("app_config"))
+    }
+
+    @Test
+    fun `401 com usuario apagado recria a sessao e repete uma vez`() = runTest {
+        val store = MemoryStore(BackendTokens("velho", "a-velho", "r-velho", expiresAtMs = 3_600_000))
+        val transport = FakeTransport(
+            BackendResponse(401, """{"code":"USER_GONE"}"""),
+            BackendResponse(200, authBody("novo", "a-novo")),
+            BackendResponse(200, "ok")
+        )
+        val client = SupabaseClient(config, transport)
+        val session = BackendSession(client, store, now = { 0L })
+        assertEquals("ok", client.rpc("log_events", "[]"))
+        assertEquals("Bearer a-velho", transport.requests[0].headers["Authorization"])
+        assertTrue(transport.requests[1].url.endsWith("/auth/v1/signup"))
+        assertEquals("Bearer a-novo", transport.requests[2].headers["Authorization"])
+        assertEquals("novo", session.userId())
+    }
+
+    @Test
+    fun `401 sem token de usuario nao entra em loop`() = runTest {
+        val transport = FakeTransport(BackendResponse(401, "x"), BackendResponse(200, "nao deveria"))
+        try { SupabaseClient(config, transport).get("app_config", authenticated = false); fail() }
+        catch (e: BackendException) { assertEquals(401, e.code) }
+        assertEquals(1, transport.requests.size)
+    }
 }

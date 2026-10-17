@@ -84,7 +84,9 @@ class DefaultPlaybackCoordinator(
     /** Filmes divididos em partes: o `fileId` da parte 1 identifica o filme (ver MultiPartRegistry). */
     private val partsLookup: PartsLookup? = null,
     /** Parte que o player está lendo em cada filme dividido (ver MultiPartDataSource). */
-    private val partsPlaybackState: com.ntv2.app.core.multipart.MultiPartPlaybackState? = null
+    private val partsPlaybackState: com.ntv2.app.core.multipart.MultiPartPlaybackState? = null,
+    /** Erro final (sem recuperação): telemetria `playback_error`. Não altera o tratamento do erro. */
+    private val onPlaybackError: (mediaId: String, code: String, decoder: String, codec: String?) -> Unit = { _, _, _, _ -> }
 ) : PlaybackCoordinator {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -198,6 +200,17 @@ class DefaultPlaybackCoordinator(
                 if (action == RecoveryAction.Unsupported) {
                     unsupportedVideo = describeVideo((error as? androidx.media3.exoplayer.ExoPlaybackException)?.rendererFormat)
                     android.util.Log.w("NtvPlayer", "decodificador não reproduz este vídeo ($unsupportedVideo); desistindo")
+                }
+            }
+            currentMedia?.mediaId?.let { id ->
+                val format = (error as? androidx.media3.exoplayer.ExoPlaybackException)?.rendererFormat
+                runCatching {
+                    onPlaybackError(
+                        id,
+                        error.errorCodeName,
+                        if (videoDecoderPolicy.preferSoftware) "software" else "hardware",
+                        format?.sampleMimeType ?: format?.codecs
+                    )
                 }
             }
             snapshotState.update {

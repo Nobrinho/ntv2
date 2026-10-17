@@ -285,9 +285,10 @@ fun AppNavHost(
                     gridStep = mediaGridStep,
                     searchIndexRepository = appContainer.searchIndexRepository,
                     videoPrefetcher = appContainer.videoPrefetcher,
-                    mediaReporter = com.ntv2.app.feature.media.data.report.MediaReporter(appContainer.tdlibMediaGateway),
+                    mediaReporter = appContainer.mediaReporter,
                     upNextQueue = appContainer.upNextQueue,
-                    multiPartPreparer = appContainer.multiPartPreparer
+                    multiPartPreparer = appContainer.multiPartPreparer,
+                    telemetry = appContainer.telemetryLogger
                 )
             )
             MediaLibraryScreen(

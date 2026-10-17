@@ -113,7 +113,7 @@ internal fun MovieDetailsOverlay(
     playFailedText: String? = null,
     onRestart: () -> Unit = {},
     isTv: Boolean = true,
-    onReport: (MediaReportReason) -> Unit = {},
+    onReport: ReportSender = { _, _, _ -> },
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     recommendations: List<MediaCardUi> = emptyList(),

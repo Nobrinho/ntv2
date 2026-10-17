@@ -102,6 +102,10 @@ interface AppContainer {
     val updateInstaller: AppUpdateInstaller
     val appReplacer: AppReplacer
     val updatePreferences: UpdatePreferences
+
+    /** Backend Supabase (desligado sem supabaseUrl/supabaseAnonKey). */
+    val backendClient: com.ntv2.app.core.backend.SupabaseClient
+    val backendSession: com.ntv2.app.core.backend.BackendSession
 }
 
 class DefaultAppContainer(
@@ -314,6 +318,22 @@ class DefaultAppContainer(
     override val updateInstaller: AppUpdateInstaller by lazy { AppUpdateInstaller(appContext) }
     override val appReplacer: AppReplacer by lazy { AppReplacer(appContext) }
     override val updatePreferences: UpdatePreferences by lazy { UpdatePreferences(appContext) }
+
+    override val backendClient: com.ntv2.app.core.backend.SupabaseClient by lazy {
+        com.ntv2.app.core.backend.SupabaseClient(
+            com.ntv2.app.core.backend.BackendConfig(
+                url = com.ntv2.app.BuildConfig.SUPABASE_URL,
+                anonKey = com.ntv2.app.BuildConfig.SUPABASE_ANON_KEY
+            )
+        )
+    }
+
+    override val backendSession: com.ntv2.app.core.backend.BackendSession by lazy {
+        com.ntv2.app.core.backend.BackendSession(
+            backendClient,
+            com.ntv2.app.core.backend.DataStoreBackendTokenStore(appContext)
+        )
+    }
 
     private companion object {
         // Índice de busca publicado pelo bot (GitHub Pages). Trocar aqui se mudar de host.

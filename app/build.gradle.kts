@@ -25,6 +25,10 @@ val telegramApiHash = providers.gradleProperty("telegramApiHash")
     .get()
 val telegramRealEnabled = telegramApiId > 0 && telegramApiHash.isNotBlank()
 
+// Backend Supabase: valores em ~/.gradle/gradle.properties. Ausentes = backend desligado.
+val supabaseUrl = providers.gradleProperty("supabaseUrl").orNull ?: ""
+val supabaseAnonKey = providers.gradleProperty("supabaseAnonKey").orNull ?: ""
+
 // Assinatura de release: valores em ~/.gradle/gradle.properties (fora do git). Se ausentes,
 // o build de release sai sem assinatura (útil em CI/dev), mas não instala no aparelho.
 val releaseStoreFile = providers.gradleProperty("releaseStoreFile").orNull
@@ -76,6 +80,8 @@ android {
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
         buildConfigField(
             "boolean",
             "TELEGRAM_REAL_ENABLED",

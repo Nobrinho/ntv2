@@ -24,6 +24,7 @@ class UserPreferencesDataStore(
     private val castPhotosKey = booleanPreferencesKey("cast_photos")
     private val nativeBlurGlowKey = booleanPreferencesKey("ambient_native_blur")
     private val cardLoadingStyleKey = stringPreferencesKey("card_loading_style")
+    private val onboardingCompletedKey = booleanPreferencesKey("onboarding_completed")
 
     val minDurationMinutes: Flow<Int> = context.dataStore.data.map { prefs: Preferences ->
         prefs[minDurationKey] ?: 15
@@ -84,5 +85,12 @@ class UserPreferencesDataStore(
 
     suspend fun setNativeBlurGlow(value: Boolean) {
         context.dataStore.edit { prefs -> prefs[nativeBlurGlowKey] = value }
+    }
+
+    /** Introdução (onboarding) já vista: só aparece na primeira abertura, antes do login. */
+    val onboardingCompleted: Flow<Boolean> = context.dataStore.data.map { it[onboardingCompletedKey] ?: false }
+
+    suspend fun setOnboardingCompleted(value: Boolean) {
+        context.dataStore.edit { prefs -> prefs[onboardingCompletedKey] = value }
     }
 }

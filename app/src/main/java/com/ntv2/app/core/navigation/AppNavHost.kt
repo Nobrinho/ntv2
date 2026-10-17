@@ -123,6 +123,19 @@ fun AppNavHost(
     LaunchedEffect(Unit) {
         if (!appContainer.settingsRepository.animationsEnabled.first()) showSplash = false
     }
+    // Introdução da primeira abertura (overlay sobre o Login, logo após o splash). Quem já está
+    // logado (ex.: atualizou o app) nunca a vê. replayOnboarding = reaberta pelas Configurações.
+    var showOnboarding by rememberSaveable { mutableStateOf(false) }
+    var replayOnboarding by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val prefs = appContainer.userPreferencesDataStore
+        if (prefs.onboardingCompleted.first()) return@LaunchedEffect
+        if (appContainer.authSessionStore.session.first().isLoggedIn) {
+            prefs.setOnboardingCompleted(true)
+        } else {
+            showOnboarding = true
+        }
+    }
 
     // O app não deve fechar direto no "Voltar" quando está na raiz (sem tela anterior).
     // Nesse caso, pedimos confirmação. Fora da raiz, o Voltar navega normalmente (callback desabilitado).
@@ -328,6 +341,7 @@ fun AppNavHost(
                 onToggleNativeBlurGlow = { scope.launch { settings.updateNativeBlurGlow(it) } },
                 onChangeMinDuration = { scope.launch { settings.updateMinDurationMinutes(it) } },
                 onChangeCardLoadingStyle = { style -> scope.launch { settings.updateCardLoadingStyle(style.name) } },
+                onShowIntro = { replayOnboarding = true; showOnboarding = true },
                 onManageChannels = {
                     navController.navigate(RoutePath.CHANNEL_SELECTION) { launchSingleTop = true }
                 },
@@ -461,6 +475,20 @@ fun AppNavHost(
 
    }
 
+    if (showOnboarding) {
+        BackHandler(enabled = replayOnboarding) { showOnboarding = false; replayOnboarding = false }
+        com.ntv2.app.feature.onboarding.presentation.OnboardingScreen(
+            onFinished = {
+                showOnboarding = false
+                if (!replayOnboarding) {
+                    rootScope.launch { appContainer.userPreferencesDataStore.setOnboardingCompleted(true) }
+                }
+                replayOnboarding = false
+                focusRestoreSignal++
+            }
+        )
+    }
+
     // Intro de marca por cima de tudo, enquanto o app carrega por trás.
     if (showSplash) {
         SplashScreen(onFinished = { showSplash = false })
@@ -481,7 +509,7 @@ fun AppNavHost(
         )
     }
 
-    val canShowUpdatePrompt = !showSplash &&
+    val canShowUpdatePrompt = !showSplash && !showOnboarding &&
         currentRoute != RoutePath.LOGIN &&
         currentRoute != RoutePath.PLAYBACK_PLACEHOLDER &&
         (updateState.mandatory || dismissedUpdatePromptVersion != updateState.update?.versionCode)

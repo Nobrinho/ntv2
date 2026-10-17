@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.runtime.Composable
@@ -126,6 +127,7 @@ fun SettingsScreen(
     // Rail: Busca abre a busca da Biblioteca; Atualizar recarrega a Biblioteca.
     onSearch: () -> Unit = onOpenLibrary,
     onRefresh: () -> Unit = onOpenLibrary,
+    onShowIntro: () -> Unit = {},
     runConnectionTest: (() -> kotlinx.coroutines.flow.Flow<com.ntv2.app.core.network.ConnectionReport>)? = null
 ) {
     var showConnectionTest by remember { mutableStateOf(false) }
@@ -287,6 +289,14 @@ fun SettingsScreen(
                         modifier = itemMod(6),
                         onClick = { showPrivacy = true }
                     )
+                    NavCard(
+                        icon = Icons.Filled.School,
+                        title = "Ver introdução novamente",
+                        subtitle = "Rever a apresentação do app",
+                        destructive = false,
+                        modifier = itemMod(12),
+                        onClick = onShowIntro
+                    )
                     Spacer(Modifier.size(8.dp))
                     NavCard(
                         icon = Icons.AutoMirrored.Filled.Logout,
@@ -371,7 +381,7 @@ private fun ToggleCard(
     }
 }
 
-private const val SETTINGS_ITEM_COUNT = 12
+private const val SETTINGS_ITEM_COUNT = 13
 
 private val INSTALLED_VERSION_LABEL: String =
     "Versão ${BuildConfig.VERSION_NAME} (${if (BuildConfig.DEBUG) "debug" else "release"})"

@@ -1,5 +1,6 @@
 package com.ntv2.app.core.database.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -20,5 +21,7 @@ data class WatchHistoryEntity(
     val lastPositionMs: Long,
     val completed: Boolean,
     val genres: String?,
-    val updatedAt: Long
+    val updatedAt: Long,
+    /** Tombstone: removido, mas guardado para propagar a remoção aos outros aparelhos. */
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false
 )

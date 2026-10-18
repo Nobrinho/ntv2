@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="../favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<title>Instalar — NBR Play</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0E0E0E; color: #CFCFCF; font: 16px/1.7 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { color: #fff; font-size: 30px; line-height: 1.25; margin: 8px 0 4px; }
+  h2 { color: #66D9FF; font-size: 20px; margin: 0 0 10px; }
+  p { margin: 8px 0; }
+  a { color: #66D9FF; }
+  strong { color: #fff; }
+  .lead { color: #9A9A9A; margin-bottom: 24px; }
+  .download { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 20px; border-radius: 10px; background: #16191D; border: 1px solid #262B31; margin: 0 0 28px; }
+  .btn { display: inline-block; padding: 12px 22px; border-radius: 8px; background: #66D9FF; color: #08131A; font-weight: 700; text-decoration: none; }
+  .version { color: #9A9A9A; font-size: 14px; }
+  .address { margin-top: 4px; font-size: 15px; }
+  code, .code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; color: #fff; background: #20252B; padding: 2px 8px; border-radius: 6px; }
+  .big { font-size: 22px; letter-spacing: 1px; padding: 4px 12px; }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+  nav a { padding: 6px 12px; border-radius: 999px; border: 1px solid #2A3038; color: #CFCFCF; text-decoration: none; font-size: 14px; }
+  nav a:hover { border-color: #66D9FF; color: #fff; }
+  section { padding: 22px; border-radius: 10px; background: #121417; border: 1px solid #1F2328; margin: 0 0 18px; }
+  ol { margin: 6px 0 0; padding-left: 22px; }
+  li { margin: 6px 0; }
+  .note { font-size: 14px; color: #9A9A9A; }
+  .warn { padding: 12px 16px; border-left: 3px solid #F5B942; background: #1D1A12; border-radius: 0 8px 8px 0; margin: 12px 0 0; font-size: 15px; }
+  footer { margin-top: 32px; font-size: 14px; color: #7A7A7A; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img src="../logo.png" alt="NBR Play" width="96" height="96" style="display:block">
+  <h1>Instalar o NBR Play</h1>
+  <p class="lead">O NBR Play não está nas lojas de aplicativos. A instalação é feita uma única vez;
+  depois disso, o próprio app avisa e instala as atualizações.</p>
+
+  <div class="download">
+    <a class="btn" id="apk" href="../apk/">Baixar o app (APK)</a>
+    <div>
+      <div class="version" id="version">Versão mais recente</div>
+      <div class="address">Endereço curto para digitar na TV: <span class="code">nobrinho.github.io/ntv2/apk</span></div>
+      <div class="address" id="downloader-code" hidden>Código no app Downloader: <span class="code big" id="dl-code"></span></div>
+    </div>
+  </div>
+
+  <nav>
+    <a href="#firetv">Fire TV</a>
+    <a href="#googletv">Google TV / Android TV</a>
+    <a href="#projetor">Projetor ou TV sem loja</a>
+    <a href="#celular">Celular</a>
+  </nav>
+
+  <section id="firetv">
+    <h2>Fire TV (Fire Stick, Fire TV Cube)</h2>
+    <ol>
+      <li>Na tela inicial, abra a <strong>Busca</strong> (lupa), procure <strong>Downloader</strong> e instale o app gratuito (ícone laranja, da AFTVnews).</li>
+      <li>Vá em <strong>Configurações › Minha Fire TV › Opções do desenvolvedor › Instalar apps desconhecidos</strong> e ative o <strong>Downloader</strong>.</li>
+      <li>Abra o Downloader, digite <span class="code downloader-or-address">nobrinho.github.io/ntv2/apk</span> e selecione <strong>Ir</strong>.</li>
+      <li>Quando o download terminar, selecione <strong>Instalar</strong> e depois <strong>Abrir</strong>.</li>
+    </ol>
+    <p class="warn">Não aparece <strong>Opções do desenvolvedor</strong>? Vá em <strong>Configurações › Minha Fire TV › Sobre</strong>,
+    selecione o nome do aparelho (a primeira linha) <strong>7 vezes seguidas</strong> e volte: a opção aparece.</p>
+  </section>
+
+  <section id="googletv">
+    <h2>Google TV / Android TV (TVs Android, Chromecast com Google TV, TV Box)</h2>
+    <ol>
+      <li>Abra a <strong>Google Play Store</strong> da TV, procure <strong>Downloader</strong> (da AFTVnews) e instale.</li>
+      <li>Vá em <strong>Configurações › Sistema › Sobre</strong> e selecione <strong>Build do SO Android TV</strong> 7 vezes seguidas, até aparecer "Você agora é um desenvolvedor".</li>
+      <li>Vá em <strong>Configurações › Apps › Segurança e restrições › Fontes desconhecidas</strong> e ative o <strong>Downloader</strong>.</li>
+      <li>Abra o Downloader, digite <span class="code downloader-or-address">nobrinho.github.io/ntv2/apk</span>, selecione <strong>Ir</strong> e depois <strong>Instalar</strong>.</li>
+    </ol>
+    <p class="note">Os nomes dos menus mudam um pouco de uma marca para outra. Se não encontrar, procure por
+    "fontes desconhecidas" ou "instalar apps desconhecidos" nas configurações.</p>
+    <p class="warn">O Google Play Protect pode avisar que o app "não é reconhecido". Isso acontece com
+    todo app instalado fora da loja: selecione <strong>Instalar mesmo assim</strong>.</p>
+  </section>
+
+  <section id="projetor">
+    <h2>Projetor ou TV Android sem loja de apps</h2>
+    <ol>
+      <li>No computador ou no celular, baixe o app pelo botão <strong>Baixar o app (APK)</strong> no topo desta página.</li>
+      <li>Copie o arquivo <strong>.apk</strong> para um <strong>pendrive</strong> e conecte o pendrive ao projetor.</li>
+      <li>Abra o <strong>gerenciador de arquivos</strong> do projetor (às vezes chamado de "Arquivos", "File Manager" ou "Mídia"), entre no pendrive e selecione o arquivo.</li>
+      <li>Se pedir, permita a instalação de apps desconhecidos para o gerenciador de arquivos e selecione <strong>Instalar</strong>.</li>
+    </ol>
+    <p class="note">Se o projetor tiver navegador, também dá para abrir <span class="code">nobrinho.github.io/ntv2/apk</span> direto nele.</p>
+  </section>
+
+  <section id="celular">
+    <h2>Celular Android</h2>
+    <ol>
+      <li>Neste celular, toque em <strong>Baixar o app (APK)</strong> no topo da página.</li>
+      <li>Abra o arquivo baixado (pela notificação ou pela pasta Downloads).</li>
+      <li>Se aparecer um aviso, toque em <strong>Configurações</strong>, ative <strong>Permitir desta fonte</strong> para o navegador e volte para instalar.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Depois de instalar</h2>
+    <p>Entre com a sua conta do Telegram (pelo QR Code ou pelo telefone) e escolha os canais.
+    Para usar a mesma Minha lista na TV e no celular, abra <strong>Configurações › Conectar aparelhos</strong>:
+    a TV mostra um código e você digita no celular.</p>
+    <p>Requer Android 6.0 ou mais novo. As próximas versões chegam pelo próprio app, em
+    <strong>Configurações › Atualizações</strong>.</p>
+  </section>
+
+  <footer>
+    <a href="../">Política de privacidade</a> · Contato: <a href="mailto:nbrplay@outlook.com">nbrplay@outlook.com</a>
+  </footer>
+</div>
+<script>
+  // Código curto do app Downloader (AFTVnews). Vazio = só o endereço curto aparece.
+  var DOWNLOADER_CODE = '';
+
+  if (DOWNLOADER_CODE) {
+    document.getElementById('dl-code').textContent = DOWNLOADER_CODE;
+    document.getElementById('downloader-code').hidden = false;
+    var targets = document.querySelectorAll('.downloader-or-address');
+    for (var i = 0; i < targets.length; i++) {
+      targets[i].textContent = DOWNLOADER_CODE;
+      targets[i].insertAdjacentText('afterend', ' (ou o endereço nobrinho.github.io/ntv2/apk)');
+    }
+  }
+
+  // Versão e link direto vêm do update.json, o mesmo manifesto que o app usa para se atualizar.
+  fetch('../update.json', { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (u) {
+      document.getElementById('apk').href = u.downloadUrl;
+      document.getElementById('version').textContent =
+        'Versão ' + u.versionName + ' · ' + (u.sizeBytes / 1048576).toFixed(0) + ' MB';
+    })
+    .catch(function () { /* fica o link para /apk/ */ });
+</script>
+</body>
+</html>

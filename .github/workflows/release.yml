@@ -97,6 +97,9 @@ jobs:
           fi
           APK_NAME="ntv-$VERSION_NAME.apk"
           cp "$SOURCE_APK" "$APK_NAME"
+          # Cópia com nome fixo: releases/latest/download/ntv.apk sempre aponta para a versão mais
+          # recente (link da página de instalação e do app Downloader nas TVs).
+          cp "$SOURCE_APK" ntv.apk
           APK_SIZE=$(stat -c%s "$APK_NAME")
           APK_SHA256=$(sha256sum "$APK_NAME" | cut -d' ' -f1)
           DOWNLOAD_URL="https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/$APK_NAME"
@@ -128,7 +131,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           APK_NAME: ${{ steps.metadata.outputs.apk_name }}
-        run: gh release create "${{ github.ref_name }}" "$APK_NAME" update.json --generate-notes --verify-tag
+        run: gh release create "${{ github.ref_name }}" "$APK_NAME" ntv.apk update.json --generate-notes --verify-tag
 
       - name: Validar arquivo publicado
         env:

@@ -9,64 +9,94 @@
 <title>Política de Privacidade — NBR Play</title>
 <style>
   :root { color-scheme: dark; }
-  body {
-    margin: 0;
-    background: #0E0E0E;
-    color: #CFCFCF;
-    font: 16px/1.7 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  }
+  body { margin: 0; background: #0E0E0E; color: #CFCFCF; font: 16px/1.7 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
   .wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
   h1 { color: #fff; font-size: 28px; margin: 0 0 4px; }
   h2 { color: #66D9FF; font-size: 18px; margin: 32px 0 8px; }
   .date { color: #9A9A9A; font-size: 14px; margin-bottom: 24px; }
   p { margin: 8px 0; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
   a { color: #66D9FF; }
+  strong { color: #fff; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid #2A2A2A; }
+  th { color: #fff; }
   .logo { color: #66D9FF; font-weight: 700; letter-spacing: .5px; }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <img src="logo.png" alt="NBR Play" width="120" height="120" style="display:block;margin:0 0 8px">
-    <h1>Política de Privacidade</h1>
-    <div class="date">Última atualização: 12/09/2026</div>
-
-    <p>O <strong>NBR Play</strong> é um aplicativo cliente de mídia para TV que exibe e reproduz
-    vídeos dos canais do Telegram escolhidos pelo próprio usuário. O aplicativo <strong>não
-    hospeda, não distribui e não disponibiliza conteúdo</strong>: ele apenas organiza e reproduz o
-    que já existe nos canais aos quais a conta do Telegram do usuário tem acesso.</p>
-
-    <h2>1. Dados que tratamos</h2>
-    <p>Não possuímos servidores próprios e não coletamos, armazenamos ou compartilhamos dados
-    pessoais conosco. O aplicativo se conecta diretamente ao Telegram usando a API oficial do
-    Telegram (TDLib). A autenticação (por QR Code ou telefone) é feita entre o dispositivo do
-    usuário e o Telegram.</p>
-
-    <h2>2. Armazenamento no dispositivo</h2>
-    <p>Ficam salvos apenas localmente no aparelho: a sessão de login do Telegram (para manter o
-    usuário conectado), os canais selecionados, as preferências (capas, animações, filtros, máximo
-    de cards) e o progresso de reprodução. Esses dados não são enviados para nós nem para terceiros
-    e podem ser apagados ao sair da conta ou desinstalar o aplicativo.</p>
-
-    <h2>3. Permissões</h2>
-    <p>O aplicativo usa apenas a permissão de <strong>Internet</strong>, necessária para se
-    comunicar com o Telegram e reproduzir os vídeos.</p>
-
-    <h2>4. Terceiros</h2>
-    <p>O uso do Telegram está sujeito à Política de Privacidade e aos Termos do próprio Telegram.
-    Não utilizamos publicidade nem ferramentas de análise/rastreamento.</p>
-
-    <h2>5. Conteúdo</h2>
-    <p>Todo o conteúdo exibido pertence aos canais e usuários do Telegram. O NBR Play não é
-    responsável pelo conteúdo publicado nesses canais e não realiza qualquer distribuição de mídia.</p>
-
-    <h2>6. Crianças</h2>
-    <p>O aplicativo não é direcionado a crianças e não coleta intencionalmente dados de menores.</p>
-
-    <h2>7. Alterações</h2>
-    <p>Esta política pode ser atualizada; a data no topo indica a versão vigente.</p>
-
-    <h2>8. Contato</h2>
-    <p>Dúvidas sobre esta política: <a href="mailto:nbrplay@outlook.com">nbrplay@outlook.com</a>.</p>
-  </div>
+<div class="wrap">
+<img src="logo.png" alt="NBR Play" width="120" height="120" style="display:block;margin:0 0 8px">
+<h1>Política de Privacidade</h1>
+<div class="date">Última atualização: 18/10/2026</div>
+<p>O <strong>NBR Play</strong> é um aplicativo cliente de mídia para TV e celular que exibe e reproduz vídeos dos canais do Telegram escolhidos pelo próprio usuário. O aplicativo <strong>não hospeda, não distribui e não disponibiliza conteúdo</strong>: ele apenas organiza e reproduz o que já existe nos canais aos quais a sua conta do Telegram tem acesso.</p>
+<p>Esta política explica quais dados o aplicativo trata, para quê, por quanto tempo e como você exerce os seus direitos, nos termos da Lei Geral de Proteção de Dados (Lei 13.709/2018 — LGPD).</p>
+<h2>1. Quem trata os dados</h2>
+<p>O responsável (controlador) pelos dados descritos aqui é o NBR Play. Contato do encarregado: <strong><a href="mailto:nbrplay@outlook.com">nbrplay@outlook.com</a></strong>.</p>
+<h2>2. O que NÃO coletamos</h2>
+<p>Não coletamos o seu nome, telefone, e-mail, foto, contatos, localização, mensagens nem os dados da sua conta do Telegram. O login no Telegram (por QR Code ou telefone) acontece diretamente entre o seu aparelho e o Telegram, pela API oficial (TDLib); nós não recebemos nem guardamos essas informações.</p>
+<h2>3. Dados que ficam só no seu aparelho</h2>
+<p>A sessão de login do Telegram, os canais selecionados, as preferências (capas, animações, filtros, quantidade de cards) e cópias locais de Minha lista, do histórico e do progresso. Esses dados são apagados ao sair da conta ou desinstalar o aplicativo.</p>
+<h2>4. Dados enviados ao nosso servidor</h2>
+<p>O aplicativo usa um servidor próprio (hospedado no Supabase) para os recursos abaixo. Cada aparelho recebe um <strong>identificador anônimo</strong> aleatório, criado automaticamente, que não está ligado ao seu nome, telefone ou conta do Telegram.</p>
+<ul>
+<li><strong>Minha lista, histórico e progresso</strong> (para sincronizar entre aparelhos e não se perderem): identificação do vídeo (número da mensagem no canal), título, nome do canal, endereço da capa, ano, posição e duração assistidas e as datas de cada alteração.</li>
+<li><strong>Conectar aparelhos</strong> (quando você usa a opção): nome do aparelho (tipo e modelo, por exemplo "TV · AFTKM"), data do vínculo e o código temporário de 6 caracteres.</li>
+<li><strong>Reportar problema</strong> (só quando você usa a opção em um vídeo): motivo escolhido, o texto que você escrever, título, ano, canal, identificação do vídeo, modelo do aparelho, versão do Android e versão do aplicativo.</li>
+<li><strong>Dados de uso e diagnóstico</strong> (para encontrar falhas e melhorar o aplicativo): abertura do aplicativo, vídeo aberto (identificação do vídeo), erros de reprodução (código do erro, decodificador e formato do vídeo), buscas que não tiveram resultado (o texto pesquisado) e reportes enviados, sempre com o modelo do aparelho e a versão do aplicativo.</li>
+<li><strong>Dados técnicos de conexão</strong>: o endereço IP é usado no momento de cada acesso para segurança e para limitar abusos (limite de requisições por minuto). Ele não é associado ao seu perfil e fica apenas nos registros técnicos do provedor por poucos dias.</li>
+</ul>
+<p>Se o servidor estiver fora do ar, o reporte de problema pode ser enviado como mensagem privada, <strong>pela sua própria conta do Telegram</strong>, ao administrador do aplicativo. Nesse caso o administrador vê o seu perfil do Telegram. Nada é enviado sem a sua ação.</p>
+<h2>5. Para que usamos e com qual base legal</h2>
+<table><thead><tr><th>Finalidade</th><th>Base legal (LGPD, art. 7º)</th></tr></thead><tbody>
+<tr><td>Sincronizar Minha lista, histórico e progresso; conectar aparelhos; receber reportes</td><td>Execução do serviço que você usa (inciso V)</td></tr>
+<tr><td>Diagnóstico de falhas, melhoria do aplicativo, segurança e prevenção de abuso</td><td>Legítimo interesse (inciso IX), com dados mínimos e sem identificar você</td></tr>
+</tbody></table>
+<p>Não usamos os dados para publicidade, não vendemos dados e não criamos perfis para fins comerciais.</p>
+<h2>6. Por quanto tempo guardamos</h2>
+<table><thead><tr><th>Dado</th><th>Prazo</th></tr></thead><tbody>
+<tr><td>Identificador anônimo e os dados de sincronização</td><td>Enquanto o aplicativo estiver em uso; apagados automaticamente após <strong>60 dias sem uso</strong></td></tr>
+<tr><td>Itens removidos de Minha lista/histórico</td><td>Marcados como removidos e apagados de vez após 90 dias</td></tr>
+<tr><td>Dados de uso e diagnóstico</td><td><strong>90 dias</strong></td></tr>
+<tr><td>Códigos de "Conectar aparelhos"</td><td>Válidos por 10 minutos; apagados 1 dia depois de vencer</td></tr>
+<tr><td>Contadores de limite de requisições</td><td>Poucos minutos</td></tr>
+<tr><td>Reportes de problema</td><td>Até a análise; quando o identificador anônimo é apagado, o reporte perde o vínculo com ele</td></tr>
+</tbody></table>
+<h2>7. Com quem compartilhamos</h2>
+<p>Não compartilhamos dados com anunciantes. Usamos os seguintes serviços para o aplicativo funcionar:</p>
+<ul>
+<li><strong>Supabase</strong> (hospedagem do servidor e do banco de dados), com servidores nos <strong>Estados Unidos</strong>.</li>
+<li><strong>Telegram</strong> (login e acesso aos canais), sujeito à Política de Privacidade e aos Termos do próprio Telegram.</li>
+<li><strong>GitHub</strong> (download do índice de filmes e das atualizações do aplicativo) e <strong>The Movie Database — TMDB</strong> (imagens de capas e elenco): recebem apenas o endereço IP no momento do download.</li>
+<li><strong>Google (gstatic.com) e Cloudflare (speed.cloudflare.com)</strong>: só quando você usa o Teste de conexão, para medir latência e velocidade; o resultado fica no aparelho.</li>
+</ul>
+<h2>8. Transferência internacional</h2>
+<p>O servidor fica nos Estados Unidos. A transferência é feita para a execução do serviço que você usa (LGPD, art. 33, inciso IX) e com um provedor que adota medidas de segurança compatíveis (conexão criptografada, controle de acesso e isolamento por usuário).</p>
+<h2>9. Segurança</h2>
+<p>Toda comunicação com o servidor é criptografada (HTTPS). Cada aparelho só acessa os próprios dados (ou os da conta que você conectou), o servidor limita a quantidade de requisições e não guardamos senhas, números de telefone ou dados do Telegram.</p>
+<h2>10. Seus direitos</h2>
+<p>Você pode pedir confirmação de tratamento, acesso, correção, anonimização, portabilidade ou eliminação dos dados, e revogar o consentimento quando ele for a base legal (LGPD, art. 18), pelo e-mail <strong><a href="mailto:nbrplay@outlook.com">nbrplay@outlook.com</a></strong>. Como os dados no servidor estão ligados a um identificador anônimo, informe o modelo do aparelho e a data aproximada de uso para localizarmos os registros.</p>
+<p>Também é possível, sem pedir nada:</p>
+<ul>
+<li><strong>Desconectar aparelhos</strong> em Configurações › Conectar aparelhos;</li>
+<li><strong>Apagar os dados do aparelho</strong> saindo da conta ou desinstalando o aplicativo — os dados do servidor são apagados automaticamente após 60 dias sem uso.</li>
+</ul>
+<h2>11. Permissões do aparelho</h2>
+<ul>
+<li><strong>Internet</strong>: para se comunicar com o Telegram, com o servidor e reproduzir os vídeos.</li>
+<li><strong>Estado da rede</strong>: para detectar quedas e trocas de rede e reconectar mais rápido.</li>
+<li><strong>Manter o aparelho ativo</strong>: para não interromper a reprodução e os downloads.</li>
+<li><strong>Instalar e remover aplicativos</strong>: para instalar novas versões do NBR Play e, se necessário, trocar uma versão instalada — sempre com a sua confirmação.</li>
+</ul>
+<h2>12. Conteúdo</h2>
+<p>Todo o conteúdo exibido pertence aos canais e usuários do Telegram. O NBR Play não é responsável pelo conteúdo publicado nesses canais e não realiza qualquer distribuição de mídia.</p>
+<h2>13. Crianças</h2>
+<p>O aplicativo não é direcionado a crianças e não coleta intencionalmente dados de menores.</p>
+<h2>14. Alterações</h2>
+<p>Esta política pode ser atualizada; a data no topo indica a versão vigente.</p>
+<h2>15. Contato</h2>
+<p>Dúvidas ou pedidos sobre esta política: <strong><a href="mailto:nbrplay@outlook.com">nbrplay@outlook.com</a></strong>.</p>
+</div>
 </body>
 </html>

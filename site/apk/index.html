@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Sem JavaScript: cai no link fixo da última versão (publicado pelo workflow de release). -->
+<meta http-equiv="refresh" content="4; url=https://github.com/Nobrinho/ntv2/releases/latest/download/ntv.apk">
+<link rel="icon" href="../favicon.ico" sizes="any">
+<title>Baixando o NBR Play…</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0E0E0E; color: #CFCFCF; font: 18px/1.6 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 64px 24px; text-align: center; }
+  h1 { color: #fff; font-size: 26px; margin: 16px 0 8px; }
+  a { color: #66D9FF; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img src="../logo.png" alt="NBR Play" width="96" height="96">
+  <h1>Baixando o NBR Play…</h1>
+  <p id="msg">O download começa em instantes.</p>
+  <p>Se não começar, <a id="link" href="https://github.com/Nobrinho/ntv2/releases/latest/download/ntv.apk">toque aqui para baixar</a>.</p>
+</div>
+<script>
+  // O update.json (o mesmo que o app usa para se atualizar) diz qual é o APK da versão atual.
+  fetch('../update.json', { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (u) {
+      document.getElementById('link').href = u.downloadUrl;
+      document.getElementById('msg').textContent =
+        'Versão ' + u.versionName + ' · ' + (u.sizeBytes / 1048576).toFixed(0) + ' MB';
+      window.location.replace(u.downloadUrl);
+    })
+    .catch(function () { /* fica o link fixo e o refresh do cabeçalho */ });
+</script>
+</body>
+</html>

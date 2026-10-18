@@ -39,6 +39,7 @@ async function rpc(name, args = {}) {
 function html(strings, ...vals) {
   return strings.reduce((acc, s, i) => acc + s + (i < vals.length ? vals[i] : ''), '');
 }
+const BRAND = `<div class="brand"><img src="../logo.png" alt=""><div><b>NBR Play</b><span>Administração</span></div></div>`;
 function errorBox(e) { return `<p class="msg err">${esc(e.message || e)}</p>`; }
 
 // ---------------------------------------------------------------- login e 2FA
@@ -61,7 +62,7 @@ async function start() {
 function showLogin(msg = '') {
   logoutBtn.hidden = true;
   app.innerHTML = `<form class="card center" id="f">
-    <h2>Entrar</h2>
+    ${BRAND}<h2>Entrar</h2>
     <label for="email">E-mail</label><input id="email" type="email" autocomplete="username" required>
     <label for="pw">Senha</label><input id="pw" type="password" autocomplete="current-password" required>
     <div class="row" style="margin-top:14px"><button class="primary grow" type="submit">Entrar</button></div>
@@ -94,7 +95,7 @@ async function showMfa() {
       <p class="mono">Chave manual: ${esc(data.totp.secret)}</p>`;
   }
   app.innerHTML = `<form class="card center" id="f">
-    <h2>Verificação em duas etapas</h2>${enrollHtml}
+    <span class="step-tag">Passo 2 de 2</span><h2>Verificação em duas etapas</h2>${enrollHtml}
     <label for="code">Código do app autenticador</label>
     <input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
     <div class="row" style="margin-top:14px"><button class="primary grow" type="submit">Confirmar</button></div>
@@ -116,15 +117,25 @@ logoutBtn.onclick = logout;
 
 // ---------------------------------------------------------------- painel
 const TABS = [['overview', 'Visão geral'], ['devices', 'Aparelhos'], ['payments', 'Pagamentos'], ['reports', 'Reportes'], ['audit', 'Ações']];
+// Ícones de traço do menu (texto fixo, sem dados do servidor).
+const ICONS = {
+  overview: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+  devices: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="14" height="10" rx="1.5"/><rect x="17" y="8" width="5" height="12" rx="1.5"/><path d="M6 18h6"/></svg>',
+  payments: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
+  reports: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg>',
+  audit: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+};
 
 function showPanel() {
-  app.innerHTML = `<nav class="tabs">${TABS.map(([id, n]) => `<button data-tab="${id}">${n}</button>`).join('')}</nav><div id="view"></div>`;
+  app.innerHTML = `<nav class="tabs" aria-label="Painel">${TABS.map(([id, n]) => `<button data-tab="${id}">${ICONS[id]}<span>${n}</span></button>`).join('')}</nav>
+    <div class="content"><h1 id="ptitle"></h1><div id="view"></div></div>`;
   app.querySelectorAll('[data-tab]').forEach((b) => (b.onclick = () => { tab = b.dataset.tab; render(); }));
   render();
 }
 
 function render() {
   app.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('ptitle').textContent = TABS.find(([id]) => id === tab)[1];
   ({ overview, devices, payments, reports, audit })[tab]();
 }
 const view = () => document.getElementById('view');

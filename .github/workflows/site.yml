@@ -1,0 +1,53 @@
+# Publica o site (pasta site/: política de privacidade, página de instalação, /apk) sem precisar de
+# release. O update.json não vem do repositório: é o que está no ar, gerado pelo último release
+# (release.yml), para nunca voltar o manifesto de atualização para uma versão antiga.
+name: Publicar site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Uma publicação do Pages por vez (o release também publica).
+concurrency:
+  group: "pages-site"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Preparar site com o manifesto que está no ar
+        run: |
+          mkdir pages
+          cp -R site/. pages/
+          # Sem o manifesto publicado, não publica: um update.json antigo esconderia atualizações
+          # e enfraqueceria a checagem de versão do release.
+          curl -fsSL --retry 3 "https://nobrinho.github.io/ntv2/update.json?t=$(date +%s)" -o pages/update.json
+          jq -e '.schemaVersion == 1 and .versionCode > 0 and (.downloadUrl | startswith("https://"))' pages/update.json
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+
+      - name: Enviar conteúdo do Pages
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: pages
+
+      - name: Publicar
+        id: pages
+        uses: actions/deploy-pages@v5

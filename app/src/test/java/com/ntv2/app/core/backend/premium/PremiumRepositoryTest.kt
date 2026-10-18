@@ -20,6 +20,7 @@ class PremiumRepositoryTest {
     private class FakeServer : HttpTransport {
         val requests = mutableListOf<BackendRequest>()
         var premium = false
+        var enforced = true
         var pixResponse = BackendResponse(200,
             """{"payment_id":"p1","qr_code":"000201pix","qr_code_base64":"iVBOR","amount_cents":990,"plan_name":"Mensal","expires_at":"2026-10-18T12:30:00Z"}""")
         var checkStatus = "pending"
@@ -31,6 +32,7 @@ class PremiumRepositoryTest {
                 path.startsWith("/auth/v1/signup") ->
                     BackendResponse(200, """{"access_token":"t1","refresh_token":"r1","expires_in":3600,"user":{"id":"u1"}}""")
                 path.endsWith("/rpc/premium_status") -> BackendResponse(200, JSONObject()
+                    .put("enforced", enforced)
                     .put("premium", premium)
                     .put("premium_until", if (premium) "2026-11-17T14:28:21.840977+00:00" else JSONObject.NULL)
                     .put("plans", org.json.JSONArray("""[{"id":"monthly","name":"Mensal","price_cents":990,"days":30},
@@ -127,5 +129,25 @@ class PremiumRepositoryTest {
     fun `preco formatado`() {
         assertEquals("R$ 9,90", PremiumRepository.formatPrice(990))
         assertEquals("R$ 89,90", PremiumRepository.formatPrice(8990))
+    }
+
+    @Test
+    fun `interruptor desligado libera a sincronizacao sem Premium`() = runTest {
+        val server = FakeServer().apply { enforced = false }
+        val r = repo(server)
+        assertTrue(r.syncAllowed())
+        assertFalse(r.status.value!!.enforced)
+        server.enforced = true
+        assertTrue("cache ainda vale", r.syncAllowed())
+        assertFalse("ligado e sem Premium: nao sincroniza", r.syncAllowed(maxAgeMs = 0))
+        server.premium = true
+        assertTrue(r.syncAllowed(maxAgeMs = 0))
+    }
+
+    @Test
+    fun `sem resposta do servidor nao bloqueia a sincronizacao`() = runTest {
+        val client = SupabaseClient(BackendConfig("http://local:54321", "anon"), HttpTransport { BackendResponse(503, "") }, maxAttempts = 1)
+        val r = PremiumRepository(client, BackendSession(client, MemoryTokens()))
+        assertTrue(r.syncAllowed())
     }
 }

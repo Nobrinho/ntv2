@@ -12,6 +12,8 @@ import org.json.JSONObject
 data class PremiumPlan(val id: String, val name: String, val priceCents: Int, val days: Int)
 
 data class PremiumStatus(
+    /** Interruptor no servidor (app_config.premium.enabled): false = tudo liberado, Premium oculto. */
+    val enforced: Boolean = true,
     val premium: Boolean,
     val premiumUntilMs: Long? = null,
     val plans: List<PremiumPlan> = emptyList()
@@ -73,6 +75,17 @@ class PremiumRepository(
         return runCatching { refresh().premium }.getOrDefault(cached?.premium ?: false)
     }
 
+    /**
+     * Pode sincronizar? Sim se o Premium não for exigido ou se a conta for Premium. Sem resposta do
+     * servidor (offline, backend antigo) libera: o servidor é quem barra o que for pago.
+     */
+    suspend fun syncAllowed(maxAgeMs: Long = CACHE_MS): Boolean {
+        val cached = _status.value
+        val s = if (cached != null && now() - fetchedAtMs < maxAgeMs) cached
+        else runCatching { refresh() }.getOrNull() ?: cached
+        return s == null || !s.enforced || s.premium
+    }
+
     suspend fun createPix(planId: String): PixResult = try {
         session.userId()
         val json = JSONObject(client.function("pix", JSONObject().put("action", "create").put("plan_id", planId).toString()))
@@ -118,6 +131,8 @@ class PremiumRepository(
     internal fun parseStatus(json: JSONObject): PremiumStatus {
         val plans = json.optJSONArray("plans")
         return PremiumStatus(
+            // Backend sem o interruptor (versão anterior) exigia sempre.
+            enforced = json.optBoolean("enforced", true),
             premium = json.optBoolean("premium"),
             premiumUntilMs = json.optString("premium_until").takeIf { it.isNotBlank() && it != "null" }
                 ?.let { SyncTime.toEpochMs(it) },

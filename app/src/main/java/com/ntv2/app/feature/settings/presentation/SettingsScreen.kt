@@ -265,7 +265,8 @@ fun SettingsScreen(
                         )
                     }
                     SettingsSectionLabel("Conta e app", topGap = true)
-                    if (premium != null) {
+                    // Só com o Premium ligado no servidor (ou para quem já é Premium).
+                    if (premium != null && (premiumStatus?.enforced == true || premiumStatus?.premium == true)) {
                         NavCard(
                             icon = Icons.Filled.WorkspacePremium,
                             title = "NBR Play Premium",

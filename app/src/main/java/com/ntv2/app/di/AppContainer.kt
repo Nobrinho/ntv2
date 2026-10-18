@@ -407,7 +407,7 @@ class DefaultAppContainer(
             progressDao = appDatabase.playbackProgressDao(),
             historyDao = appDatabase.watchHistoryDao(),
             marks = com.ntv2.app.core.backend.sync.DataStoreSyncMarks(appContext),
-            premiumCheck = { premiumRepository?.isPremium() ?: false }
+            premiumCheck = { premiumRepository?.syncAllowed() ?: true }
         )
         com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler(
             scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO),

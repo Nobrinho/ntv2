@@ -22,6 +22,7 @@ O aplicativo usa um servidor próprio (hospedado no Supabase) para os recursos a
 - **Conectar aparelhos** (quando você usa a opção): nome do aparelho (tipo e modelo, por exemplo "TV · AFTKM"), data do vínculo e o código temporário de 6 caracteres.
 - **Reportar problema** (só quando você usa a opção em um vídeo): motivo escolhido, o texto que você escrever, título, ano, canal, identificação do vídeo, modelo do aparelho, versão do Android e versão do aplicativo.
 - **Dados de uso e diagnóstico** (para encontrar falhas e melhorar o aplicativo): abertura do aplicativo, vídeo aberto (identificação do vídeo), erros de reprodução (código do erro, decodificador e formato do vídeo), buscas que não tiveram resultado (o texto pesquisado) e reportes enviados, sempre com o modelo do aparelho e a versão do aplicativo.
+- **Pagamentos do NBR Play Premium** (só se você assinar): plano escolhido, valor, situação do pagamento, número do pagamento no Mercado Pago, datas e a validade do Premium. O pagamento em si acontece no seu banco e no Mercado Pago: **não recebemos nem guardamos** seus dados bancários, CPF ou nome.
 - **Dados técnicos de conexão**: o endereço IP é usado no momento de cada acesso para segurança e para limitar abusos (limite de requisições por minuto). Ele não é associado ao seu perfil e fica apenas nos registros técnicos do provedor por poucos dias.
 
 Se o servidor estiver fora do ar, o reporte de problema pode ser enviado como mensagem privada, **pela sua própria conta do Telegram**, ao administrador do aplicativo. Nesse caso o administrador vê o seu perfil do Telegram. Nada é enviado sem a sua ação.
@@ -31,6 +32,8 @@ Se o servidor estiver fora do ar, o reporte de problema pode ser enviado como me
 |---|---|
 | Sincronizar Minha lista, histórico e progresso; conectar aparelhos; receber reportes | Execução do serviço que você usa (inciso V) |
 | Diagnóstico de falhas, melhoria do aplicativo, segurança e prevenção de abuso | Legítimo interesse (inciso IX), com dados mínimos e sem identificar você |
+| Cobrar e liberar o Premium | Execução do contrato de assinatura (inciso V) |
+| Guardar os registros de pagamento | Cumprimento de obrigação legal e fiscal (inciso II) |
 
 Não usamos os dados para publicidade, não vendemos dados e não criamos perfis para fins comerciais.
 
@@ -43,11 +46,13 @@ Não usamos os dados para publicidade, não vendemos dados e não criamos perfis
 | Códigos de "Conectar aparelhos" | Válidos por 10 minutos; apagados 1 dia depois de vencer |
 | Contadores de limite de requisições | Poucos minutos |
 | Reportes de problema | Até a análise; quando o identificador anônimo é apagado, o reporte perde o vínculo com ele |
+| Registros de pagamento e validade do Premium | Pelo prazo exigido pela legislação fiscal (em geral, 5 anos); contas com Premium ativo não são apagadas por inatividade |
 
 ## 7. Com quem compartilhamos
 Não compartilhamos dados com anunciantes. Usamos os seguintes serviços para o aplicativo funcionar:
 
 - **Supabase** (hospedagem do servidor e do banco de dados), com servidores nos **Estados Unidos**.
+- **Mercado Pago** (processa o pagamento por Pix do Premium), sujeito à Política de Privacidade do próprio Mercado Pago.
 - **Telegram** (login e acesso aos canais), sujeito à Política de Privacidade e aos Termos do próprio Telegram.
 - **GitHub** (download do índice de filmes e das atualizações do aplicativo) e **The Movie Database — TMDB** (imagens de capas e elenco): recebem apenas o endereço IP no momento do download.
 - **Google (gstatic.com) e Cloudflare (speed.cloudflare.com)**: só quando você usa o Teste de conexão, para medir latência e velocidade; o resultado fica no aparelho.

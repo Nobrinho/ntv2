@@ -45,6 +45,7 @@
 <li><strong>Conectar aparelhos</strong> (quando você usa a opção): nome do aparelho (tipo e modelo, por exemplo "TV · AFTKM"), data do vínculo e o código temporário de 6 caracteres.</li>
 <li><strong>Reportar problema</strong> (só quando você usa a opção em um vídeo): motivo escolhido, o texto que você escrever, título, ano, canal, identificação do vídeo, modelo do aparelho, versão do Android e versão do aplicativo.</li>
 <li><strong>Dados de uso e diagnóstico</strong> (para encontrar falhas e melhorar o aplicativo): abertura do aplicativo, vídeo aberto (identificação do vídeo), erros de reprodução (código do erro, decodificador e formato do vídeo), buscas que não tiveram resultado (o texto pesquisado) e reportes enviados, sempre com o modelo do aparelho e a versão do aplicativo.</li>
+<li><strong>Pagamentos do NBR Play Premium</strong> (só se você assinar): plano escolhido, valor, situação do pagamento, número do pagamento no Mercado Pago, datas e a validade do Premium. O pagamento em si acontece no seu banco e no Mercado Pago: <strong>não recebemos nem guardamos</strong> seus dados bancários, CPF ou nome.</li>
 <li><strong>Dados técnicos de conexão</strong>: o endereço IP é usado no momento de cada acesso para segurança e para limitar abusos (limite de requisições por minuto). Ele não é associado ao seu perfil e fica apenas nos registros técnicos do provedor por poucos dias.</li>
 </ul>
 <p>Se o servidor estiver fora do ar, o reporte de problema pode ser enviado como mensagem privada, <strong>pela sua própria conta do Telegram</strong>, ao administrador do aplicativo. Nesse caso o administrador vê o seu perfil do Telegram. Nada é enviado sem a sua ação.</p>
@@ -52,6 +53,8 @@
 <table><thead><tr><th>Finalidade</th><th>Base legal (LGPD, art. 7º)</th></tr></thead><tbody>
 <tr><td>Sincronizar Minha lista, histórico e progresso; conectar aparelhos; receber reportes</td><td>Execução do serviço que você usa (inciso V)</td></tr>
 <tr><td>Diagnóstico de falhas, melhoria do aplicativo, segurança e prevenção de abuso</td><td>Legítimo interesse (inciso IX), com dados mínimos e sem identificar você</td></tr>
+<tr><td>Cobrar e liberar o Premium</td><td>Execução do contrato de assinatura (inciso V)</td></tr>
+<tr><td>Guardar os registros de pagamento</td><td>Cumprimento de obrigação legal e fiscal (inciso II)</td></tr>
 </tbody></table>
 <p>Não usamos os dados para publicidade, não vendemos dados e não criamos perfis para fins comerciais.</p>
 <h2>6. Por quanto tempo guardamos</h2>
@@ -62,11 +65,13 @@
 <tr><td>Códigos de "Conectar aparelhos"</td><td>Válidos por 10 minutos; apagados 1 dia depois de vencer</td></tr>
 <tr><td>Contadores de limite de requisições</td><td>Poucos minutos</td></tr>
 <tr><td>Reportes de problema</td><td>Até a análise; quando o identificador anônimo é apagado, o reporte perde o vínculo com ele</td></tr>
+<tr><td>Registros de pagamento e validade do Premium</td><td>Pelo prazo exigido pela legislação fiscal (em geral, 5 anos); contas com Premium ativo não são apagadas por inatividade</td></tr>
 </tbody></table>
 <h2>7. Com quem compartilhamos</h2>
 <p>Não compartilhamos dados com anunciantes. Usamos os seguintes serviços para o aplicativo funcionar:</p>
 <ul>
 <li><strong>Supabase</strong> (hospedagem do servidor e do banco de dados), com servidores nos <strong>Estados Unidos</strong>.</li>
+<li><strong>Mercado Pago</strong> (processa o pagamento por Pix do Premium), sujeito à Política de Privacidade do próprio Mercado Pago.</li>
 <li><strong>Telegram</strong> (login e acesso aos canais), sujeito à Política de Privacidade e aos Termos do próprio Telegram.</li>
 <li><strong>GitHub</strong> (download do índice de filmes e das atualizações do aplicativo) e <strong>The Movie Database — TMDB</strong> (imagens de capas e elenco): recebem apenas o endereço IP no momento do download.</li>
 <li><strong>Google (gstatic.com) e Cloudflare (speed.cloudflare.com)</strong>: só quando você usa o Teste de conexão, para medir latência e velocidade; o resultado fica no aparelho.</li>

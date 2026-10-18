@@ -38,6 +38,8 @@ class PersonalizationSyncer(
     private val historyDao: WatchHistoryDao,
     private val marks: SyncMarks,
     private val syncFlag: SyncFlag = AppConfigSyncFlag(client),
+    // Sincronizar entre aparelhos é Premium (a conta inteira; ver PremiumRepository).
+    private val premiumCheck: suspend () -> Boolean = { true },
     private val pageSize: Int = PAGE_SIZE
 ) {
     private val mutex = Mutex()
@@ -57,6 +59,7 @@ class PersonalizationSyncer(
     private suspend fun syncOnce(): SyncResult {
         if (!client.config.enabled) return SyncResult(skipped = "backend desligado")
         if (!syncFlag.isEnabled()) return SyncResult(skipped = "flag sync=false")
+        if (!premiumCheck()) return SyncResult(skipped = "sem Premium")
         val userId = session.userId() ?: return SyncResult(skipped = "sem sessão")
         runUserId = userId
         // Dono das linhas: a conta (aparelhos vinculados compartilham uma). Sem vínculo, é o próprio usuário.

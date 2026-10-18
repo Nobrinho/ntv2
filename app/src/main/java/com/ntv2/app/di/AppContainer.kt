@@ -113,6 +113,9 @@ interface AppContainer {
     /** Sincronização da personalização; null com o backend desligado (o app fica só no Room). */
     val personalizationSync: com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler?
 
+    /** NBR Play Premium por Pix; null com o backend desligado. */
+    val premiumRepository: com.ntv2.app.core.backend.premium.PremiumRepository?
+
     /** Vincular aparelhos por código; null com o backend desligado. */
     val deviceLinkRepository: com.ntv2.app.core.backend.link.DeviceLinkRepository?
     val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch
@@ -403,12 +406,23 @@ class DefaultAppContainer(
             favoriteDao = appDatabase.favoriteDao(),
             progressDao = appDatabase.playbackProgressDao(),
             historyDao = appDatabase.watchHistoryDao(),
-            marks = com.ntv2.app.core.backend.sync.DataStoreSyncMarks(appContext)
+            marks = com.ntv2.app.core.backend.sync.DataStoreSyncMarks(appContext),
+            premiumCheck = { premiumRepository?.isPremium() ?: false }
         )
         com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler(
             scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO),
             runSync = { syncer.sync() },
             onError = { android.util.Log.w("NtvSync", "sincronização falhou: ${it.message}") }
+        )
+    }
+
+    override val premiumRepository: com.ntv2.app.core.backend.premium.PremiumRepository? by lazy {
+        if (!backendClient.config.enabled) return@lazy null
+        com.ntv2.app.core.backend.premium.PremiumRepository(
+            client = backendClient,
+            session = backendSession,
+            // Virou Premium: sincroniza já (sobe a Minha lista deste aparelho para a conta).
+            onPremiumChanged = { personalizationSync?.requestNow() }
         )
     }
 

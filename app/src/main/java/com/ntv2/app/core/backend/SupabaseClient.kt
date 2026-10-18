@@ -91,6 +91,10 @@ class SupabaseClient(
     suspend fun rpc(function: String, body: String): String =
         send("POST", "/rest/v1/rpc/$function", body)
 
+    /** Edge Function (ex.: pix): POST com o token do usuário. */
+    suspend fun function(name: String, body: String): String =
+        send("POST", "/functions/v1/$name", body)
+
     /** Rotas de auth: sempre com a anon key (sem token do usuário). */
     suspend fun auth(path: String, body: String): String =
         send("POST", "/auth/v1/$path", body, authenticated = false)

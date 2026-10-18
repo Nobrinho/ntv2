@@ -369,4 +369,18 @@ class PersonalizationSyncerTest {
         assertEquals("u9", server.rows("favorites").getValue("-100_2").getString("user_id"))
         assertEquals("u9", tv.marks.userId())
     }
+
+    @Test
+    fun `sem Premium nao sincroniza`() = runTest {
+        val server = FakeServer()
+        val tv = Device(server, MemoryTokens())
+        val syncer = PersonalizationSyncer(
+            tv.client, tv.session, tv.favorites, tv.progress, tv.history, tv.marks,
+            syncFlag = AppConfigSyncFlag(tv.client, ttlMs = 0L),
+            premiumCheck = { false }
+        )
+        tv.library.add(fav("-100_1"))
+        assertEquals("sem Premium", syncer.sync().skipped)
+        assertTrue(server.requests.none { it.url.contains("/favorites") })
+    }
 }

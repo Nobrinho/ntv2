@@ -14,7 +14,7 @@ enum class LinkStatus { PENDING, LINKED, EXPIRED, NOT_FOUND }
 
 data class LinkStatusResult(val status: LinkStatus, val deviceName: String? = null)
 
-enum class ClaimResult { LINKED, ALREADY_LINKED, INVALID, EXPIRED, OWN_CODE, RATE_LIMITED, FAILED }
+enum class ClaimResult { LINKED, ALREADY_LINKED, INVALID, EXPIRED, OWN_CODE, PREMIUM_REQUIRED, RATE_LIMITED, FAILED }
 
 data class LinkedDevice(val name: String?, val joinedAtMs: Long?, val thisDevice: Boolean)
 
@@ -65,6 +65,7 @@ class DeviceLinkRepository(
                 "already_linked" -> ClaimResult.ALREADY_LINKED
                 "expired" -> ClaimResult.EXPIRED
                 "own_code" -> ClaimResult.OWN_CODE
+                "premium_required" -> ClaimResult.PREMIUM_REQUIRED
                 else -> ClaimResult.INVALID
             }
         } catch (e: BackendException) {

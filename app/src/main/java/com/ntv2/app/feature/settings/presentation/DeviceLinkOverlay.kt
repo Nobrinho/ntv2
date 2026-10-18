@@ -79,7 +79,9 @@ private enum class LinkMode { MENU, SHOW_CODE, ENTER_CODE }
 internal fun DeviceLinkOverlay(
     repository: DeviceLinkRepository,
     isTv: Boolean,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    // Conectar aparelhos é Premium: abre a tela de assinatura (null = sem pagamentos no app).
+    onOpenPremium: (() -> Unit)? = null
 ) {
     var mode by remember { mutableStateOf(LinkMode.MENU) }
     BackHandler(enabled = true) { if (mode == LinkMode.MENU) onClose() else mode = LinkMode.MENU }
@@ -120,7 +122,7 @@ internal fun DeviceLinkOverlay(
                     onClose = onClose
                 )
                 LinkMode.SHOW_CODE -> ShowCode(repository, onDone = { mode = LinkMode.MENU })
-                LinkMode.ENTER_CODE -> EnterCode(repository, onDone = { mode = LinkMode.MENU })
+                LinkMode.ENTER_CODE -> EnterCode(repository, onDone = { mode = LinkMode.MENU }, onOpenPremium = onOpenPremium)
             }
         }
     }
@@ -325,7 +327,7 @@ private fun ShowCode(repository: DeviceLinkRepository, onDone: () -> Unit) {
 }
 
 @Composable
-private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit) {
+private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit, onOpenPremium: (() -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
@@ -388,10 +390,15 @@ private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit) {
             ClaimResult.INVALID -> "Código não encontrado. Confira as letras e números."
             ClaimResult.EXPIRED -> "Esse código expirou. Gere outro no aparelho que mostra o código."
             ClaimResult.OWN_CODE -> "Esse código é deste aparelho. Digite-o no outro aparelho."
+            ClaimResult.PREMIUM_REQUIRED -> "Conectar aparelhos é um recurso do NBR Play Premium. Basta um dos dois aparelhos ter o Premium."
             ClaimResult.RATE_LIMITED -> "Muitas tentativas. Aguarde um minuto e tente de novo."
             else -> "Não foi possível conectar. Verifique a internet."
         }
         Text(msg, color = BrandColors.Warning, style = MaterialTheme.typography.bodyMedium)
+        if (r == ClaimResult.PREMIUM_REQUIRED && onOpenPremium != null) {
+            TestButton(icon = Icons.Filled.Devices, label = "Conhecer o Premium", primary = true,
+                modifier = Modifier.fillMaxWidth(), onClick = onOpenPremium)
+        }
     }
     TestButton(
         icon = Icons.Filled.Devices,

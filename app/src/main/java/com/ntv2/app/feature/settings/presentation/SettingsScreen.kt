@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -47,6 +48,7 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -131,8 +133,13 @@ fun SettingsScreen(
     onShowIntro: () -> Unit = {},
     runConnectionTest: (() -> kotlinx.coroutines.flow.Flow<com.ntv2.app.core.network.ConnectionReport>)? = null,
     // Vincular aparelhos (null = backend desligado: o item não aparece).
-    deviceLink: com.ntv2.app.core.backend.link.DeviceLinkRepository? = null
+    deviceLink: com.ntv2.app.core.backend.link.DeviceLinkRepository? = null,
+    // NBR Play Premium por Pix (null = backend desligado: o item não aparece).
+    premium: com.ntv2.app.core.backend.premium.PremiumRepository? = null
 ) {
+    var showPremium by remember { mutableStateOf(false) }
+    val premiumStatus = premium?.status?.collectAsState()?.value
+    LaunchedEffect(premium) { runCatching { premium?.refresh() } }
     var showConnectionTest by remember { mutableStateOf(false) }
     var showDeviceLink by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
@@ -146,8 +153,8 @@ fun SettingsScreen(
     fun itemMod(index: Int) = Modifier
         .focusRequester(itemFocus[index])
         .onFocusChanged { if (it.isFocused) lastFocusIndex = index }
-    LaunchedEffect(showPrivacy, confirmLogout, showCardLoadingPicker, showConnectionTest, showDeviceLink) {
-        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout && !showCardLoadingPicker && !showConnectionTest && !showDeviceLink) {
+    LaunchedEffect(showPrivacy, confirmLogout, showCardLoadingPicker, showConnectionTest, showDeviceLink, showPremium) {
+        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout && !showCardLoadingPicker && !showConnectionTest && !showDeviceLink && !showPremium) {
             runCatching { itemFocus[lastFocusIndex].requestFocus() }
         }
     }
@@ -258,6 +265,20 @@ fun SettingsScreen(
                         )
                     }
                     SettingsSectionLabel("Conta e app", topGap = true)
+                    if (premium != null) {
+                        NavCard(
+                            icon = Icons.Filled.WorkspacePremium,
+                            title = "NBR Play Premium",
+                            subtitle = when {
+                                premiumStatus?.premium == true ->
+                                    "Ativo" + (premiumStatus.premiumUntilMs?.let { " até ${formatDate(it)}" } ?: "") + " · renovar"
+                                else -> "Conectar TV e celular com a mesma Minha lista · Pix"
+                            },
+                            destructive = false,
+                            modifier = itemMod(14),
+                            onClick = { showPremium = true }
+                        )
+                    }
                     if (deviceLink != null) {
                         NavCard(
                             icon = Icons.Filled.Devices,
@@ -349,7 +370,16 @@ fun SettingsScreen(
         }
 
         if (showDeviceLink && deviceLink != null) {
-            DeviceLinkOverlay(repository = deviceLink, isTv = adaptive.useTvLayout, onClose = { showDeviceLink = false })
+            DeviceLinkOverlay(
+                repository = deviceLink,
+                isTv = adaptive.useTvLayout,
+                onClose = { showDeviceLink = false },
+                onOpenPremium = premium?.let { { showDeviceLink = false; showPremium = true } }
+            )
+        }
+
+        if (showPremium && premium != null) {
+            PremiumOverlay(repository = premium, isTv = adaptive.useTvLayout, onClose = { showPremium = false })
         }
 
         if (showConnectionTest && runConnectionTest != null) {
@@ -399,7 +429,7 @@ private fun ToggleCard(
     }
 }
 
-private const val SETTINGS_ITEM_COUNT = 14
+private const val SETTINGS_ITEM_COUNT = 15
 
 private val INSTALLED_VERSION_LABEL: String =
     "Versão ${BuildConfig.VERSION_NAME} (${if (BuildConfig.DEBUG) "debug" else "release"})"
@@ -786,6 +816,7 @@ private const val PRIVACY_POLICY_TEXT =
     "• Conectar aparelhos (quando você usa a opção): nome do aparelho (tipo e modelo, por exemplo \"TV · AFTKM\"), data do vínculo e o código temporário de 6 caracteres.\n" +
     "• Reportar problema (só quando você usa a opção em um vídeo): motivo escolhido, o texto que você escrever, título, ano, canal, identificação do vídeo, modelo do aparelho, versão do Android e versão do aplicativo.\n" +
     "• Dados de uso e diagnóstico (para encontrar falhas e melhorar o aplicativo): abertura do aplicativo, vídeo aberto (identificação do vídeo), erros de reprodução (código do erro, decodificador e formato do vídeo), buscas que não tiveram resultado (o texto pesquisado) e reportes enviados, sempre com o modelo do aparelho e a versão do aplicativo.\n" +
+    "• Pagamentos do NBR Play Premium (só se você assinar): plano escolhido, valor, situação do pagamento, número do pagamento no Mercado Pago, datas e a validade do Premium. O pagamento em si acontece no seu banco e no Mercado Pago: não recebemos nem guardamos seus dados bancários, CPF ou nome.\n" +
     "• Dados técnicos de conexão: o endereço IP é usado no momento de cada acesso para segurança e para limitar abusos (limite de requisições por minuto). Ele não é associado ao seu perfil e fica apenas nos registros técnicos do provedor por poucos dias.\n" +
     "\n" +
     "Se o servidor estiver fora do ar, o reporte de problema pode ser enviado como mensagem privada, pela sua própria conta do Telegram, ao administrador do aplicativo. Nesse caso o administrador vê o seu perfil do Telegram. Nada é enviado sem a sua ação.\n" +
@@ -793,6 +824,8 @@ private const val PRIVACY_POLICY_TEXT =
     "5. Para que usamos e com qual base legal\n" +
     "• Sincronizar Minha lista, histórico e progresso; conectar aparelhos; receber reportes: Execução do serviço que você usa (inciso V)\n" +
     "• Diagnóstico de falhas, melhoria do aplicativo, segurança e prevenção de abuso: Legítimo interesse (inciso IX), com dados mínimos e sem identificar você\n" +
+    "• Cobrar e liberar o Premium: Execução do contrato de assinatura (inciso V)\n" +
+    "• Guardar os registros de pagamento: Cumprimento de obrigação legal e fiscal (inciso II)\n" +
     "\n" +
     "Não usamos os dados para publicidade, não vendemos dados e não criamos perfis para fins comerciais.\n" +
     "\n" +
@@ -803,11 +836,13 @@ private const val PRIVACY_POLICY_TEXT =
     "• Códigos de \"Conectar aparelhos\": Válidos por 10 minutos; apagados 1 dia depois de vencer\n" +
     "• Contadores de limite de requisições: Poucos minutos\n" +
     "• Reportes de problema: Até a análise; quando o identificador anônimo é apagado, o reporte perde o vínculo com ele\n" +
+    "• Registros de pagamento e validade do Premium: Pelo prazo exigido pela legislação fiscal (em geral, 5 anos); contas com Premium ativo não são apagadas por inatividade\n" +
     "\n" +
     "7. Com quem compartilhamos\n" +
     "Não compartilhamos dados com anunciantes. Usamos os seguintes serviços para o aplicativo funcionar:\n" +
     "\n" +
     "• Supabase (hospedagem do servidor e do banco de dados), com servidores nos Estados Unidos.\n" +
+    "• Mercado Pago (processa o pagamento por Pix do Premium), sujeito à Política de Privacidade do próprio Mercado Pago.\n" +
     "• Telegram (login e acesso aos canais), sujeito à Política de Privacidade e aos Termos do próprio Telegram.\n" +
     "• GitHub (download do índice de filmes e das atualizações do aplicativo) e The Movie Database — TMDB (imagens de capas e elenco): recebem apenas o endereço IP no momento do download.\n" +
     "• Google (gstatic.com) e Cloudflare (speed.cloudflare.com): só quando você usa o Teste de conexão, para medir latência e velocidade; o resultado fica no aparelho.\n" +

@@ -408,7 +408,8 @@ fun AppNavHost(
                         appContainer.tdlibPlaybackGateway
                     ).run()
                 },
-                deviceLink = appContainer.deviceLinkRepository
+                deviceLink = appContainer.deviceLinkRepository,
+                premium = appContainer.premiumRepository
             )
         }
 

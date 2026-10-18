@@ -178,4 +178,14 @@ class MediaReporterTest {
         assertTrue("a DM furaria o limite", dm.sent.isEmpty())
         assertTrue(store.items.isEmpty())
     }
+
+    @Test
+    fun `aparelho bloqueado nao manda o reporte pela DM nem enfileira`() = runTest {
+        val transport = FakeTransport { BackendResponse(403, """{"code":"BLOCKED","message":"Este aparelho foi bloqueado."}""") }
+        val dm = FakeDm()
+        val store = MemoryStore()
+        assertEquals(ReportOutcome.Failed, reporter(transport, dm, store).send(report))
+        assertTrue("bloqueio nao pode virar DM", dm.sent.isEmpty())
+        assertTrue(store.items.isEmpty())
+    }
 }

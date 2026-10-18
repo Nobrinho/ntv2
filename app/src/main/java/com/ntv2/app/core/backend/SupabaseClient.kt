@@ -23,6 +23,9 @@ data class BackendResponse(val code: Int, val body: String, val retryAfterSecond
 class BackendException(val code: Int, message: String) : Exception(message) {
     /** 429: o backend limitou a frequência desta rota (ver PLANO-SEGURANCA-CUSTO.md). */
     val isRateLimited: Boolean get() = code == 429
+
+    /** 403 BLOCKED: o administrador bloqueou este aparelho (painel de admin). */
+    val isBlocked: Boolean get() = code == 403 && message.orEmpty().contains("BLOCKED")
 }
 
 /** Transporte HTTP trocável nos testes. */
@@ -154,6 +157,8 @@ class SupabaseClient(
                     val waitS = (response.retryAfterSeconds ?: DEFAULT_RETRY_AFTER_S).coerceIn(1, MAX_RETRY_AFTER_S)
                     blockedUntil[route] = now() + waitS * 1000
                 }
+                // Aparelho bloqueado: não insiste na rota por um tempo (o bloqueio é revisto pelo admin).
+                if (error.isBlocked) blockedUntil[route] = now() + BLOCKED_PAUSE_MS
                 // 5xx tenta de novo; 4xx é erro do pedido, não adianta repetir.
                 if (response.code < 500) throw error
                 last = error
@@ -165,5 +170,6 @@ class SupabaseClient(
     private companion object {
         const val DEFAULT_RETRY_AFTER_S = 60L
         const val MAX_RETRY_AFTER_S = 300L
+        const val BLOCKED_PAUSE_MS = 10 * 60_000L
     }
 }

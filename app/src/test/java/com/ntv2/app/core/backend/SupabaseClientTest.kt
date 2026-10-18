@@ -150,4 +150,17 @@ class SupabaseClientTest {
         catch (e: BackendException) { assertEquals(401, e.code) }
         assertEquals(1, transport.requests.size)
     }
+
+    @Test
+    fun `403 BLOCKED pausa a rota por 10 minutos`() = runTest {
+        var clock = 0L
+        val transport = FakeTransport(BackendResponse(403, """{"code":"BLOCKED"}"""), BackendResponse(200, "ok"))
+        val client = SupabaseClient(config, transport, now = { clock })
+        try { client.rpc("log_events", "[]"); fail() } catch (e: BackendException) { assertTrue(e.isBlocked) }
+        clock = 9 * 60_000L
+        try { client.rpc("log_events", "[]"); fail() } catch (e: BackendException) { }
+        assertEquals("nao foi a rede durante a pausa", 1, transport.requests.size)
+        clock = 10 * 60_000L
+        assertEquals("ok", client.rpc("log_events", "[]"))
+    }
 }

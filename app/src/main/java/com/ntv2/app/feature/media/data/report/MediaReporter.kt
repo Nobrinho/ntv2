@@ -99,9 +99,10 @@ class MediaReporter(
             val viaBackend = runCatching { submit(backend, report) }
                 .onFailure { backendWarn(TAG, "submit_report falhou, tentando DM: ${it.message}", it) }
             // 429 = o backend está de pé e limitou: a DM furaria o limite (e lotaria a conversa do admin).
-            if ((viaBackend.exceptionOrNull() as? BackendException)?.isRateLimited == true) {
-                return ReportOutcome.RateLimited
-            }
+            // 403 BLOCKED = aparelho bloqueado pelo admin: também não pode cair na DM.
+            val backendError = viaBackend.exceptionOrNull() as? BackendException
+            if (backendError?.isRateLimited == true) return ReportOutcome.RateLimited
+            if (backendError?.isBlocked == true) return ReportOutcome.Failed
             viaBackend.getOrNull()?.let { return it }
         }
         val dm = runCatching { directMessage.send(config().reportRecipient, format(report)) }

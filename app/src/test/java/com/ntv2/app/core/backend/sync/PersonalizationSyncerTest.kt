@@ -36,6 +36,8 @@ class PersonalizationSyncerTest {
         val tables = mutableMapOf<String, MutableMap<String, JSONObject>>()
         val requests = mutableListOf<BackendRequest>()
         private var users = 0
+        /** Conta de cada usuário (vínculo de aparelhos); sem entrada, a conta é o próprio usuário. */
+        val accounts = mutableMapOf<String, String>()
 
         fun rows(table: String): Map<String, JSONObject> = tables[table].orEmpty()
 
@@ -51,6 +53,10 @@ class PersonalizationSyncerTest {
             }
             val rest = path.removePrefix("/rest/v1/")
             val table = rest.substringBefore('?')
+            if (table == "rpc/current_account") {
+                val uid = "u" + request.headers["Authorization"].orEmpty().substringAfter("Bearer t")
+                return BackendResponse(200, "\"${accounts[uid] ?: uid}\"")
+            }
             val query = rest.substringAfter('?', "").split('&').filter { it.isNotEmpty() }.associate {
                 it.substringBefore('=') to URLDecoder.decode(it.substringAfter('='), "UTF-8")
             }
@@ -343,5 +349,24 @@ class PersonalizationSyncerTest {
         tokens.tokens = null
         assertEquals(1, phone.syncer.sync().pushed[PersonalizationSyncer.FAVORITES])
         assertEquals("u2", server.rows("favorites").getValue("a").getString("user_id"))
+    }
+
+    @Test
+    fun `aparelho vinculado a outra conta sobe tudo de novo com o dono da conta`() = runTest {
+        val server = FakeServer()
+        val tv = Device(server, MemoryTokens())
+        tv.library.add(fav("-100_1"))
+        tv.library.add(fav("-100_2"))
+        tv.syncer.sync()
+        assertEquals("u1", server.rows("favorites").getValue("-100_1").getString("user_id"))
+        val before = server.requests.count { it.method == "POST" && it.url.contains("/favorites?") }
+
+        // Celular (u9) confirmou o código: a TV agora pertence à conta dele.
+        server.accounts["u1"] = "u9"
+        tv.syncer.sync()
+        assertEquals("marcas zeradas: sobe tudo de novo", before + 1,
+            server.requests.count { it.method == "POST" && it.url.contains("/favorites?") })
+        assertEquals("u9", server.rows("favorites").getValue("-100_2").getString("user_id"))
+        assertEquals("u9", tv.marks.userId())
     }
 }

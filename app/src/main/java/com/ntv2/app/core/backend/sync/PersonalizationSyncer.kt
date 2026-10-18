@@ -59,18 +59,20 @@ class PersonalizationSyncer(
         if (!syncFlag.isEnabled()) return SyncResult(skipped = "flag sync=false")
         val userId = session.userId() ?: return SyncResult(skipped = "sem sessão")
         runUserId = userId
-        // Sessão anônima nova (ex.: banco do servidor resetado): sobe tudo e baixa tudo de novo.
-        if (marks.userId() != userId) marks.reset(userId)
+        // Dono das linhas: a conta (aparelhos vinculados compartilham uma). Sem vínculo, é o próprio usuário.
+        val owner = currentAccount(userId)
+        // Conta nova (vínculo, saída ou sessão anônima nova): sobe tudo e baixa tudo de novo.
+        if (marks.userId() != owner) marks.reset(owner)
 
         val pushed = linkedMapOf<String, Int>()
         pushed[FAVORITES] = push(FAVORITES, favoriteDao.changedSince(marks.pushedUpTo(FAVORITES)), { it.updatedAt }) {
-            favoriteToJson(it, userId)
+            favoriteToJson(it, owner)
         }
         pushed[HISTORY] = push(HISTORY, historyDao.changedSince(marks.pushedUpTo(HISTORY)), { it.updatedAt }) {
-            historyToJson(it, userId)
+            historyToJson(it, owner)
         }
         pushed[PROGRESS] = push(PROGRESS, progressDao.changedSince(marks.pushedUpTo(PROGRESS)), { it.updatedAt }) {
-            progressToJson(it, userId)
+            progressToJson(it, owner)
         }
 
         // Histórico antes do progresso: a posição baixada depois atualiza as linhas do histórico.
@@ -85,6 +87,13 @@ class PersonalizationSyncer(
             progressDao.changedSince(since).map { it.mediaId to it.updatedAt }
         }
         return SyncResult(pushed = pushed, pulled = pulled)
+    }
+
+    /** `current_account` do servidor; backend antigo sem a RPC (404): o próprio usuário. */
+    private suspend fun currentAccount(userId: String): String = try {
+        client.rpc("current_account", "{}").trim().trim('"').ifBlank { userId }
+    } catch (e: com.ntv2.app.core.backend.BackendException) {
+        if (e.code == 404) userId else throw e
     }
 
     private suspend fun <T> push(table: String, rows: List<T>, updatedAt: (T) -> Long, toJson: (T) -> JSONObject): Int {

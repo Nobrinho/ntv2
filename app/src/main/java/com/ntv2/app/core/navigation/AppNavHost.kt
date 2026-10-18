@@ -407,7 +407,8 @@ fun AppNavHost(
                         navController.context,
                         appContainer.tdlibPlaybackGateway
                     ).run()
-                }
+                },
+                deviceLink = appContainer.deviceLinkRepository
             )
         }
 

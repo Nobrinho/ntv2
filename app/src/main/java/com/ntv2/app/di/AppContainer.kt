@@ -112,6 +112,9 @@ interface AppContainer {
 
     /** Sincronização da personalização; null com o backend desligado (o app fica só no Room). */
     val personalizationSync: com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler?
+
+    /** Vincular aparelhos por código; null com o backend desligado. */
+    val deviceLinkRepository: com.ntv2.app.core.backend.link.DeviceLinkRepository?
     val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch
 }
 
@@ -407,6 +410,24 @@ class DefaultAppContainer(
             runSync = { syncer.sync() },
             onError = { android.util.Log.w("NtvSync", "sincronização falhou: ${it.message}") }
         )
+    }
+
+    override val deviceLinkRepository: com.ntv2.app.core.backend.link.DeviceLinkRepository? by lazy {
+        if (!backendClient.config.enabled) return@lazy null
+        com.ntv2.app.core.backend.link.DeviceLinkRepository(
+            client = backendClient,
+            session = backendSession,
+            deviceName = { deviceDisplayName() },
+            // Entrou ou saiu de uma conta: a sincronização sobe e baixa tudo da conta nova.
+            onAccountChanged = { personalizationSync?.requestNow() }
+        )
+    }
+
+    /** "TV · AFTKM" / "Celular · SM-S911B": aparece na lista de aparelhos conectados. */
+    private fun deviceDisplayName(): String {
+        val pm = appContext.packageManager
+        val kind = if (pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) "TV" else "Celular"
+        return "$kind · ${android.os.Build.MODEL}"
     }
 
     private fun notifyPersonalizationChange(change: com.ntv2.app.core.backend.sync.LocalChange) {

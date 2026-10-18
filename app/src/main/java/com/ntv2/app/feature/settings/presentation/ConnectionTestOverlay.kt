@@ -181,7 +181,7 @@ private fun StatusValue(text: String, color: Color, icon: ImageVector) {
 }
 
 @Composable
-private fun TestButton(
+internal fun TestButton(
     icon: ImageVector,
     label: String,
     modifier: Modifier = Modifier,

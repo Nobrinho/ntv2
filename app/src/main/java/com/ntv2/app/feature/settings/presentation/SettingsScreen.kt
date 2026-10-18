@@ -33,6 +33,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -128,9 +129,12 @@ fun SettingsScreen(
     onSearch: () -> Unit = onOpenLibrary,
     onRefresh: () -> Unit = onOpenLibrary,
     onShowIntro: () -> Unit = {},
-    runConnectionTest: (() -> kotlinx.coroutines.flow.Flow<com.ntv2.app.core.network.ConnectionReport>)? = null
+    runConnectionTest: (() -> kotlinx.coroutines.flow.Flow<com.ntv2.app.core.network.ConnectionReport>)? = null,
+    // Vincular aparelhos (null = backend desligado: o item não aparece).
+    deviceLink: com.ntv2.app.core.backend.link.DeviceLinkRepository? = null
 ) {
     var showConnectionTest by remember { mutableStateOf(false) }
+    var showDeviceLink by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var showPrivacy by remember { mutableStateOf(false) }
     var showCardLoadingPicker by remember { mutableStateOf(false) }
@@ -142,8 +146,8 @@ fun SettingsScreen(
     fun itemMod(index: Int) = Modifier
         .focusRequester(itemFocus[index])
         .onFocusChanged { if (it.isFocused) lastFocusIndex = index }
-    LaunchedEffect(showPrivacy, confirmLogout, showCardLoadingPicker, showConnectionTest) {
-        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout && !showCardLoadingPicker && !showConnectionTest) {
+    LaunchedEffect(showPrivacy, confirmLogout, showCardLoadingPicker, showConnectionTest, showDeviceLink) {
+        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout && !showCardLoadingPicker && !showConnectionTest && !showDeviceLink) {
             runCatching { itemFocus[lastFocusIndex].requestFocus() }
         }
     }
@@ -254,6 +258,16 @@ fun SettingsScreen(
                         )
                     }
                     SettingsSectionLabel("Conta e app", topGap = true)
+                    if (deviceLink != null) {
+                        NavCard(
+                            icon = Icons.Filled.Devices,
+                            title = "Conectar aparelhos",
+                            subtitle = "Compartilhar Minha lista e o progresso entre TV e celular",
+                            destructive = false,
+                            modifier = itemMod(13),
+                            onClick = { showDeviceLink = true }
+                        )
+                    }
                     if (runConnectionTest != null) {
                         NavCard(
                             icon = Icons.Filled.NetworkCheck,
@@ -334,6 +348,10 @@ fun SettingsScreen(
             PrivacyPolicyOverlay(onClose = { showPrivacy = false })
         }
 
+        if (showDeviceLink && deviceLink != null) {
+            DeviceLinkOverlay(repository = deviceLink, isTv = adaptive.useTvLayout, onClose = { showDeviceLink = false })
+        }
+
         if (showConnectionTest && runConnectionTest != null) {
             ConnectionTestOverlay(runTest = runConnectionTest, onClose = { showConnectionTest = false })
         }
@@ -381,7 +399,7 @@ private fun ToggleCard(
     }
 }
 
-private const val SETTINGS_ITEM_COUNT = 13
+private const val SETTINGS_ITEM_COUNT = 14
 
 private val INSTALLED_VERSION_LABEL: String =
     "Versão ${BuildConfig.VERSION_NAME} (${if (BuildConfig.DEBUG) "debug" else "release"})"

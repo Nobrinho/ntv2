@@ -102,6 +102,54 @@ class MovieMetadataParserTest {
     }
 
     @Test
+    fun `v3 de filme devolve ntv_id e ids sem titulo`() {
+        val meta = MovieMetadataParser.parse("ntv:m_603 tmdb:603 imdb:tt0133093")
+        assertEquals("m_603", meta.ntvId)
+        assertEquals("603", meta.tmdbId)
+        assertEquals("tt0133093", meta.imdbId)
+        // Sem título: o cartão vem do catálogo ou do nome do arquivo, nunca da linha de IDs.
+        assertNull(meta.title)
+        assertNull(meta.synopsis)
+        assertEquals(false, meta.isEpisode)
+    }
+
+    @Test
+    fun `v3 de episodio em qualquer ordem e com chave desconhecida`() {
+        val meta = MovieMetadataParser.parse("  S01E03 imdb:tt0944947 futuro:x tmdb:1399 ntv:e_1399_01_03 ")
+        assertEquals("e_1399_01_03", meta.ntvId)
+        assertEquals("1399", meta.seriesTmdbId)
+        assertEquals("1399", meta.tmdbId)
+        assertEquals(1, meta.seasonNumber)
+        assertEquals(3, meta.episodeNumber)
+        assertTrue(meta.isEpisode)
+        assertNull(meta.title)
+    }
+
+    @Test
+    fun `v3 de episodio sem SxxEyy tira temporada e episodio do ntv_id`() {
+        val meta = MovieMetadataParser.parse("ntv:e_1399_02_10")
+        assertEquals("1399", meta.seriesTmdbId)
+        assertEquals(2, meta.seasonNumber)
+        assertEquals(10, meta.episodeNumber)
+    }
+
+    @Test
+    fun `legenda antiga continua igual e sem ntv_id`() {
+        val antiga = "Título: Matrix\nAno: 1999\nTMDB: 603\nSinopse: Neo descobre a verdade."
+        val meta = MovieMetadataParser.parse(antiga)
+        assertNull(meta.ntvId)
+        assertEquals("Matrix", meta.title)
+        assertEquals(1999, meta.year)
+        assertEquals("603", meta.tmdbId)
+        // Uma linha de texto livre com dois-pontos não vira v3.
+        val livre = MovieMetadataParser.parse("Missão: Impossível (1996)")
+        assertNull(livre.ntvId)
+        assertEquals("Missão: Impossível (1996)", livre.title)
+        // ntv:... junto de texto livre também não.
+        assertNull(MovieMetadataParser.parse("Matrix ntv:m_603").ntvId)
+    }
+
+    @Test
     fun `legenda vazia retorna vazio`() {
         val meta = MovieMetadataParser.parse(null)
         assertNull(meta.title)

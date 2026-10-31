@@ -40,6 +40,9 @@ data class MovieMeta(
     val airDate: String? = null,
     val seriesTmdbId: String? = null,
     val episodeTmdbId: String? = null,
+    /** ID estável do catálogo (`m_603`, `e_1399_01_03`...). Só a legenda mínima v3 traz. */
+    val ntvId: String? = null,
+    val imdbId: String? = null,
 ) {
     /** É um post no formato rico do nosso canal (tem título + ao menos um campo rico chave)? */
     val isRich: Boolean
@@ -147,6 +150,7 @@ object MovieMetadataParser {
 
     fun parse(caption: String?): MovieMeta {
         if (caption.isNullOrBlank()) return MovieMeta()
+        parseV3(caption)?.let { return it }
         val classified = caption.lines().map { classify(it) }
 
         val labeled = HashMap<String, String>()
@@ -218,6 +222,45 @@ object MovieMetadataParser {
         )
     }
 
+    /**
+     * Legenda mínima v3 (ntv2-backend/CONTRATO.md): uma linha `chave:valor` separados por espaço, ordem
+     * livre, ex.: `ntv:e_1399_01_03 tmdb:1399 imdb:tt0944947 S01E03`. Chave desconhecida é ignorada.
+     * Sem título: o cartão vem do catálogo ou, sem ele, do nome do arquivo. Null = não é v3.
+     */
+    internal fun parseV3(caption: String): MovieMeta? {
+        val line = caption.trim()
+        if (line.isEmpty() || line.contains('\n')) return null
+        val fields = HashMap<String, String>()
+        var code: Pair<Int, Int>? = null
+        for (token in line.split(RX_WHITESPACE)) {
+            val colon = token.indexOf(':')
+            if (colon > 0) {
+                fields.putIfAbsent(token.substring(0, colon).lowercase(), token.substring(colon + 1))
+            } else {
+                // Fora de chave:valor só vale o código do episódio; texto livre = não é v3.
+                code = RX_V3_CODE.matchEntire(token)?.let { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
+                    ?: return null
+            }
+        }
+        val ntvId = fields["ntv"]?.takeIf { RX_NTV_ID.matches(it) } ?: return null
+        val tmdb = fields["tmdb"]?.takeIf { it.isNotBlank() }
+        // O ID do episódio também carrega temporada/episódio (e_<série>_<TT>_<EE>).
+        val fromId = RX_NTV_EPISODE.matchEntire(ntvId)?.groupValues
+        val season = code?.first ?: fromId?.get(2)?.toIntOrNull()
+        val episode = code?.second ?: fromId?.get(3)?.toIntOrNull()
+        val isEpisode = ntvId.startsWith("e_")
+        val seriesTmdb = if (isEpisode) tmdb ?: fromId?.get(1) else null
+        return MovieMeta(
+            ntvId = ntvId,
+            imdbId = fields["imdb"]?.takeIf { it.isNotBlank() },
+            tmdbId = tmdb ?: seriesTmdb ?: ntvId.removePrefix("m_").takeIf { ntvId.startsWith("m_") },
+            type = if (isEpisode) "Episódio" else null,
+            seriesTmdbId = seriesTmdb,
+            seasonNumber = if (isEpisode) season else null,
+            episodeNumber = if (isEpisode) episode else null,
+        )
+    }
+
     private fun parseCast(value: String): List<CastMemberMeta> =
         value.split(";").mapNotNull { raw ->
             val entry = raw.trim()
@@ -279,3 +322,6 @@ private val RX_DECIMAL = Regex("\\d+(\\.\\d+)?")
 private val RX_DIGITS = Regex("\\d+")
 private val RX_WHITESPACE = Regex("\\s+")
 private val RX_YEAR4 = Regex("\\d{4}")
+private val RX_NTV_ID = Regex("[a-z]_[A-Za-z0-9_-]+")
+private val RX_NTV_EPISODE = Regex("e_(\\d+)_(\\d{1,3})_(\\d{1,3})")
+private val RX_V3_CODE = Regex("(?i)S(\\d{1,2})E(\\d{1,3})")

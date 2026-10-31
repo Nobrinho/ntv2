@@ -13,6 +13,7 @@
   .wrap { max-width: 640px; margin: 0 auto; padding: 64px 24px; text-align: center; }
   h1 { color: #fff; font-size: 26px; margin: 16px 0 8px; }
   a { color: #66D9FF; }
+  .nav { margin-top: 40px; font-size: 15px; }
 </style>
 </head>
 <body>
@@ -21,10 +22,12 @@
   <h1>Baixando o NBR Play…</h1>
   <p id="msg">O download começa em instantes.</p>
   <p>Se não começar, <a id="link" href="https://github.com/Nobrinho/ntv2/releases/latest/download/ntv.apk">toque aqui para baixar</a>.</p>
+  <p class="nav"><a href="../instalar/">Como instalar</a> · <a href="../">Privacidade</a></p>
 </div>
 <script>
   // O update.json (o mesmo que o app usa para se atualizar) diz qual é o APK da versão atual.
-  fetch('../update.json', { cache: 'no-store' })
+  // Endereço absoluto: o manifesto só é publicado em /ntv2/ (este site também é servido por outro repo).
+  fetch('/ntv2/update.json', { cache: 'no-store' })
     .then(function (r) { return r.json(); })
     .then(function (u) {
       document.getElementById('link').href = u.downloadUrl;

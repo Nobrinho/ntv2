@@ -28,6 +28,7 @@ img { max-width: 100%; }
 .site-nav { display: flex; gap: 6px 22px; flex-wrap: wrap; font-size: 15px; }
 .site-nav a { color: var(--nav); text-decoration: none; padding: 6px 0; }
 .site-nav a:hover { color: var(--strong); }
+.site-nav a[aria-current="page"] { color: var(--strong); box-shadow: inset 0 -2px 0 var(--accent); }
 .site-footer { border-top: 1px solid var(--line2); }
 .site-footer .container { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; padding-top: 28px; padding-bottom: 28px; font-size: 14px; color: var(--muted); }
 .site-footer .links { display: flex; gap: 18px; flex-wrap: wrap; }

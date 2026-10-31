@@ -224,8 +224,8 @@ object MovieMetadataParser {
 
     /**
      * Legenda mínima v3 (ntv2-backend/CONTRATO.md): uma linha `chave:valor` separados por espaço, ordem
-     * livre, ex.: `ntv:e_1399_01_03 tmdb:1399 imdb:tt0944947 S01E03`. Chave desconhecida é ignorada.
-     * Sem título: o cartão vem do catálogo ou, sem ele, do nome do arquivo. Null = não é v3.
+     * livre, ex.: `ntv:e_1399_01_03 tmdb:1399 imdb:tt0944947 logo:/x.png S01E03`. Chave desconhecida é
+     * ignorada. Sem título: o cartão vem do catálogo ou, sem ele, do nome do arquivo + a logo. Null = não é v3.
      */
     internal fun parseV3(caption: String): MovieMeta? {
         val line = caption.trim()
@@ -253,6 +253,8 @@ object MovieMetadataParser {
         return MovieMeta(
             ntvId = ntvId,
             imdbId = fields["imdb"]?.takeIf { it.isNotBlank() },
+            // Episódio: a logo da SÉRIE (contrato). Caminho TMDB → URL w500.
+            logoUrl = fields["logo"]?.let { tmdbUrl(it, TMDB_LOGO) },
             tmdbId = tmdb ?: seriesTmdb ?: ntvId.removePrefix("m_").takeIf { ntvId.startsWith("m_") },
             type = if (isEpisode) "Episódio" else null,
             seriesTmdbId = seriesTmdb,

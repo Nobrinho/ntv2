@@ -817,8 +817,8 @@ class RealTdlibGateway(
                     //    sem parear (resolve o "capa no vídeo errado").
                     // 2) Senão, pareia com a mensagem anterior amarrando por TMDB id (texto rico) ou,
                     //    sem id, por adjacência/foto (Polemic).
-                    // Legenda v3 achada no catálogo: não há pôster/texto separado para parear.
-                    val ownFull = videoMeta.isFull || (catalogMeta != null && videoMeta.ntvId != null)
+                    // Legenda completa ou v3 (post v3 não tem pôster/texto separado): não pareia.
+                    val ownFull = !com.ntv2.app.core.catalog.CardResolution.needsPosterPairing(videoMeta)
                     val metaMsg = if (ownFull) null
                         else videoName?.let { findMatchingPoster(msg.chatId, msg.id, it, videoMeta.tmdbId) }
                     val photoContent = metaMsg?.content as? TdApi.MessagePhoto

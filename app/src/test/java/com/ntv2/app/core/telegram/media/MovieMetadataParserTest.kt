@@ -126,6 +126,15 @@ class MovieMetadataParserTest {
     }
 
     @Test
+    fun `v3 le a logo como caminho TMDB`() {
+        val filme = MovieMetadataParser.parse("ntv:m_603 tmdb:603 imdb:tt0133093 logo:/abc123.png")
+        assertEquals("https://image.tmdb.org/t/p/w500/abc123.png", filme.logoUrl)
+        val ep = MovieMetadataParser.parse("ntv:e_1399_01_03 tmdb:1399 logo:/xyz.png S01E03")
+        assertEquals("https://image.tmdb.org/t/p/w500/xyz.png", ep.logoUrl)
+        assertNull(MovieMetadataParser.parse("ntv:m_603 tmdb:603").logoUrl)
+    }
+
+    @Test
     fun `v3 de episodio sem SxxEyy tira temporada e episodio do ntv_id`() {
         val meta = MovieMetadataParser.parse("ntv:e_1399_02_10")
         assertEquals("1399", meta.seriesTmdbId)

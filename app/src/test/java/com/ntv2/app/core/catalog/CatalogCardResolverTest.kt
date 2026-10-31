@@ -97,6 +97,32 @@ class CatalogCardResolverTest {
     }
 
     @Test
+    fun `v3 sem catalogo fica com nome do arquivo e logo da legenda sem parear poster`() = runTest {
+        val raw = "ntv:m_603 tmdb:603 logo:/abc.png"
+        val caption = MovieMetadataParser.parse(raw)
+        // Backend fora e sem cópia local: o catálogo não acha.
+        val catalog = CatalogCardResolver(InMemoryCatalogStore()) { true }.metaFor(caption.ntvId, chat, 50)
+        assertNull(catalog)
+        assertEquals(false, CardResolution.needsPosterPairing(caption))
+        assertEquals("Matrix (1999)", CardResolution.videoName(catalog, caption, "Matrix (1999)", raw))
+        assertEquals("https://image.tmdb.org/t/p/w500/abc.png", caption.logoUrl)
+        // Legenda antiga sem dados completos ainda pareia com o pôster vizinho, como antes.
+        assertTrue(CardResolution.needsPosterPairing(MovieMetadataParser.parse("Matrix\nTMDB: 603")))
+        assertEquals(false, CardResolution.needsPosterPairing(MovieMetadataParser.parse("Título: Matrix\nSinopse: Neo")))
+    }
+
+    @Test
+    fun `v3 no catalogo usa o catalogo e guarda a logo da legenda se o catalogo nao tiver`() = runTest {
+        val raw = "ntv:m_603 tmdb:603 logo:/abc.png"
+        val caption = MovieMetadataParser.parse(raw)
+        val catalog = CatalogCardResolver(storeWith(movie(603, "Matrix", 50))) { true }.metaFor(caption.ntvId, chat, 999)!!
+        val merged = CardResolution.merge(catalog, caption)
+        assertEquals("Matrix", CardResolution.videoName(catalog, caption, "arquivo", raw))
+        assertEquals("https://image.tmdb.org/t/p/w500/abc.png", merged.logoUrl)
+        assertEquals("Wachowski", merged.director)
+    }
+
+    @Test
     fun `merge mantem da legenda o que o catalogo nao tem`() {
         val catalog = MovieMeta(title = "Matrix", posterUrl = "https://c/p.jpg", synopsis = "do catálogo")
         val caption = MovieMeta(title = "Matrix leg", posterUrl = "https://l/p.jpg", director = "Wachowski", rating = 8.7, synopsis = "da legenda")

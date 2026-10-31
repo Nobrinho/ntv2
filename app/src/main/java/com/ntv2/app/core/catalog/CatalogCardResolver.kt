@@ -146,6 +146,13 @@ object CatalogMetaMapper {
 /** Ordem de resolução do cartão (pura, para o gateway e os testes). */
 object CardResolution {
     /**
+     * Procurar a mensagem de pôster/texto vizinha? Não quando a própria legenda basta: completa, ou v3
+     * (o post v3 é só o vídeo; parear pegaria o pôster de outro post). Sem catálogo, o cartão v3 fica
+     * com o nome do arquivo + a logo da legenda.
+     */
+    fun needsPosterPairing(caption: MovieMeta): Boolean = !caption.isFull && caption.ntvId == null
+
+    /**
      * Nome do vídeo: título do catálogo → título da legenda → nome do arquivo (já limpo) → 1ª linha da
      * legenda. A linha de IDs da legenda v3 nunca vira título.
      */

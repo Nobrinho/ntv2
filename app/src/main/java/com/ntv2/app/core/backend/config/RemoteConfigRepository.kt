@@ -38,6 +38,8 @@ data class RemoteConfig(
         const val FLAG_TELEMETRY = "telemetry"
         const val FLAG_SYNC = "sync"
         const val FLAG_REMOTE_SEARCH = "remote_search"
+        /** Catálogo local sincronizado com o backend (cartões). Ausente = desligado. */
+        const val FLAG_REMOTE_CATALOG = "remote_catalog"
 
         /**
          * Lê a resposta de `GET app_config?select=key,value` (`[{key, value}]`). Chave ausente ou com

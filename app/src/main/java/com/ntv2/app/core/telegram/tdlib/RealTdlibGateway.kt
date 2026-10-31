@@ -53,7 +53,9 @@ data class TdlibRuntimeConfig(
 
 class RealTdlibGateway(
     context: Context,
-    private val config: TdlibRuntimeConfig
+    private val config: TdlibRuntimeConfig,
+    /** Catálogo local (flag `remote_catalog`); null ou sem item = cartão montado da legenda, como antes. */
+    private val catalogResolver: () -> com.ntv2.app.core.catalog.CatalogCardResolver? = { null }
 ) : TdlibAuthGateway, TdlibChannelsGateway, TdlibMediaGateway, TdlibPlaybackGateway, TdlibStorageGateway {
     companion object {
         private const val TAG = "RealTdlibGateway"
@@ -798,24 +800,36 @@ class RealTdlibGateway(
                 async {
                     val videoCaption = video.caption
                     val videoMeta = MovieMetadataParser.parse(videoCaption)
-                    // Nome do PRÓPRIO vídeo (fonte da verdade p/ casar com o pôster): título da
-                    // legenda → fileName limpo → 1ª linha da legenda.
-                    val videoName = videoMeta.title
-                        ?: video.logicalFileName.ifBlank { null }?.let { cleanDisplayName(it).ifBlank { it } }
-                        ?: videoCaption?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
+                    // Catálogo local: pelo ntv_id da legenda v3, senão pelo (chat, mensagem) do vídeo.
+                    val catalogMeta = runCatching {
+                        catalogResolver()?.metaFor(videoMeta.ntvId, msg.chatId, msg.id)
+                    }.getOrNull()
+                    // Nome do PRÓPRIO vídeo (fonte da verdade p/ casar com o pôster): catálogo →
+                    // título da legenda → fileName limpo → 1ª linha da legenda (nunca a linha v3).
+                    val videoName = com.ntv2.app.core.catalog.CardResolution.videoName(
+                        catalog = catalogMeta,
+                        caption = videoMeta,
+                        cleanFileName = video.logicalFileName.ifBlank { null }?.let { cleanDisplayName(it).ifBlank { it } },
+                        rawCaption = videoCaption
+                    )
 
                     // 1) Dados COMPLETOS na própria legenda do vídeo (mensagem única) → usa direto,
                     //    sem parear (resolve o "capa no vídeo errado").
                     // 2) Senão, pareia com a mensagem anterior amarrando por TMDB id (texto rico) ou,
                     //    sem id, por adjacência/foto (Polemic).
-                    val ownFull = videoMeta.isFull
+                    // Legenda v3 achada no catálogo: não há pôster/texto separado para parear.
+                    val ownFull = videoMeta.isFull || (catalogMeta != null && videoMeta.ntvId != null)
                     val metaMsg = if (ownFull) null
                         else videoName?.let { findMatchingPoster(msg.chatId, msg.id, it, videoMeta.tmdbId) }
                     val photoContent = metaMsg?.content as? TdApi.MessagePhoto
                     val textContent = metaMsg?.content as? TdApi.MessageText
                     val metaCaption = photoContent?.caption?.text ?: textContent?.text?.text
-                    val posterMeta = if (ownFull) videoMeta else metaCaption?.let { MovieMetadataParser.parse(it) }
-                    val richText = ownFull || (textContent != null && posterMeta?.isRich == true)
+                    val captionMeta = if (ownFull) videoMeta else metaCaption?.let { MovieMetadataParser.parse(it) }
+                    // Catálogo por cima; o que ele não tiver continua vindo da legenda.
+                    val posterMeta = catalogMeta?.let {
+                        com.ntv2.app.core.catalog.CardResolution.merge(it, captionMeta ?: videoMeta)
+                    } ?: captionMeta
+                    val richText = catalogMeta != null || ownFull || (textContent != null && posterMeta?.isRich == true)
 
                     // Episódio de série (só no modo foto): pareou com um pôster cujo título NÃO é o
                     // nome do vídeo → nome do episódio + sinopse do episódio, herdando pôster/metadados.
@@ -832,6 +846,7 @@ class RealTdlibGateway(
                     // Meta de episódio (formato v2, rótulos Série/Temporada/Episódio ou código
                     // SxxExx). Preferimos a legenda do vídeo; senão o pôster; senão o par legado.
                     val epMeta = when {
+                        catalogMeta != null -> posterMeta?.takeIf { it.isEpisode }
                         videoMeta.isEpisode -> videoMeta
                         posterMeta?.isEpisode == true -> posterMeta
                         isSeriesEpisode -> videoMeta.copy(

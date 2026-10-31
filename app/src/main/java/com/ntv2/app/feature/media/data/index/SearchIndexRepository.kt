@@ -91,6 +91,14 @@ data class IndexSeries(
     val genreKeys: Set<String> by lazy { genres.mapTo(HashSet()) { normalizeForIndex(it).trim() } }
 }
 
+/** Conteúdo do índice carregado (canal, filmes, séries, data de geração em ms). */
+class IndexSnapshot(
+    val channelId: Long,
+    val movies: List<IndexMovie>,
+    val series: List<IndexSeries>,
+    val generatedAtMillis: Long?
+)
+
 private data class LoadedIndex(
     val channelId: Long,
     val movies: List<IndexMovie>,
@@ -348,6 +356,15 @@ class SearchIndexRepository(
             )
         }
         return out.sortedBy { it.episodeNumber }
+    }
+
+    /**
+     * O índice inteiro (carrega se preciso), para a primeira carga do catálogo local. Usa a mesma
+     * cópia em memória da busca: não baixa o arquivo de novo. Null se não houver índice.
+     */
+    suspend fun snapshot(): IndexSnapshot? {
+        val idx = ensureLoaded() ?: return null
+        return IndexSnapshot(idx.channelId, idx.movies, idx.series, idx.generatedAtMillis)
     }
 
     /** True se o índice cobre esse canal (carrega se preciso). */

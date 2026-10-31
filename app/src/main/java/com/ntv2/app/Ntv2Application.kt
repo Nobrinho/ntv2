@@ -42,6 +42,10 @@ class Ntv2Application : Application(), ImageLoaderFactory {
         val telemetry = appContainer.telemetryLogger
         scope.launch {
             runCatching { appContainer.remoteConfigRepository.refresh() }
+            // Catálogo local: na abertura (com atraso, para não disputar com a biblioteca) e a cada 6 h.
+            appContainer.catalogSync?.start(scope) { result ->
+                android.util.Log.i("NtvCatalog", "sync do catálogo: $result")
+            }
             telemetry.start(scope)
             telemetry.log(com.ntv2.app.core.backend.telemetry.TelemetryEvents.APP_OPEN, emptyMap())
             // Dá tempo ao TDLib de conectar: a fila pode precisar do fallback por DM.

@@ -119,6 +119,9 @@ interface AppContainer {
     /** Vincular aparelhos por código; null com o backend desligado. */
     val deviceLinkRepository: com.ntv2.app.core.backend.link.DeviceLinkRepository?
     val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch
+
+    /** Catálogo local (flag `remote_catalog`); null com o backend desligado. */
+    val catalogSync: com.ntv2.app.core.catalog.CatalogSync?
 }
 
 class DefaultAppContainer(
@@ -136,7 +139,8 @@ class DefaultAppContainer(
         if (!tdlibConfig.enabled) return@lazy null
         RealTdlibGateway(
             context = appContext,
-            config = tdlibConfig
+            config = tdlibConfig,
+            catalogResolver = { catalogResolver }
         )
     }
 
@@ -456,6 +460,34 @@ class DefaultAppContainer(
             local = com.ntv2.app.feature.media.data.index.LocalCatalogSearch(searchIndexRepository),
             backendEnabled = { backendClient.config.enabled },
             remoteEnabled = { flag.isEnabled() }
+        )
+    }
+
+    private val catalogStore: com.ntv2.app.core.catalog.CatalogStore by lazy {
+        com.ntv2.app.core.catalog.RoomCatalogStore(com.ntv2.app.core.catalog.CatalogDatabase.build(appContext))
+    }
+
+    /** Flag `remote_catalog` (ausente = desligada): desligada, cartão e busca ficam como antes. */
+    private suspend fun remoteCatalogOn(): Boolean =
+        backendClient.config.enabled &&
+            remoteConfigRepository.get().flag(com.ntv2.app.core.backend.config.RemoteConfig.FLAG_REMOTE_CATALOG, default = false)
+
+    private val catalogResolver: com.ntv2.app.core.catalog.CatalogCardResolver? by lazy {
+        if (!backendClient.config.enabled) return@lazy null
+        com.ntv2.app.core.catalog.CatalogCardResolver(catalogStore) { remoteCatalogOn() }
+    }
+
+    override val catalogSync: com.ntv2.app.core.catalog.CatalogSync? by lazy {
+        if (!backendClient.config.enabled) return@lazy null
+        backendSession
+        com.ntv2.app.core.catalog.CatalogSync(
+            store = catalogStore,
+            fetchChanges = com.ntv2.app.core.catalog.CatalogSync.rpcFetcher(backendClient),
+            loadSeed = {
+                searchIndexRepository.snapshot()
+                    ?.let { com.ntv2.app.feature.media.data.index.IndexCatalogSeed.from(it) }
+            },
+            enabled = { remoteCatalogOn() }
         )
     }
 

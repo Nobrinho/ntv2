@@ -24,4 +24,7 @@ class InMemoryCatalogStore : CatalogStore {
 
     override suspend fun cursor() = state
     override suspend fun count() = rows.size
+
+    override suspend fun page(afterNtvId: String, limit: Int) =
+        rows.values.filter { it.ntvId > afterNtvId }.sortedBy { it.ntvId }.take(limit)
 }

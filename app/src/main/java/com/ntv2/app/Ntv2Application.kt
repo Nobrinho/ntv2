@@ -45,6 +45,10 @@ class Ntv2Application : Application(), ImageLoaderFactory {
             // Catálogo local: na abertura (com atraso, para não disputar com a biblioteca) e a cada 6 h.
             appContainer.catalogSync?.start(scope) { result ->
                 android.util.Log.i("NtvCatalog", "sync do catálogo: $result")
+                // Mudou algo: a busca relê o catálogo local na próxima consulta.
+                if (result is com.ntv2.app.core.catalog.CatalogSyncResult.Done && (result.upserts > 0 || result.removed > 0)) {
+                    appContainer.searchIndexRepository.invalidate()
+                }
             }
             telemetry.start(scope)
             telemetry.log(com.ntv2.app.core.backend.telemetry.TelemetryEvents.APP_OPEN, emptyMap())

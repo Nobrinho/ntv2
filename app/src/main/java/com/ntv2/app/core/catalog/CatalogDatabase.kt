@@ -58,6 +58,9 @@ interface CatalogDao {
     @Query("DELETE FROM catalog_item")
     suspend fun clear()
 
+    @Query("SELECT * FROM catalog_item WHERE ntv_id > :afterNtvId ORDER BY ntv_id LIMIT :limit")
+    suspend fun page(afterNtvId: String, limit: Int): List<CatalogItemEntity>
+
     @Query("SELECT COUNT(*) FROM catalog_item")
     suspend fun count(): Int
 

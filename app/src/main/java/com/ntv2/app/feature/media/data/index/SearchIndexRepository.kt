@@ -104,7 +104,9 @@ private data class LoadedIndex(
     val movies: List<IndexMovie>,
     val series: List<IndexSeries> = emptyList(),
     /** Quando o bot gerou o índice ("generated_at"), em ms; null se o JSON não trouxer. */
-    val generatedAtMillis: Long? = null
+    val generatedAtMillis: Long? = null,
+    /** false = montado do catálogo local (não serve para a primeira carga do próprio catálogo). */
+    val fromNetwork: Boolean = true
 ) {
     /** Nomes do elenco normalizados de cada filme (paralelo a [movies]); montado 1x, sob demanda. */
     val movieActorKeys: List<Set<String>> by lazy {
@@ -144,11 +146,20 @@ class SearchIndexRepository(
     private val indexUrl: String,
     private val client: OkHttpClient = OkHttpClient(),
     // Revalida após esse tempo; enquanto isso usa o cache em memória.
-    private val ttlMillis: Long = 6 * 60 * 60 * 1000L
+    private val ttlMillis: Long = 6 * 60 * 60 * 1000L,
+    /**
+     * Catálogo local (flag `remote_catalog`): quando devolve algo, a busca usa essa cópia e não baixa o
+     * `index.json`. Null (flag desligada ou catálogo ainda vazio) = baixa o arquivo, como antes.
+     */
+    private val localIndex: suspend () -> IndexSnapshot? = { null },
+    /** Botão "atualizar" com o catálogo local: pede a diferença ao backend antes de reler a cópia. */
+    private val refreshLocal: suspend () -> Unit = {}
 ) {
     private val mutex = Mutex()
     @Volatile private var cached: LoadedIndex? = null
     @Volatile private var loadedAt = 0L
+    // A cópia em memória veio do index.json (true) ou do catálogo local (false)?
+    @Volatile private var cachedFromNetwork = false
     // Falha recente sem cópia em memória: evita refazer o download (e segurar o mutex) a cada busca.
     @Volatile private var lastFailureAt = 0L
 
@@ -164,10 +175,23 @@ class SearchIndexRepository(
             val fresh = cached
             if (fresh != null && System.currentTimeMillis() - loadedAt < ttlMillis) return fresh
             if (fresh == null && System.currentTimeMillis() - lastFailureAt < FAILURE_BACKOFF_MS) return null
-            val loaded = runCatching { fetch() }.getOrNull()
+            val loaded = loadLocal() ?: runCatching { fetch() }.getOrNull()
             if (loaded != null) store(loaded) else lastFailureAt = System.currentTimeMillis()
             loaded ?: cached // se falhar o fetch, mantém o que tiver
         }
+    }
+
+    private suspend fun loadLocal(): LoadedIndex? =
+        runCatching { localIndex() }.getOrNull()
+            ?.takeIf { it.movies.isNotEmpty() || it.series.isNotEmpty() }
+            ?.let { LoadedIndex(it.channelId, it.movies, it.series, it.generatedAtMillis, fromNetwork = false) }
+
+    /**
+     * O catálogo local mudou (o sync aplicou diferença): a próxima consulta relê a cópia. Até lá a
+     * busca continua respondendo com a cópia atual.
+     */
+    fun invalidate() {
+        loadedAt = 0L
     }
 
     /**
@@ -178,8 +202,9 @@ class SearchIndexRepository(
         _status.update { it.copy(refreshing = true, failed = false) }
         var ok = false
         try {
+            runCatching { refreshLocal() }
             mutex.withLock {
-                val loaded = runCatching { fetch(forceNetwork = true) }.getOrNull()
+                val loaded = loadLocal() ?: runCatching { fetch(forceNetwork = true) }.getOrNull()
                 if (loaded != null) {
                     store(loaded)
                     lastFailureAt = 0L
@@ -194,6 +219,7 @@ class SearchIndexRepository(
 
     private fun store(loaded: LoadedIndex) {
         cached = loaded
+        cachedFromNetwork = loaded.fromNetwork
         loadedAt = System.currentTimeMillis()
         _status.update {
             it.copy(
@@ -359,11 +385,16 @@ class SearchIndexRepository(
     }
 
     /**
-     * O índice inteiro (carrega se preciso), para a primeira carga do catálogo local. Usa a mesma
-     * cópia em memória da busca: não baixa o arquivo de novo. Null se não houver índice.
+     * O `index.json` inteiro, para a primeira carga (ou o reset) do catálogo local. Usa a cópia em
+     * memória da busca quando ela veio do arquivo; se veio do próprio catálogo, baixa o arquivo.
+     * Null se não houver índice.
      */
     suspend fun snapshot(): IndexSnapshot? {
-        val idx = ensureLoaded() ?: return null
+        val inMemory = ensureLoaded()
+        // A primeira carga (ou o reset) do catálogo precisa do arquivo, não da própria cópia local.
+        val idx = inMemory?.takeIf { it.fromNetwork } ?: mutex.withLock {
+            cached?.takeIf { cachedFromNetwork } ?: runCatching { fetch() }.getOrNull()
+        } ?: return null
         return IndexSnapshot(idx.channelId, idx.movies, idx.series, idx.generatedAtMillis)
     }
 

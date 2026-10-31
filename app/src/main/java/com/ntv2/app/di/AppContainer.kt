@@ -339,7 +339,18 @@ class DefaultAppContainer(
     }
 
     override val searchIndexRepository: SearchIndexRepository by lazy {
-        SearchIndexRepository(indexUrl = SEARCH_INDEX_URL)
+        SearchIndexRepository(
+            indexUrl = SEARCH_INDEX_URL,
+            // Flag remote_catalog ligada e primeira carga concluída: a busca lê o catálogo local.
+            localIndex = {
+                if (remoteCatalogOn() && catalogStore.cursor() != null) {
+                    com.ntv2.app.feature.media.data.index.CatalogIndexSnapshot.load(catalogStore)
+                } else {
+                    null
+                }
+            },
+            refreshLocal = { if (remoteCatalogOn()) catalogSync?.syncOnce(force = true) }
+        )
     }
 
     override val updateRepository: UpdateRepository by lazy {

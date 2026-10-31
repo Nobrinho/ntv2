@@ -35,6 +35,8 @@ interface CatalogStore {
     /** Null = catálogo nunca carregado (falta a primeira carga). */
     suspend fun cursor(): CatalogCursor?
     suspend fun count(): Int
+    /** Até [limit] linhas com `ntv_id` > [afterNtvId], em ordem de `ntv_id` (para ler tudo aos poucos). */
+    suspend fun page(afterNtvId: String, limit: Int): List<CatalogRow>
 }
 
 class RoomCatalogStore(private val db: CatalogDatabase) : CatalogStore {
@@ -62,6 +64,9 @@ class RoomCatalogStore(private val db: CatalogDatabase) : CatalogStore {
         dao.state()?.let { CatalogCursor(it.since, it.afterId, it.lastSyncAt) }
 
     override suspend fun count(): Int = dao.count()
+
+    override suspend fun page(afterNtvId: String, limit: Int): List<CatalogRow> =
+        dao.page(afterNtvId, limit).map { it.toRow() }
 
     private fun CatalogItemEntity.toRow() = CatalogRow(ntvId, kind, tmdbId, chatId, videoMessageId, changedAt, data)
     private fun CatalogRow.toEntity() = CatalogItemEntity(ntvId, kind, tmdbId, chatId, videoMessageId, changedAt, data)

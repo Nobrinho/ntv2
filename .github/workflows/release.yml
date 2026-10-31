@@ -95,7 +95,7 @@ jobs:
             echo "::error::versionCode $VERSION_CODE precisa ser maior que o publicado ($PREVIOUS_CODE). Aumente versionCode no app/build.gradle.kts." >&2
             exit 1
           fi
-          APK_NAME="ntv-$VERSION_NAME.apk"
+          APK_NAME="nbr-play-$VERSION_NAME.apk"
           cp "$SOURCE_APK" "$APK_NAME"
           # Cópia com nome fixo: releases/latest/download/ntv.apk sempre aponta para a versão mais
           # recente (link da página de instalação e do app Downloader nas TVs).

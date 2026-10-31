@@ -19,7 +19,7 @@ import java.io.File
 class AppReplacer(private val context: Context) {
     /** Copia o APK para Downloads e devolve o nome do arquivo salvo. */
     fun exportToDownloads(file: File, versionName: String): String {
-        val name = "NTV-$versionName.apk"
+        val name = "nbr-play-$versionName.apk"
         if (Build.VERSION.SDK_INT >= 29) {
             val resolver = context.contentResolver
             val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI

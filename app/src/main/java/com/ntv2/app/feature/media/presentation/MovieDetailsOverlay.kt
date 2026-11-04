@@ -26,7 +26,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
@@ -62,15 +61,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.BrandColors
+import com.ntv2.app.core.ui.BrandShapes
+import com.ntv2.app.core.ui.NbrType
 import com.ntv2.app.feature.media.domain.MovieDetails
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import com.ntv2.app.feature.media.presentation.state.SearchFilter
@@ -82,12 +87,20 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import com.ntv2.app.core.ui.icons.NbrIcons
 
-// Tela de detalhes do filme (Continuar/Recomeçar/Voltar).
+// Tela de detalhes do filme (Continuar/Recomeçar/Voltar), no visual do protótipo:
+// celular 14 (detalhe), 15 (em andamento), 20 (abrindo e falha) e TV 09 (detalhe).
 
-internal val BRAND_ACCENT = com.ntv2.app.core.ui.BrandColors.Accent
+internal val BRAND_ACCENT = BrandColors.Accent
 
-// Tela de Detalhes (estilo Netflix/Prime): responsiva (TV/paisagem lado a lado, celular/retrato
-// empilhado). O conteúdo aparece imediatamente; imagens secundárias carregam sem bloquear a tela.
+/** Altura da capa no celular (protótipo: Hero 390x330, atrás da barra de status). */
+private val PHONE_HERO_HEIGHT = 330.dp
+
+/** Texto do aviso de falha ao abrir (tela 20 do protótipo). */
+private const val PLAY_FAILED_NOTICE = "Não foi possível abrir o vídeo. Verifique a internet e tente de novo."
+
+// Tela de Detalhes: responsiva (TV/paisagem com informações à esquerda e elenco à direita; celular em
+// pé com capa no topo e conteúdo empilhado). O conteúdo aparece imediatamente; imagens secundárias
+// carregam sem bloquear a tela.
 @OptIn(ExperimentalFoundationApi::class) // LocalBringIntoViewSpec (rolagem por foco na TV)
 @Composable
 internal fun MovieDetailsOverlay(
@@ -132,9 +145,8 @@ internal fun MovieDetailsOverlay(
                 "elenco=${details?.cast?.count { it.photoUrl != null } ?: 0} fotos"
         )
     }
-    // Rolagem única da coluna de conteúdo: começa sempre no TOPO. Focar o botão "Continuar" (que
-    // fica abaixo da sinopse/elenco) arrastava a rolagem para o meio ao abrir; após posicionar o
-    // foco, trazemos a rolagem de volta ao topo.
+    // Rolagem única da coluna de conteúdo: começa sempre no TOPO. Focar o botão "Continuar" arrastava
+    // a rolagem para o meio ao abrir; após posicionar o foco, trazemos a rolagem de volta ao topo.
     val contentScroll = rememberScrollState()
     LaunchedEffect(Unit) {
         runCatching { playFocus.requestFocus() }
@@ -145,14 +157,15 @@ internal fun MovieDetailsOverlay(
 
     // trapFocus: a grade continua composta por trás — o foco não pode escapar para ela.
     FocusGlideScope(Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(com.ntv2.app.core.ui.BrandColors.Background).trapFocus()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(BrandColors.Background).trapFocus()) {
         val portrait = maxHeight > maxWidth
         val compactLandscape = !portrait && maxHeight < 520.dp
         // Capturado aqui porque dentro do Column o receiver implícito passa a ser o ColumnScope.
         val screenHeight = maxHeight
         if (portrait) {
             Column(modifier = Modifier.fillMaxSize().verticalScroll(contentScroll)) {
-                Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                // Capa de 330 dp atrás da barra de status; o título fica sobre o degradê do rodapé dela.
+                Box(modifier = Modifier.fillMaxWidth().height(PHONE_HERO_HEIGHT)) {
                     if (backdrop != null) {
                         AsyncImage(
                             model = backdrop, contentDescription = null, contentScale = ContentScale.Crop,
@@ -162,21 +175,30 @@ internal fun MovieDetailsOverlay(
                         )
                     }
                     Box(
-                        modifier = Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(0f to Color(0x00090B0F), 0.7f to Color(0x99090B0F), 1f to com.ntv2.app.core.ui.BrandColors.Background)
+                        modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(118.dp).background(
+                            Brush.verticalGradient(0f to Color(0x00090B0F), 1f to BrandColors.Background)
                         )
+                    )
+                    DetailHeader(
+                        media = media,
+                        details = details,
+                        tv = false,
+                        onFilterClick = onFilterClick,
+                        modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                            .padding(start = 24.dp, end = 24.dp, bottom = 20.dp)
                     )
                 }
                 DetailsInfo(
                     media, details, showCastPhotos, lowRamPlaybackWarnings, animationsEnabled,
                     playFocus, onPlay, onDismiss,
-                    actionsFirst = false,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+                    actionsFirst = true,
+                    modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 24.dp),
                     playLoading = playLoading,
                     playFailed = playFailed,
                     playFailedText = playFailedText,
                     onRestart = onRestart,
-                    fillActions = !isTv,
+                    tv = false,
+                    headerInHero = true,
                     onReportClick = { reporting = true },
                     isFavorite = isFavorite,
                     onToggleFavorite = onToggleFavorite,
@@ -187,14 +209,15 @@ internal fun MovieDetailsOverlay(
                 )
             }
         } else {
-            // TV: herói (backdrop + infos à esquerda) e ABAIXO uma fileira de recomendações (gêneros
-            // misturados, como no celular) na largura toda. O herói deixa o topo das capas aparecendo
-            // no rodapé da tela, sinalizando que há mais conteúdo ao rolar.
+            // TV: herói (backdrop + infos à esquerda + elenco à direita) e ABAIXO uma fileira de
+            // recomendações na largura toda. O herói deixa o topo das capas aparecendo no rodapé da tela,
+            // sinalizando que há mais conteúdo ao rolar.
             val showRecommendations = recommendations.isNotEmpty()
             val heroMinHeight = if (showRecommendations) screenHeight - RECOMMENDATIONS_PEEK else screenHeight
             val scope = rememberCoroutineScope()
             var heroHeightPx by remember { mutableIntStateOf(0) }
             val density = androidx.compose.ui.platform.LocalDensity.current
+            val cast = details?.cast.orEmpty()
             // A rolagem por foco padrão da TV reposiciona a tela a cada movimento (mantém o item focado
             // num ponto fixo): andar de Assistir para o botão ao lado já rolava para baixo. Aqui só rola
             // quando o item focado não está inteiro na tela — na prática, ao descer para "Porque você viu".
@@ -214,11 +237,11 @@ internal fun MovieDetailsOverlay(
                                 .slideInFromRight(backdropLoaded, animationsEnabled)
                         )
                     }
-                    // Escurece até onde vai a coluna de informações (80% da largura), para o texto continuar
-                    // legível sobre o banner. Um nó só, com os degradês em cache (antes eram 2 caixas).
+                    // Degradê do protótipo (da esquerda: 98% -> 80% em 45% -> 20%) e um escurecimento no
+                    // rodapé para as recomendações. Um nó só, com os degradês em cache.
                     Box(modifier = Modifier.matchParentSize().drawWithCache {
-                        val h = Brush.horizontalGradient(0f to Color(0xF2090B0F), 0.6f to Color(0xB3090B0F), 0.95f to Color(0x00090B0F))
-                        val v = Brush.verticalGradient(0f to Color(0x00090B0F), 0.55f to Color(0x66090B0F), 1f to Color(0xF2090B0F))
+                        val h = Brush.horizontalGradient(0f to Color(0xFA090B0F), 0.45f to Color(0xCC090B0F), 1f to Color(0x33090B0F))
+                        val v = Brush.verticalGradient(0f to Color(0x00090B0F), 0.7f to Color(0x00090B0F), 1f to Color(0xE6090B0F))
                         onDrawBehind {
                             drawRect(h)
                             drawRect(v)
@@ -232,30 +255,46 @@ internal fun MovieDetailsOverlay(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(NbrIcons.ChevronDown, contentDescription = null, tint = Color(0xFFB7BBC4), modifier = Modifier.size(20.dp))
-                            Text("Mais abaixo: recomendados", color = Color(0xFFB7BBC4), style = MaterialTheme.typography.labelMedium)
+                            Icon(NbrIcons.ChevronDown, contentDescription = null, tint = BrandColors.TextSecondary, modifier = Modifier.size(20.dp))
+                            Text("Mais abaixo: recomendados", color = BrandColors.TextSecondary, style = MaterialTheme.typography.labelMedium)
                         }
                     }
-                    DetailsInfo(
-                        media, details, showCastPhotos, lowRamPlaybackWarnings, animationsEnabled,
-                        playFocus, onPlay, onDismiss,
-                        actionsFirst = compactLandscape,
-                        // 80% da largura: com 62% os chips e os botões (Continuar + Recomeçar + Voltar)
-                        // eram cortados à direita mesmo com espaço sobrando na tela.
-                        modifier = Modifier.fillMaxWidth(0.8f).align(Alignment.TopStart)
-                            .padding(start = 48.dp, end = 24.dp, top = 32.dp, bottom = 44.dp),
-                        playLoading = playLoading,
-                        playFailed = playFailed,
-                        playFailedText = playFailedText,
-                        onRestart = onRestart,
-                        onReportClick = { reporting = true },
-                        isFavorite = isFavorite,
-                        onToggleFavorite = onToggleFavorite,
-                        // As recomendações vão nas fileiras full-width abaixo (não inline na coluna).
-                        showInlineRecommendations = false,
-                        onRecommendationClick = onRecommendationClick,
-                        onFilterClick = onFilterClick
-                    )
+                    // Protótipo 09: padding 72/96 px e 96 px entre a coluna de informações e o elenco.
+                    Row(
+                        modifier = Modifier.fillMaxWidth().align(Alignment.TopStart)
+                            .padding(start = 48.dp, end = 48.dp, top = 36.dp, bottom = 44.dp),
+                        horizontalArrangement = Arrangement.spacedBy(48.dp)
+                    ) {
+                        DetailsInfo(
+                            media, details, showCastPhotos, lowRamPlaybackWarnings, animationsEnabled,
+                            playFocus, onPlay, onDismiss,
+                            actionsFirst = compactLandscape,
+                            modifier = Modifier.weight(1f),
+                            playLoading = playLoading,
+                            playFailed = playFailed,
+                            playFailedText = playFailedText,
+                            onRestart = onRestart,
+                            tv = true,
+                            // O elenco vai na coluna da direita (protótipo 09).
+                            showCast = false,
+                            onReportClick = { reporting = true },
+                            isFavorite = isFavorite,
+                            onToggleFavorite = onToggleFavorite,
+                            // As recomendações vão nas fileiras full-width abaixo (não inline na coluna).
+                            showInlineRecommendations = false,
+                            onRecommendationClick = onRecommendationClick,
+                            onFilterClick = onFilterClick
+                        )
+                        if (cast.isNotEmpty()) {
+                            MovieDetailCastColumn(
+                                cast = cast,
+                                showPhotos = showCastPhotos,
+                                animationsEnabled = animationsEnabled,
+                                onFilterClick = onFilterClick,
+                                modifier = Modifier.width(260.dp).heightIn(max = (screenHeight - 120.dp).coerceAtLeast(160.dp))
+                            )
+                        }
+                    }
                 }
                 if (showRecommendations) {
                     PosterTrackRow(
@@ -276,38 +315,24 @@ internal fun MovieDetailsOverlay(
                                 }
                             }
                             .focusGroup()
-                            .background(com.ntv2.app.core.ui.BrandColors.Background)
+                            .background(BrandColors.Background)
                             .padding(start = 48.dp, end = 32.dp, top = 6.dp, bottom = 44.dp)
                     )
                 }
             }
             }
         }
-        // TV: voltar só com ícone no canto superior direito (mesmo padrão dos detalhes de série),
-        // fora da linha de ações. Focável ao subir com o D-pad; o foco inicial fica no Assistir.
-        if (isTv) {
-            BackChip(
-                onDismiss,
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 24.dp, end = 24.dp)
-                    // Sai do canto direto para o Assistir (↓ ou ←), sem depender da busca de foco.
-                    .focusProperties {
-                        down = playFocus
-                        left = playFocus
-                    }
-            )
-        }
-        // Celular: fechar pelo X no canto superior esquerdo (mesmo padrão do player), em vez do
-        // botão "Voltar" na linha de ações — que não cabia ao lado de Continuar e Recomeçar.
-        if (!isTv) {
-            DetailsCloseButton(
+        // Celular: voltar redondo de 48 dp no canto superior esquerdo, sobre a capa (protótipo 14).
+        if (portrait) {
+            MovieDetailRoundButton(
+                icon = NbrIcons.ChevronLeft,
+                description = "Voltar",
                 onClick = onDismiss,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
                     .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
-                    .padding(12.dp)
+                    .padding(start = 16.dp, top = 4.dp)
             )
         }
         if (reporting) {
@@ -324,22 +349,40 @@ internal fun MovieDetailsOverlay(
     }
 }
 
-@Composable
-internal fun DetailsCloseButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(Color(0x80000000))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(NbrIcons.X, contentDescription = "Fechar", tint = Color.White, modifier = Modifier.size(22.dp))
-    }
-}
-
 internal fun coil.compose.AsyncImagePainter.State.isDone(): Boolean =
     this is coil.compose.AsyncImagePainter.State.Success || this is coil.compose.AsyncImagePainter.State.Error
+
+/** Título (ou logo), título original e a linha "ano · gêneros · duração". */
+@Composable
+private fun DetailHeader(
+    media: MediaCardUi,
+    details: MovieDetails?,
+    tv: Boolean,
+    onFilterClick: (SearchFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val title = details?.title ?: media.title
+    val durationSecs = details?.durationSeconds?.takeIf { it > 0 } ?: media.durationSeconds
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(if (tv) 10.dp else 6.dp)) {
+        DetailTitle(title, details?.logoPath, tv)
+        details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
+            Text(it, color = BrandColors.TextSecondary, style = NbrType.BodyLarge)
+        }
+        if (tv) {
+            // TV: a linha de texto e os chips na mesma fileira (protótipo 09).
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DetailMetaLine(details, durationSecs, tv = true, onFilterClick = onFilterClick)
+                DetailChips(details, media.partCount, tv = true)
+            }
+        } else {
+            DetailMetaLine(details, durationSecs, tv = false, onFilterClick = onFilterClick)
+        }
+    }
+}
 
 @Composable
 internal fun DetailsInfo(
@@ -357,7 +400,10 @@ internal fun DetailsInfo(
     playFailed: Boolean = false,
     playFailedText: String? = null,
     onRestart: () -> Unit = {},
-    fillActions: Boolean = false,
+    tv: Boolean = true,
+    /** Celular: título e linha de metadados já estão sobre a capa; aqui ficam só os chips. */
+    headerInHero: Boolean = false,
+    showCast: Boolean = true,
     onReportClick: () -> Unit = {},
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
@@ -368,30 +414,37 @@ internal fun DetailsInfo(
     onFilterClick: (SearchFilter) -> Unit = {}
 ) {
     val title = details?.title ?: media.title
-    val durationSecs = details?.durationSeconds?.takeIf { it > 0 } ?: media.durationSeconds
     val showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning()
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        DetailTitle(title, details?.logoPath)
-        details?.originalTitle?.takeIf { it.isNotBlank() && it != title }?.let {
-            Text(it, color = Color(0xFFC9C9C9), style = MaterialTheme.typography.titleMedium)
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(if (tv) 14.dp else 18.dp)) {
+        if (tv) {
+            // "‹ Voltar" no topo da coluna (protótipo 09); ↓ vai direto para o Assistir.
+            MovieDetailBackLink(onDismiss, Modifier.focusProperties { down = playFocus })
         }
-        DetailMetaRow(details, durationSecs, onFilterClick, partCount = media.partCount)
+        if (!headerInHero) {
+            DetailHeader(media, details, tv, onFilterClick)
+        } else if (hasChips(details, media.partCount)) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) { DetailChips(details, media.partCount, tv = false) }
+        }
         if (showPlaybackWarning) {
             Text(
                 text = "Este aparelho pode tocar apenas o som em vídeos 1080p. Prefira versão 720p quando disponível.",
-                color = Color(0xFFFFD37A),
-                style = MaterialTheme.typography.bodyMedium,
+                color = BrandColors.Warning,
+                style = NbrType.Caption,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x26FFC857))
-                    .border(1.dp, Color(0x66FFC857), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 9.dp)
+                    .clip(BrandShapes.Md)
+                    .background(BrandColors.Warning.copy(alpha = 0.10f))
+                    .border(1.dp, BrandColors.Warning.copy(alpha = 0.4f), BrandShapes.Md)
+                    .padding(12.dp)
             )
         }
-        if (actionsFirst) {
+        val actions: @Composable () -> Unit = {
             DetailsActionRow(
-                media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
-                fillWidth = fillActions,
+                media, showPlaybackWarning, playFocus, onPlay, playLoading, playFailed, onRestart,
+                tv = tv,
                 playFailedText = playFailedText,
                 isFavorite = isFavorite,
                 onToggleFavorite = onToggleFavorite,
@@ -399,19 +452,20 @@ internal fun DetailsInfo(
             )
             if (isFavorite) InListLabel()
         }
-        details?.synopsis?.takeIf { it.isNotBlank() }?.let { SynopsisText(it) }
+        if (actionsFirst) actions()
+        details?.synopsis?.takeIf { it.isNotBlank() }?.let { SynopsisText(it, tv) }
         details?.director?.takeIf { it.isNotBlank() }?.let {
-            Text("Diretor: $it", color = Color(0xFFB6B6B6), style = MaterialTheme.typography.bodySmall)
+            Text("Diretor: $it", color = BrandColors.TextMuted, style = if (tv) NbrType.Caption else NbrType.Secondary)
         }
 
         val cast = details?.cast.orEmpty()
-        if (cast.isNotEmpty()) {
+        if (showCast && cast.isNotEmpty()) {
+            Text("Elenco", color = MovieDetailTextPrimary, style = NbrType.Section.copy(fontSize = 18.sp))
             if (showCastPhotos) {
                 Row(
-                    // Padding evita cortar o aro de foco/zoom nas bordas; focusGroup mantém o D-pad
-                    // dentro da fileira (←/→ andam entre os atores).
-                    modifier = Modifier.focusGroup().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    // focusGroup mantém o D-pad dentro da fileira (←/→ andam entre os atores).
+                    modifier = Modifier.focusGroup().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.Top
                 ) {
                     // Entrada nº 11 (stagger): os rostos sobem em sequência, um pouco depois do
@@ -423,34 +477,21 @@ internal fun DetailsInfo(
                         val gliding = glideActive()
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            // Tamanho único para todos: foto 64dp + nome em exatamente 2 linhas.
-                            modifier = Modifier.width(92.dp)
+                            // Protótipo: coluna de 64 dp, foto redonda de 56 e nome embaixo (6 dp).
+                            modifier = Modifier.width(64.dp)
                                 .fadeInUpStaggered(castVisible, index, animationsEnabled)
-                                .glideTarget(6.dp)
-                                .clip(RoundedCornerShape(6.dp))
+                                .glideTarget(8.dp)
+                                .clip(BrandShapes.Sm)
                                 .onFocusChanged { actorFocused = it.isFocused }
                                 .clickable { onFilterClick(SearchFilter(SearchFilterKind.ACTOR, c.name)) }
-                                .then(if (actorFocused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
-                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                                .then(if (actorFocused && !gliding) Modifier.border(3.dp, BrandColors.Accent, BrandShapes.Sm) else Modifier),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            if (c.photoUrl != null) {
-                                val castTiming = imageTiming("elenco#$index", c.photoUrl)
-                                AsyncImage(
-                                    model = com.ntv2.app.core.ui.tmdbAtWidth(c.photoUrl, "w185"), contentDescription = c.name, contentScale = ContentScale.Crop,
-                                    onState = castTiming,
-                                    modifier = Modifier.size(64.dp).clip(CircleShape).background(colorForTitle(c.name))
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier.size(64.dp).clip(CircleShape).background(colorForTitle(c.name)),
-                                    contentAlignment = Alignment.Center
-                                ) { Text(initialFor(c.name), color = Color.White, style = MaterialTheme.typography.titleMedium) }
-                            }
+                            CastPhoto(c.name, c.photoUrl, index, 56.dp)
                             Text(
                                 c.name,
-                                color = if (actorFocused) Color.White else Color(0xFFDCDCDC),
-                                style = MaterialTheme.typography.labelMedium,
+                                color = if (actorFocused) Color.White else BrandColors.TextSecondary,
+                                style = NbrType.Caption.copy(fontSize = 11.sp),
                                 minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth()
@@ -465,22 +506,17 @@ internal fun DetailsInfo(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     cast.forEach { c ->
-                        MetaChip(c.name) { onFilterClick(SearchFilter(SearchFilterKind.ACTOR, c.name)) }
+                        MovieDetailChip(c.name, tv = tv) { onFilterClick(SearchFilter(SearchFilterKind.ACTOR, c.name)) }
                     }
                 }
             }
         }
 
-        if (!actionsFirst) {
-            DetailsActionRow(
-                media, showPlaybackWarning, playFocus, onPlay, onDismiss, playLoading, playFailed, onRestart,
-                fillWidth = fillActions,
-                playFailedText = playFailedText,
-                isFavorite = isFavorite,
-                onToggleFavorite = onToggleFavorite,
-                onReportClick = onReportClick
-            )
-            if (isFavorite) InListLabel()
+        if (!actionsFirst) actions()
+
+        // Tela 20: aviso de falha sob o conteúdo, além do botão vermelho.
+        if (playFailed && !playLoading) {
+            MovieDetailFailureNotice(PLAY_FAILED_NOTICE, Modifier.fillMaxWidth())
         }
 
         if (showInlineRecommendations && recommendations.isNotEmpty()) {
@@ -490,6 +526,70 @@ internal fun DetailsInfo(
                 showCovers = showCovers,
                 onClick = onRecommendationClick
             )
+        }
+    }
+}
+
+/** Foto redonda do ator (ou a inicial sobre a cor do nome, quando não há foto). */
+@Composable
+private fun CastPhoto(name: String, photoUrl: String?, index: Int, size: androidx.compose.ui.unit.Dp) {
+    if (photoUrl != null) {
+        val castTiming = imageTiming("elenco#$index", photoUrl)
+        AsyncImage(
+            model = tmdbAtWidth(photoUrl, "w185"), contentDescription = name, contentScale = ContentScale.Crop,
+            onState = castTiming,
+            modifier = Modifier.size(size).clip(CircleShape).background(colorForTitle(name))
+        )
+    } else {
+        Box(
+            modifier = Modifier.size(size).clip(CircleShape).background(colorForTitle(name)),
+            contentAlignment = Alignment.Center
+        ) { Text(initialFor(name), color = Color.White, style = NbrType.ItemTitle) }
+    }
+}
+
+/** TV (protótipo 09): "Elenco" e a lista vertical de atores (foto de 40 dp + nome) à direita. */
+@Composable
+private fun MovieDetailCastColumn(
+    cast: List<com.ntv2.app.core.telegram.media.CastMemberMeta>,
+    showPhotos: Boolean,
+    animationsEnabled: Boolean,
+    onFilterClick: (SearchFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Elenco", color = MovieDetailTextPrimary, style = NbrType.Section.copy(fontSize = 16.sp))
+        var castVisible by remember(cast) { mutableStateOf(false) }
+        LaunchedEffect(cast) { castVisible = true }
+        Column(
+            modifier = Modifier.focusGroup().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            cast.forEachIndexed { index, c ->
+                var focused by remember { mutableStateOf(false) }
+                val ring = focused && !glideActive()
+                Row(
+                    modifier = Modifier
+                        .fadeInUpStaggered(castVisible, index, animationsEnabled)
+                        .glideTarget(8.dp)
+                        .clip(BrandShapes.Sm)
+                        .onFocusChanged { focused = it.isFocused }
+                        .clickable { onFilterClick(SearchFilter(SearchFilterKind.ACTOR, c.name)) }
+                        .then(if (ring) Modifier.border(3.dp, BrandColors.Accent, BrandShapes.Sm) else Modifier)
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (showPhotos) CastPhoto(c.name, c.photoUrl, index, 40.dp)
+                    Text(
+                        c.name,
+                        color = if (focused) Color.White else BrandColors.TextSecondary,
+                        style = NbrType.Secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }
@@ -530,7 +630,7 @@ internal fun RecommendationsRow(
     onClick: (MediaCardUi) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(recommendationsHeading(seedTitle), color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Text(recommendationsHeading(seedTitle), color = MovieDetailTextPrimary, style = NbrType.Section)
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -551,12 +651,12 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
         modifier = Modifier
             .width(104.dp)
             .aspectRatio(2f / 3f)
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .glideTarget(12.dp)
+            .clip(BrandShapes.Md)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
-            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, RoundedCornerShape(6.dp)) else Modifier)
+            .background(BrandColors.SurfaceAlt)
+            .then(if (focused && !gliding) Modifier.border(3.dp, BRAND_ACCENT, BrandShapes.Md) else Modifier)
     ) {
         if (cover != null) {
             AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -573,20 +673,19 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
     }
 }
 
-// Sinopse: 2 linhas; focável pelo D-pad e OK expande/recolhe o texto completo.
 /**
- * Título do filme/série: quando o índice/legenda traz o logo (PNG transparente do TMDB), mostra a
- * arte; sem logo — ou se a imagem falhar — cai no título em texto, que é o comportamento antigo.
- * A altura é fixa em dp (e não a largura) porque os logos variam muito de proporção: travar a
- * altura mantém todos com o mesmo peso visual na coluna. Fixa, e não máxima, para o espaço já estar
- * reservado enquanto a imagem carrega — com heightIn a coluna pulava quando o logo chegava.
+ * Título do filme: quando o índice/legenda traz o logo (PNG transparente do TMDB), mostra a arte; sem
+ * logo — ou se a imagem falhar — cai no título em texto (NbrType.Hero; na TV, 80 px / 2 = 40 sp).
+ * A altura é fixa em dp porque os logos variam muito de proporção: travar a altura mantém todos com o
+ * mesmo peso visual, e o espaço já fica reservado enquanto a imagem carrega.
  */
 @Composable
-private fun DetailTitle(title: String, logo: String?) {
+private fun DetailTitle(title: String, logo: String?, tv: Boolean) {
     val url = logo?.takeIf { it.isNotBlank() }?.let { tmdbAtWidth(it, "w500") }
     var failed by remember(url) { mutableStateOf(false) }
     if (url == null || failed) {
-        Text(title, color = Color.White, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        val style = if (tv) NbrType.Hero.copy(fontSize = 40.sp, lineHeight = 48.sp) else NbrType.Hero
+        Text(title, color = MovieDetailTextPrimary, style = style, maxLines = 2, overflow = TextOverflow.Ellipsis)
         return
     }
     AsyncImage(
@@ -595,39 +694,40 @@ private fun DetailTitle(title: String, logo: String?) {
         contentScale = ContentScale.Fit,
         alignment = Alignment.CenterStart,
         onState = { if (it is coil.compose.AsyncImagePainter.State.Error) failed = true },
-        modifier = Modifier.height(76.dp).widthIn(max = 320.dp)
+        modifier = Modifier.height(if (tv) 76.dp else 64.dp).widthIn(max = 320.dp)
     )
 }
 
+/**
+ * Sinopse (NbrType.Paragraph) com "OK para ler tudo" em accent embaixo, como no protótipo. Toque ou OK
+ * expande/recolhe o texto completo; na TV o bloco é focável pelo D-pad.
+ */
 @Composable
-internal fun SynopsisText(text: String) {
+internal fun SynopsisText(text: String, tv: Boolean = true) {
     var expanded by remember(text) { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
-    val gliding = glideActive()
+    val ring = focused && !glideActive()
     Column(
         modifier = Modifier
-            .glideTarget(8.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .glideTarget(10.dp)
+            .clip(BrandShapes.Sm)
             .onFocusChanged { focused = it.isFocused }
             .clickable { expanded = !expanded }
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color.Transparent)
-            .then(if (focused && !gliding) Modifier.border(1.dp, com.ntv2.app.core.ui.BrandColors.ContentDisabled, RoundedCornerShape(8.dp)) else Modifier)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+            .then(if (ring) Modifier.border(2.dp, BrandColors.Accent, BrandShapes.Sm) else Modifier)
+            .then(if (tv) Modifier.padding(horizontal = 6.dp, vertical = 4.dp) else Modifier),
+        verticalArrangement = Arrangement.spacedBy(if (tv) 14.dp else 18.dp)
     ) {
         Text(
             text,
-            color = Color(0xFFDCDCDC),
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = if (expanded) Int.MAX_VALUE else 2,
+            color = BrandColors.TextSecondary,
+            style = if (tv) NbrType.Paragraph.copy(lineHeight = 21.sp) else NbrType.Paragraph.copy(lineHeight = 21.sp),
+            maxLines = if (expanded) Int.MAX_VALUE else if (tv) 3 else 4,
             overflow = TextOverflow.Ellipsis
         )
-        // A dica ocupa a linha SEMPRE (só fica transparente sem foco): se ela entrasse e saísse da
-        // composição, a altura do conteúdo mudava a cada foco e o fundo (Crop) dava zoom junto.
         Text(
             if (expanded) "OK para recolher" else "OK para ler tudo",
-            color = if (focused) com.ntv2.app.core.ui.BrandColors.TextMuted else Color.Transparent,
-            style = MaterialTheme.typography.labelSmall
+            color = BrandColors.Accent,
+            style = NbrType.Caption.copy(fontWeight = FontWeight.SemiBold, fontSize = if (tv) 11.sp else 12.sp)
         )
     }
 }
@@ -638,12 +738,10 @@ internal fun DetailsActionRow(
     showPlaybackWarning: Boolean,
     playFocus: FocusRequester,
     onPlay: () -> Unit,
-    onDismiss: () -> Unit,
     playLoading: Boolean = false,
     playFailed: Boolean = false,
     onRestart: () -> Unit = {},
-    // Celular em pé: os botões dividem a largura toda (nunca cortam na lateral).
-    fillWidth: Boolean = false,
+    tv: Boolean = true,
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     onReportClick: () -> Unit = {},
@@ -659,55 +757,60 @@ internal fun DetailsActionRow(
     // Vídeo parado no meio: "Recomeçar" zera o progresso e toca do início (útil também quando
     // o download a partir do ponto salvo não anda).
     val showRestart = media.progress > 0f && !playLoading
+    val favoriteDescription = if (isFavorite) "Remover da minha lista" else "Adicionar à minha lista"
+    val favoriteIcon = if (isFavorite) NbrIcons.HeartFilled else NbrIcons.Heart
+    val favoriteTint = if (isFavorite) BrandColors.Rose else MovieDetailTextPrimary
 
-    // Celular em pé com Continuar + Recomeçar: não cabem os dois ao lado dos ícones sem quebrar o
-    // texto letra a letra. O botão principal ocupa a linha de cima inteira; o resto vai embaixo.
-    if (fillWidth && showRestart) {
-        Column(
-            modifier = Modifier.focusGroup().fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    if (tv) {
+        // TV (protótipo 09): pílulas com ícone e rótulo, 36 dp de altura e 10 dp entre elas.
+        Row(
+            modifier = Modifier.focusGroup().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            DetailButton(
-                icon = NbrIcons.PlayFilled,
+            MovieDetailPlayButton(
                 label = playLabel,
-                primary = true,
-                modifier = Modifier.fillMaxWidth().focusRequester(playFocus),
+                tv = true,
+                onClick = onPlay,
+                modifier = Modifier.widthIn(min = 160.dp).focusRequester(playFocus),
                 loading = playLoading,
-                onClick = onPlay
+                failed = playFailed && !playLoading
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                DetailButton(icon = NbrIcons.RotateCcw, label = "Recomeçar", primary = false, onClick = onRestart, modifier = Modifier.weight(1f))
-                FavoriteToggleButton(isFavorite = isFavorite, onClick = onToggleFavorite)
-                DetailIconButton(icon = NbrIcons.Flag, description = "Reportar problema", onClick = onReportClick)
-            }
+            if (showRestart) MovieDetailPillButton(NbrIcons.RotateCcw, "Recomeçar", onRestart)
+            MovieDetailPillButton(favoriteIcon, favoriteDescription, onToggleFavorite, tint = favoriteTint)
+            MovieDetailPillButton(NbrIcons.Flag, "Reportar", onReportClick)
         }
         return
     }
 
+    // Celular (protótipos 14/15/20): Assistir em pílula ocupando o resto da linha e botões redondos
+    // de 48 dp ao lado; no "Continuar", a barra de progresso fica sob o botão.
     Row(
-        modifier = Modifier.focusGroup().then(if (fillWidth) Modifier.fillMaxWidth() else Modifier),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier.focusGroup().fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
     ) {
-        val share = if (fillWidth) Modifier.weight(1f) else Modifier
-        DetailButton(
-            icon = NbrIcons.PlayFilled,
-            label = playLabel,
-            primary = true,
-            modifier = share.focusRequester(playFocus),
-            loading = playLoading,
-            onClick = onPlay
-        )
-        if (showRestart) {
-            DetailButton(icon = NbrIcons.RotateCcw, label = "Recomeçar", primary = false, onClick = onRestart, modifier = share)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            MovieDetailPlayButton(
+                label = playLabel,
+                tv = false,
+                onClick = onPlay,
+                modifier = Modifier.fillMaxWidth().focusRequester(playFocus),
+                loading = playLoading,
+                failed = playFailed && !playLoading
+            )
+            if (media.progress > 0f && !playFailed) {
+                MovieDetailProgress(media.progress, Modifier.fillMaxWidth())
+            }
         }
-        // Coração e reportar: quadrados só-ícone ao lado das ações (como no protótipo).
-        FavoriteToggleButton(isFavorite = isFavorite, onClick = onToggleFavorite)
-        DetailIconButton(icon = NbrIcons.Flag, description = "Reportar problema", onClick = onReportClick)
+        val roundTop = Modifier.padding(top = 2.dp)
+        if (showRestart) MovieDetailRoundButton(NbrIcons.RotateCcw, "Recomeçar", onRestart, roundTop)
+        MovieDetailRoundButton(
+            favoriteIcon, favoriteDescription, onToggleFavorite, roundTop,
+            tint = favoriteTint,
+            fill = if (isFavorite) BrandColors.Rose.copy(alpha = 0x22 / 255f) else Color(0x1AFFFFFF)
+        )
+        MovieDetailRoundButton(NbrIcons.Flag, "Reportar problema", onReportClick, roundTop)
     }
 }
 
@@ -720,82 +823,89 @@ private fun continueLabel(media: MediaCardUi): String {
     return "Continuar • ${durationLabel(watched)}"
 }
 
-/** Metadados no estilo do protótipo: nota verde com estrela + chips com borda (idade/qualidade/gênero).
- *  Ano e gêneros são clicáveis: listam as mídias do canal com esse ano/gênero. */
+/**
+ * Linha "nota · ano · gêneros · duração" do protótipo (13 sp, texto secundário). Ano e gêneros são
+ * clicáveis: listam as mídias do canal com esse ano/gênero.
+ */
 @Composable
-private fun DetailMetaRow(
+private fun DetailMetaLine(
     details: MovieDetails?,
     durationSecs: Int,
-    onFilterClick: (SearchFilter) -> Unit,
-    /** Filme dividido em partes no Telegram (>= 2): mostra um chip com a quantidade. */
-    partCount: Int = 1
+    tv: Boolean,
+    onFilterClick: (SearchFilter) -> Unit
 ) {
-    // Linha 1: informativos (não clicáveis). Linha 2, exclusiva: ano e gêneros (clicáveis).
-    val bullet = RX_COMMA_SEP
+    val style = NbrType.Secondary
     val genres = details?.genres?.split(',', ';', '/', '•')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            details?.rating?.let { rating ->
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(NbrIcons.StarFilled, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(15.dp))
-                    Text("%.1f".format(rating), color = BRAND_ACCENT, style = MaterialTheme.typography.titleSmall)
-                }
+    val parts = mutableListOf<@Composable () -> Unit>()
+    details?.rating?.let { rating ->
+        parts += {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(NbrIcons.StarFilled, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(13.dp))
+                Text("%.1f".format(rating), color = BRAND_ACCENT, style = style.copy(fontWeight = FontWeight.SemiBold))
             }
-            if (durationSecs > 0) MetaText(durationLabel(durationSecs))
-            details?.ageRating?.takeIf { it.isNotBlank() }?.let { MetaChip(it.trim().replace(bullet, " • ")) }
-            // Mesmo selo da grade (SD/HD/FHD/4K); só cai no texto do canal quando ele não diz a resolução.
-            details?.quality?.takeIf { it.isNotBlank() }?.let { q ->
-                val badge = com.ntv2.app.core.player.VideoResolution.label(
-                    height = com.ntv2.app.feature.media.domain.QualityText.heightOf(q)
-                )
-                MetaChip(badge ?: q.trim().replace(bullet, " • "))
-            }
-            if (partCount >= 2) MetaChip("$partCount partes")
         }
-        if (details?.year != null || genres.isNotEmpty()) {
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                details?.year?.let { year ->
-                    MetaText(year.toString()) { onFilterClick(SearchFilter(SearchFilterKind.YEAR, year.toString())) }
-                }
-                genres.forEach { genre ->
-                    MetaChip(genre) { onFilterClick(SearchFilter(SearchFilterKind.GENRE, genre)) }
-                }
-            }
+    }
+    details?.year?.let { year ->
+        parts += { MetaText(year.toString(), style) { onFilterClick(SearchFilter(SearchFilterKind.YEAR, year.toString())) } }
+    }
+    genres.forEach { genre ->
+        parts += { MetaText(genre, style) { onFilterClick(SearchFilter(SearchFilterKind.GENRE, genre)) } }
+    }
+    if (durationSecs > 0) parts += { MetaText(durationLabel(durationSecs), style) }
+    if (parts.isEmpty()) return
+    Row(
+        modifier = if (tv) Modifier else Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        parts.forEachIndexed { i, part ->
+            if (i > 0) Text("·", color = BrandColors.TextSecondary, style = style)
+            part()
         }
     }
 }
 
+private fun hasChips(details: MovieDetails?, partCount: Int): Boolean =
+    !details?.ageRating.isNullOrBlank() || !details?.quality.isNullOrBlank() || partCount >= 2
+
+/** Chips em pílula: classificação, qualidade (SD/HD/FHD/4K) e quantidade de partes. */
 @Composable
-private fun MetaText(text: String, onClick: (() -> Unit)? = null) {
+private fun DetailChips(details: MovieDetails?, partCount: Int, tv: Boolean) {
+    details?.ageRating?.takeIf { it.isNotBlank() }?.let { MovieDetailChip(it.trim().replace(RX_COMMA_SEP, " • "), tv) }
+    // Mesmo selo da grade (SD/HD/FHD/4K); só cai no texto do canal quando ele não diz a resolução.
+    details?.quality?.takeIf { it.isNotBlank() }?.let { q ->
+        val badge = com.ntv2.app.core.player.VideoResolution.label(
+            height = com.ntv2.app.feature.media.domain.QualityText.heightOf(q)
+        )
+        MovieDetailChip(badge ?: q.trim().replace(RX_COMMA_SEP, " • "), tv)
+    }
+    // Filme dividido em partes no Telegram (>= 2): chip com a quantidade.
+    if (partCount >= 2) MovieDetailChip("$partCount partes", tv)
+}
+
+@Composable
+private fun MetaText(text: String, style: TextStyle, onClick: (() -> Unit)? = null) {
     if (onClick == null) {
-        Text(text, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.titleSmall)
+        Text(text, color = BrandColors.TextSecondary, style = style, modifier = Modifier.padding(horizontal = 2.dp))
         return
     }
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
     Text(
         text,
-        color = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.TextMuted,
-        style = MaterialTheme.typography.titleSmall,
+        color = if (focused) Color.White else BrandColors.TextSecondary,
+        style = style,
         modifier = Modifier
             .glideTarget(4.dp)
             .clip(RoundedCornerShape(4.dp))
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .then(if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
-            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .then(if (focused && !gliding) Modifier.border(2.dp, BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
+            .padding(horizontal = 2.dp, vertical = 2.dp)
     )
 }
 
-/** Chip com borda; com [onClick] é focável (D-pad) e clicável (toque). */
+/** Chip com borda; com [onClick] é focável (D-pad) e clicável (toque). Usado também nos detalhes da série. */
 @Composable
 internal fun MetaChip(text: String, onClick: (() -> Unit)? = null) {
     var focused by remember { mutableStateOf(false) }
@@ -803,7 +913,7 @@ internal fun MetaChip(text: String, onClick: (() -> Unit)? = null) {
     val ring = focused && !gliding
     Text(
         text,
-        color = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.TextSecondary,
+        color = if (focused) Color.White else BrandColors.TextSecondary,
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier
             .then(if (onClick != null) Modifier.glideTarget(4.dp) else Modifier)
@@ -814,7 +924,7 @@ internal fun MetaChip(text: String, onClick: (() -> Unit)? = null) {
     )
 }
 
-/** Linha "Na sua lista" com check verde, exibida sob as ações quando favoritado. */
+/** Linha "Na sua lista" com check, exibida sob as ações quando favoritado. */
 @Composable
 internal fun InListLabel() {
     Row(
@@ -822,106 +932,9 @@ internal fun InListLabel() {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(NbrIcons.Check, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(15.dp))
-        Text("Na sua lista", color = BRAND_ACCENT, style = MaterialTheme.typography.labelLarge)
+        Text("Na sua lista", color = BRAND_ACCENT, style = NbrType.Caption.copy(fontWeight = FontWeight.SemiBold))
     }
 }
-
-/** Botão quadrado só-ícone da linha de ações (reportar), no mesmo estilo do favoritar. */
-@Composable
-internal fun DetailIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val gliding = glideActive()
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .then(
-                if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp))
-                else Modifier.border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, contentDescription = description, tint = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(22.dp))
-    }
-}
-
-/** Botão circular de favoritar (coração preenchido = na lista). */
-@Composable
-internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val gliding = glideActive()
-    val border = if (isFavorite) BRAND_ACCENT else com.ntv2.app.core.ui.BrandColors.Border
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (isFavorite) Color(0x2466D9FF) else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .border(
-                width = if (focused && !gliding) 2.dp else 1.dp,
-                color = if (focused && !gliding) Color.White else border,
-                shape = RoundedCornerShape(6.dp)
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = if (isFavorite) NbrIcons.HeartFilled else NbrIcons.Heart,
-            contentDescription = if (isFavorite) "Remover da minha lista" else "Adicionar à minha lista",
-            tint = if (isFavorite) BRAND_ACCENT else Color.White,
-            modifier = Modifier.size(24.dp)
-        )
-    }
-}
-
-@Composable
-internal fun DetailButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    primary: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    loading: Boolean = false
-) {
-    var focused by remember { mutableStateOf(false) }
-    val gliding = glideActive()
-    val bg = when {
-        primary -> com.ntv2.app.core.ui.BrandColors.Cta
-        focused -> com.ntv2.app.core.ui.BrandColors.Border
-        else -> com.ntv2.app.core.ui.BrandColors.BorderSubtle
-    }
-    val content = if (primary) com.ntv2.app.core.ui.BrandColors.OnCta else Color.White
-    Row(
-        modifier = modifier
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .onFocusChanged { focused = it.isFocused }
-            // Enquanto carrega, ignora novos toques (evita disparos duplicados).
-            .clickable(enabled = !loading, onClick = onClick)
-            .background(bg)
-            .then(if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
-            .padding(horizontal = 24.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (loading) {
-            CircularProgressIndicator(color = content, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-        } else {
-            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
-        }
-        Text(label, color = content, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
 
 // Regex compilados uma vez (criar a cada chamada custava CPU no Fire TV, em caminhos por item/página).
 private val RX_COMMA_SEP = Regex("\\s*,\\s*")

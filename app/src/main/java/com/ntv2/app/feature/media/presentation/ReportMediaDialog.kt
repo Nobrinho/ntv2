@@ -44,6 +44,11 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.core.ui.BrandColors
+import com.ntv2.app.core.ui.BrandShapes
+import com.ntv2.app.core.ui.NbrType
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.unit.sp
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.feature.media.data.report.ReportOutcome
@@ -111,27 +116,40 @@ internal fun ReportMediaDialog(
         }
     }
 
+    // Celular (protótipo 19): sheet que sobe do rodapé, cantos de 28 dp e alça; TV: cartão centralizado.
+    val sheet = !twoColumns
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xCC000000))
+            .background(Color(0xB3000000))
             .clickable(enabled = step != ReportStep.Sending, onClick = onDismiss)
-            .trapFocus(),
-        contentAlignment = Alignment.Center
+            .trapFocus()
+            .imePadding(),
+        contentAlignment = if (sheet) Alignment.BottomCenter else Alignment.Center
     ) {
+        val cardShape = if (sheet) RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp) else BrandShapes.Xl
         Column(
             modifier = Modifier
-                .padding(16.dp)
-                .widthIn(max = if (twoColumns) 820.dp else 480.dp)
+                .then(if (sheet) Modifier else Modifier.padding(16.dp).widthIn(max = 820.dp))
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(cardShape)
                 .background(BrandColors.Surface)
-                .border(1.dp, BrandColors.Border, RoundedCornerShape(8.dp))
+                .border(1.dp, SheetStroke, cardShape)
                 // Absorve o toque: clicar dentro do cartão não fecha.
                 .clickable(enabled = false) {}
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .then(if (sheet) Modifier.navigationBarsPadding() else Modifier)
+                .padding(
+                    start = 24.dp, end = 24.dp,
+                    top = if (sheet) 10.dp else 24.dp,
+                    bottom = if (sheet) 28.dp else 24.dp
+                ),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (sheet) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(width = 40.dp, height = 4.dp).clip(BrandShapes.Pill).background(BrandColors.Border))
+                }
+            }
             when (val s = step) {
                 is ReportStep.Done -> ReportResult(s.outcome, Modifier.focusRequester(doneFocus), onDismiss)
                 ReportStep.Sending -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -140,7 +158,7 @@ internal fun ReportMediaDialog(
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(24.dp)
                     )
-                    Text("Enviando reporte…", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text("Enviando reporte…", color = TextPrimary, style = NbrType.ItemTitle)
                 }
                 ReportStep.Choose, ReportStep.Note -> {
                     ReportHeader(title)
@@ -156,10 +174,10 @@ internal fun ReportMediaDialog(
                         val rows = MediaReportReason.entries.chunked(if (twoColumns) 2 else 1)
                         Column(
                             modifier = Modifier.verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             rows.forEachIndexed { rowIndex, row ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                                     row.forEachIndexed { col, reason ->
                                         ReportReasonRow(
                                             reason = reason,
@@ -184,27 +202,24 @@ internal fun ReportMediaDialog(
     }
 }
 
+private val TextPrimary = Color(0xFFF5F5F7)
+private val SheetStroke = Color(0x1FFFFFFF)
+
 @Composable
 private fun ReportHeader(title: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(BrandColors.Warning.copy(alpha = 0.16f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(NbrIcons.Flag, contentDescription = null, tint = BrandColors.Warning, modifier = Modifier.size(22.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(NbrIcons.Flag, contentDescription = null, tint = BrandColors.Warning, modifier = Modifier.size(20.dp))
+            Text("Reportar problema", color = TextPrimary, style = NbrType.SheetTitle.copy(fontSize = 20.sp))
         }
-        Text("Reportar problema", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            title,
+            color = BrandColors.TextSecondary,
+            style = NbrType.Secondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
-    Text(
-        title,
-        color = BrandColors.TextMuted,
-        style = MaterialTheme.typography.bodyMedium,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis
-    )
 }
 
 /** "Outro problema": texto livre opcional (vai no campo `note`). */
@@ -220,69 +235,71 @@ private fun ReportNoteStep(
     Text(
         "Conte o que aconteceu (opcional)",
         color = BrandColors.TextSecondary,
-        style = MaterialTheme.typography.bodyMedium
+        style = NbrType.Secondary
     )
     BasicTextField(
         value = note,
         onValueChange = onNoteChange,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(BrandColors.Fill)
+            .heightIn(min = 64.dp)
+            .clip(BrandShapes.Field)
+            .background(BrandColors.SurfaceAlt)
             .border(
-                if (fieldFocused) 3.dp else 1.dp,
-                if (fieldFocused) BrandColors.Accent else BrandColors.BorderSubtle,
-                RoundedCornerShape(6.dp)
+                if (fieldFocused) 2.dp else 1.dp,
+                if (fieldFocused) BrandColors.Accent else SheetStroke,
+                BrandShapes.Field
             )
             .focusRequester(fieldFocus)
             .onFocusChanged { fieldFocused = it.isFocused }
-            .padding(horizontal = 14.dp, vertical = 14.dp),
+            .padding(12.dp),
         // Uma linha: no controle remoto ↓ sai do campo para os botões (multilinha prenderia o D-pad).
         singleLine = true,
-        textStyle = androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(color = Color.White),
+        textStyle = NbrType.Secondary.copy(color = TextPrimary),
         cursorBrush = SolidColor(BrandColors.Accent),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
         keyboardActions = KeyboardActions(onSend = { onSend() }),
         decorationBox = { inner ->
-            Box(contentAlignment = Alignment.CenterStart) {
+            Box(contentAlignment = Alignment.TopStart) {
                 if (note.isEmpty()) {
-                    Text("Ex.: o áudio some depois de 20 minutos", color = BrandColors.TextMuted, style = MaterialTheme.typography.titleMedium)
+                    Text("Ex.: o áudio some depois de 20 minutos", color = BrandColors.TextMuted, style = NbrType.Secondary)
                 }
                 inner()
             }
         }
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ReportButton("Enviar", primary = true, onClick = onSend)
-        ReportButton("Voltar", primary = false, onClick = onBack)
-    }
+    ReportButton("Enviar", primary = true, modifier = Modifier.fillMaxWidth(), onClick = onSend)
+    ReportButton("Voltar", primary = false, modifier = Modifier.fillMaxWidth(), onClick = onBack)
 }
 
+/** Botão em pílula: Enviar em accent (52 dp, protótipo 19); secundários com contorno. */
 @Composable
 private fun ReportButton(text: String, primary: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .heightIn(min = if (primary) 52.dp else 48.dp)
+            .clip(BrandShapes.Pill)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(
+            .background(if (primary) BrandColors.Cta else if (focused) BrandColors.Border else BrandColors.Fill)
+            .border(
+                if (focused) 3.dp else 1.dp,
                 when {
+                    focused && primary -> Color.White
                     focused -> BrandColors.Accent
-                    primary -> BrandColors.SurfaceAlt
-                    else -> BrandColors.Fill
-                }
+                    primary -> BrandColors.Cta
+                    else -> BrandColors.Border
+                },
+                BrandShapes.Pill
             )
-            .border(1.dp, if (focused) BrandColors.Accent else BrandColors.BorderSubtle, RoundedCornerShape(6.dp))
             .padding(horizontal = 22.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text,
-            color = if (focused) Color.Black else Color.White,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+            color = if (primary) BrandColors.OnCta else TextPrimary,
+            style = NbrType.Button.copy(fontSize = 16.sp)
         )
     }
 }
@@ -307,44 +324,41 @@ private fun ReportResult(outcome: ReportOutcome, buttonModifier: Modifier, onDis
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(28.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(headline, color = Color.White, style = MaterialTheme.typography.titleLarge)
-            Text(detail, color = BrandColors.TextSecondary, style = MaterialTheme.typography.bodyMedium)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(headline, color = TextPrimary, style = NbrType.ItemTitle)
+            Text(detail, color = BrandColors.TextSecondary, style = NbrType.Secondary)
         }
         ReportButton("OK", primary = true, modifier = buttonModifier, onClick = onDismiss)
     }
 }
 
+/** Opção de motivo no estilo do protótipo 19: cartão de raio 14, ícone à esquerda, título e dica. */
 @Composable
 private fun ReportReasonRow(reason: MediaReportReason, modifier: Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
+            .clip(BrandShapes.Field)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) BrandColors.SurfaceAlt else BrandColors.Fill)
+            // Foco = estado "marcado" do protótipo: fundo accent a 8% e borda accent.
+            .background(if (focused) BrandColors.Accent.copy(alpha = 0x14 / 255f) else BrandColors.SurfaceAlt)
             .border(
-                if (focused) 3.dp else 1.dp,
-                if (focused) BrandColors.Accent else BrandColors.BorderSubtle,
-                RoundedCornerShape(6.dp)
+                if (focused) 2.dp else 1.dp,
+                if (focused) BrandColors.Accent else SheetStroke,
+                BrandShapes.Field
             )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(6.dp)).background(BrandColors.SurfaceAlt),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(reason.icon(), contentDescription = null, tint = BrandColors.Accent, modifier = Modifier.size(20.dp))
+        Icon(reason.icon(), contentDescription = null, tint = BrandColors.Accent, modifier = Modifier.size(20.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(reason.label, color = TextPrimary, style = NbrType.ItemTitle)
+            Text(reason.hint, color = BrandColors.TextMuted, style = NbrType.Caption)
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(reason.label, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(reason.hint, color = BrandColors.TextMuted, style = MaterialTheme.typography.bodySmall)
-        }
-        Icon(NbrIcons.ChevronRight, contentDescription = null, tint = BrandColors.TextMuted, modifier = Modifier.size(20.dp))
+        Icon(NbrIcons.ChevronRight, contentDescription = null, tint = BrandColors.TextMuted, modifier = Modifier.size(16.dp))
     }
 }
 

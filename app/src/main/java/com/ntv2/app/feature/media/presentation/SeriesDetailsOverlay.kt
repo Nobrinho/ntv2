@@ -63,6 +63,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.ntv2.app.feature.media.presentation.trailer.DetailsTrailerBackdrop
 import com.ntv2.app.core.ui.FocusGlideScope
 import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.core.ui.glideActive
@@ -89,7 +90,10 @@ internal fun SeriesDetailsOverlay(
     // (episódio, seguintes da série em ordem) — alimentam o autoplay encadeado no player.
     onPlayEpisode: (MediaItemSummary, List<MediaItemSummary>) -> Unit,
     onClose: () -> Unit,
-    onFilterClick: (SearchFilter) -> Unit = {}
+    onFilterClick: (SearchFilter) -> Unit = {},
+    // Configuração local + flag remota já combinadas (MediaLibraryUiState.trailerPreviewEnabled).
+    trailerPreviewEnabled: Boolean = false,
+    animationsEnabled: Boolean = true
 ) {
     BackHandler(enabled = true) { onClose() }
     val isTv = rememberAdaptiveLayoutInfo().useTvLayout
@@ -128,7 +132,7 @@ internal fun SeriesDetailsOverlay(
     ) {
         if (isTv) {
             // Fundo igual ao dos detalhes do filme: banner em tela cheia escurecido à esquerda e embaixo.
-            SeriesBackdrop(series, showCovers, Modifier.fillMaxSize())
+            SeriesBackdrop(series, showCovers, Modifier.fillMaxSize(), trailerPreviewEnabled = trailerPreviewEnabled, animationsEnabled = animationsEnabled)
             // ── TV: duas colunas com handshake de foco entre painéis (→ entra na lista, ← volta) ──
             val listFocus = remember { FocusRequester() }
             val episodes = current?.episodes.orEmpty()
@@ -229,7 +233,7 @@ internal fun SeriesDetailsOverlay(
                     Column(modifier = Modifier.fillMaxWidth()) {
                         // Banner com degradê até o fundo; o título fica abaixo, em destaque (não na barra).
                         Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 10f)) {
-                            SeriesBackdrop(series, showCovers, Modifier.fillMaxSize(), portrait = true)
+                            SeriesBackdrop(series, showCovers, Modifier.fillMaxSize(), portrait = true, trailerPreviewEnabled = trailerPreviewEnabled, animationsEnabled = animationsEnabled)
                             Box(
                                 modifier = Modifier
                                     .statusBarsPadding()
@@ -327,14 +331,32 @@ private fun SeriesFilterChips(
 
 /** Banner da série escurecido para o texto ler por cima (TV: esquerda e base; celular: base). */
 @Composable
-private fun SeriesBackdrop(series: SeriesSummary, showCovers: Boolean, modifier: Modifier, portrait: Boolean = false) {
+private fun SeriesBackdrop(
+    series: SeriesSummary,
+    showCovers: Boolean,
+    modifier: Modifier,
+    portrait: Boolean = false,
+    trailerPreviewEnabled: Boolean = false,
+    animationsEnabled: Boolean = true
+) {
     val hero = (series.backdropUrl ?: series.posterUrl)?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, if (portrait) "w780" else "w1280") }
+    var heroLoaded by remember(hero) { mutableStateOf(false) }
     Box(modifier = modifier) {
         if (showCovers && hero != null) {
             AsyncImage(
                 model = hero,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                onState = { if (it.isDone()) heroLoaded = true },
+                modifier = Modifier.fillMaxSize()
+            )
+            // Prévia do trailer por cima da imagem e por baixo do degradê; a imagem fica como reserva.
+            DetailsTrailerBackdrop(
+                trailerUrl = series.trailerUrl,
+                trailerPreviewEnabled = trailerPreviewEnabled,
+                showCovers = showCovers,
+                imageLoaded = heroLoaded,
+                animationsEnabled = animationsEnabled,
                 modifier = Modifier.fillMaxSize()
             )
         }

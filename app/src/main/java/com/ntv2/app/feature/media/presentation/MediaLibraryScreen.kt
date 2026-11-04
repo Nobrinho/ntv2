@@ -738,6 +738,7 @@ fun MediaLibraryScreen(
                 showCovers = state.showCovers,
                 lowRamPlaybackWarnings = lowRamPlaybackWarnings,
                 animationsEnabled = state.animationsEnabled,
+                trailerPreviewEnabled = state.trailerPreviewEnabled,
                 onPlay = {
                     // Não fecha os detalhes aqui: fechar antes da navegação (assíncrona) fazia a grid
                     // "piscar" no intervalo. O player cobre o overlay; ao voltar, os detalhes reabrem
@@ -947,6 +948,8 @@ fun MediaLibraryScreen(
                 series = series,
                 episodeProgress = state.episodeProgress,
                 showCovers = state.showCovers,
+                trailerPreviewEnabled = state.trailerPreviewEnabled,
+                animationsEnabled = state.animationsEnabled,
                 onPlayEpisode = { ep, following ->
                     viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                     viewModel.onAction(MediaLibraryAction.OpenEpisode(ep, following))

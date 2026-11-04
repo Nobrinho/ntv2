@@ -78,6 +78,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.ntv2.app.feature.media.presentation.trailer.DetailsTrailerBackdrop
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -118,7 +119,9 @@ internal fun MovieDetailsOverlay(
     onToggleFavorite: () -> Unit = {},
     recommendations: List<MediaCardUi> = emptyList(),
     onRecommendationClick: (MediaCardUi) -> Unit = {},
-    onFilterClick: (SearchFilter) -> Unit = {}
+    onFilterClick: (SearchFilter) -> Unit = {},
+    // Configuração local + flag remota já combinadas (MediaLibraryUiState.trailerPreviewEnabled).
+    trailerPreviewEnabled: Boolean = false
 ) {
     BackHandler(enabled = true) { onDismiss() }
     var reporting by remember { mutableStateOf(false) }
@@ -168,6 +171,15 @@ internal fun MovieDetailsOverlay(
                             onState = { backdropTiming(it); if (it.isDone()) backdropLoaded = true },
                             modifier = Modifier.fillMaxSize()
                                 .slideInFromRight(backdropLoaded, animationsEnabled)
+                        )
+                        // Prévia do trailer por cima da imagem e por baixo do degradê; a imagem fica como reserva.
+                        DetailsTrailerBackdrop(
+                            trailerUrl = details?.trailerUrl,
+                            trailerPreviewEnabled = trailerPreviewEnabled,
+                            showCovers = showCovers,
+                            imageLoaded = backdropLoaded,
+                            animationsEnabled = animationsEnabled,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                     Box(
@@ -221,6 +233,15 @@ internal fun MovieDetailsOverlay(
                             onState = { backdropTiming(it); if (it.isDone()) backdropLoaded = true },
                             modifier = Modifier.matchParentSize()
                                 .slideInFromRight(backdropLoaded, animationsEnabled)
+                        )
+                        // Prévia do trailer por cima da imagem e por baixo do degradê; a imagem fica como reserva.
+                        DetailsTrailerBackdrop(
+                            trailerUrl = details?.trailerUrl,
+                            trailerPreviewEnabled = trailerPreviewEnabled,
+                            showCovers = showCovers,
+                            imageLoaded = backdropLoaded,
+                            animationsEnabled = animationsEnabled,
+                            modifier = Modifier.matchParentSize()
                         )
                     }
                     // Escurece até onde vai a coluna de informações (80% da largura), para o texto continuar

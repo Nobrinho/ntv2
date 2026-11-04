@@ -1,70 +1,52 @@
 package com.ntv2.app.feature.auth.presentation
 
-import com.ntv2.app.core.ui.BrandBackdrop
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-
-import android.graphics.Bitmap
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
@@ -72,22 +54,23 @@ import com.ntv2.app.R
 import com.ntv2.app.core.ui.BrandButton
 import com.ntv2.app.core.ui.BrandButtonLabel
 import com.ntv2.app.core.ui.BrandButtonStyle
-import com.ntv2.app.core.ui.BrandShapes
-import com.ntv2.app.core.ui.BrandTextField
+import com.ntv2.app.core.ui.BrandColors
+import com.ntv2.app.core.ui.NbrType
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.feature.auth.domain.model.AuthStep
 import com.ntv2.app.feature.auth.domain.model.LoginMode
 import com.ntv2.app.feature.auth.presentation.state.LoginAction
 import com.ntv2.app.feature.auth.presentation.viewmodel.LoginViewModel
-import com.ntv2.app.core.ui.icons.NbrIcons
 
-private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
-private const val CARD_WIDTH_DP = 560
-// TV: cartão largo com QR à esquerda e telefone à direita (como no protótipo).
-private const val CARD_WIDTH_TV_DP = 900
+// Largura máxima da coluna do login fora do celular (tablet / TV nos passos de telefone, código e senha).
+private const val PAGE_MAX_WIDTH_DP = 480
 
 private enum class LoginStep { Qr, Phone, Code, Password, Success }
 
+/**
+ * Telas de entrada do protótipo: 05 Login QR, 06 Login telefone, 07 Login código,
+ * 08 Verificação em duas etapas (celular) e TV 05 Login QR. Ver docs/PROTOTIPO-ESPEC.md.
+ */
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel,
@@ -119,55 +102,52 @@ fun LoginScreen(
     BackHandler(enabled = step == LoginStep.Phone && adaptive.isTv) {
         viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode))
     }
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(com.ntv2.app.core.ui.BrandColors.Background)) {
-        BrandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Glow)
+    val banner = sessionEndedNotice && step != LoginStep.Success
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(BrandColors.Background)) {
         val compact = adaptive.usePhoneLayout || maxWidth < 600.dp
-        val logoGlow = if (compact) 124.dp else 120.dp
-        val logoSize = if (compact) 86.dp else 84.dp
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 // Teclado aberto (código / senha): o conteúdo sobe e rola, para o campo e o botão
-                // ficarem acima do teclado (antes o teclado cobria o botão de confirmar).
+                // ficarem acima do teclado.
                 .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = if (compact) 14.dp else 16.dp, vertical = if (compact) 20.dp else 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 12.dp, Alignment.CenterVertically)
         ) {
-            // Logo com glow discreto (azul NBR) por trás.
-            Box(contentAlignment = Alignment.Center) {
-                Box(
-                    modifier = Modifier
-                        .size(logoGlow)
-                        .background(
-                            Brush.radialGradient(listOf(Color(0x2666D9FF), Color(0x00000000)))
-                        )
-                )
-                Image(
-                    painter = painterResource(R.drawable.ic_brand_logo),
-                    contentDescription = "NBR Play",
-                    modifier = Modifier.size(logoSize)
-                )
-            }
-
-            if (sessionEndedNotice && step != LoginStep.Success) {
-                SessionEndedBanner(compact = compact)
-            }
-
-            Card(compact = compact) {
-                when (step) {
-                LoginStep.Success -> SuccessStep()
-                LoginStep.Password -> PasswordStep(
-                    value = state.password,
+            val viewport = maxHeight
+            when (step) {
+                LoginStep.Qr -> if (compact) {
+                    PhoneQrStep(
+                        viewport = viewport,
+                        banner = banner,
+                        payload = state.qrCodePayload,
+                        error = state.errorMessage,
+                        onUsePhone = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.Phone)) }
+                    )
+                } else {
+                    TvQrStep(
+                        banner = banner,
+                        payload = state.qrCodePayload,
+                        error = state.errorMessage,
+                        onUsePhone = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.Phone)) }
+                    )
+                }
+                LoginStep.Phone -> PhoneStep(
+                    viewport = viewport,
+                    banner = banner,
+                    value = state.phoneNumber,
                     loading = state.isLoading,
                     error = state.errorMessage,
-                    onChange = { viewModel.onAction(LoginAction.UpdatePassword(it)) },
-                    onSubmit = { viewModel.onAction(LoginAction.SubmitPassword) }
+                    // Nunca foca automaticamente: o teclado/cursor só abre ao tocar no campo.
+                    autoFocus = false,
+                    onChange = { viewModel.onAction(LoginAction.UpdatePhone(it)) },
+                    onSubmit = { viewModel.onAction(LoginAction.SubmitPhone) },
+                    onUseQr = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }
                 )
                 LoginStep.Code -> CodeStep(
+                    viewport = viewport,
+                    banner = banner,
                     phone = state.phoneNumber,
                     value = state.code,
                     loading = state.isLoading,
@@ -178,234 +158,172 @@ fun LoginScreen(
                     onResend = { viewModel.onAction(LoginAction.ResendCode) },
                     onBack = { viewModel.onAction(LoginAction.EditPhone) }
                 )
-                LoginStep.Phone -> PhoneStep(
-                    value = state.phoneNumber,
+                LoginStep.Password -> PasswordStep(
+                    viewport = viewport,
+                    banner = banner,
+                    value = state.password,
                     loading = state.isLoading,
                     error = state.errorMessage,
-                    // Nunca foca automaticamente: o teclado/cursor só abre ao tocar no campo.
-                    autoFocus = false,
-                    onChange = { viewModel.onAction(LoginAction.UpdatePhone(it)) },
-                    onSubmit = { viewModel.onAction(LoginAction.SubmitPhone) },
-                    onUseQr = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.QrCode)) }
+                    onChange = { viewModel.onAction(LoginAction.UpdatePassword(it)) },
+                    onSubmit = { viewModel.onAction(LoginAction.SubmitPassword) }
                 )
-                LoginStep.Qr -> QrStep(
-                    compact = compact,
-                    payload = state.qrCodePayload,
-                    error = state.errorMessage,
-                    onUsePhone = { viewModel.onAction(LoginAction.SwitchMode(LoginMode.Phone)) }
-                )
+                LoginStep.Success -> LoginPage(viewport = viewport, banner = false, onBack = null) {
+                    LoginSuccess(modifier = Modifier.padding(top = 48.dp))
                 }
             }
         }
     }
 }
 
+/**
+ * Página de entrada do celular: padding 0/24/24/24, gap 20, topo de entrada; [actions] (botões)
+ * ficam presos embaixo (coluna gap 12) e tudo rola quando não cabe (teclado aberto).
+ */
 @Composable
-private fun SessionEndedBanner(compact: Boolean) {
-    Row(
-        modifier = Modifier
-            .widthIn(max = CARD_WIDTH_DP.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(Color(0x26FFBE55))
-            .border(1.dp, Color(0x66FFBE55), RoundedCornerShape(6.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = NbrIcons.Info,
-            contentDescription = null,
-            tint = com.ntv2.app.core.ui.BrandColors.Warning,
-            modifier = Modifier.size(if (compact) 20.dp else 22.dp)
-        )
-        Text(
-            text = "Sua sessão do Telegram foi encerrada em outro dispositivo. Entre novamente para continuar.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFFFFE3B3)
-        )
-    }
-}
-
-@Composable
-private fun Card(compact: Boolean, content: @Composable () -> Unit) {
+private fun LoginPage(
+    viewport: androidx.compose.ui.unit.Dp,
+    banner: Boolean,
+    onBack: (() -> Unit)?,
+    actions: (@Composable ColumnScope.() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
     Column(
-        modifier = Modifier
-            .widthIn(max = if (compact) CARD_WIDTH_DP.dp else CARD_WIDTH_TV_DP.dp)
-            .fillMaxWidth()
-            .clip(BrandShapes.Lg)
-            .background(com.ntv2.app.core.ui.BrandColors.Surface)
-            .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, BrandShapes.Lg)
-            .padding(horizontal = if (compact) 18.dp else 28.dp, vertical = if (compact) 18.dp else 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) { content() }
-}
-
-@Composable
-private fun QrStep(compact: Boolean, payload: String?, error: String?, onUsePhone: () -> Unit) {
-    val phoneFocus = remember { FocusRequester() }
-    // Também ao cancelar o "Fechar o aplicativo?" (sinal global), o foco volta ao botão.
-    val restoreSignal = com.ntv2.app.core.ui.LocalFocusRestoreSignal.current
-    LaunchedEffect(restoreSignal) { runCatching { phoneFocus.requestFocus() } }
-
-    Text(
-        "Entre na sua conta",
-        style = MaterialTheme.typography.headlineSmall,
-        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-        color = Color.White
-    )
-    if (compact) {
-        Text(
-            "Método 1 — QR Code",
-            style = MaterialTheme.typography.titleSmall,
-            color = BRAND,
-            textAlign = TextAlign.Center
-        )
-    }
-
-    val qr = remember(payload) { payload?.let { generateQrBitmap(it, 400) } }
-    val qrBoxSize = if (compact) 184.dp else 200.dp
-    val qrImageSize = if (compact) 164.dp else 180.dp
-    val instructions: @Composable (Modifier) -> Unit = { modifier ->
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Column(
-            modifier = modifier,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                "Escaneie com o Telegram no seu celular:",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White
-            )
-            StepLine("1", "Abra o Telegram")
-            StepLine("2", "Ajustes → Dispositivos")
-            StepLine("3", "Vincular dispositivo (Scan QR)")
-            StepLine("4", "Aponte a câmera para este código")
-            Text(
-                if (qr != null) "● Aguardando conexão…" else "Gerando QR…",
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (qr != null) BRAND else com.ntv2.app.core.ui.BrandColors.TextMuted
-            )
-        }
-    }
-    val qrContent: @Composable () -> Unit = {
-        Box(
             modifier = Modifier
-                .size(qrBoxSize)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color.White),
-            contentAlignment = Alignment.Center
+                .widthIn(max = PAGE_MAX_WIDTH_DP.dp)
+                .fillMaxWidth()
+                .heightIn(min = viewport)
+                .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            if (qr != null) {
-                Image(qr.asImageBitmap(), contentDescription = "QR Code", modifier = Modifier.size(qrImageSize))
-            } else {
-                CircularProgressIndicator(color = Color.Black)
+            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                LoginTopBar(onBack)
+                if (banner) LoginSessionEndedBanner()
+                content()
+            }
+            if (actions != null) {
+                Column(
+                    modifier = Modifier.padding(top = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    content = actions
+                )
             }
         }
     }
+}
 
-    if (compact) {
+private val QR_STEPS = listOf(
+    "Abra o Telegram",
+    "Ajustes → Dispositivos",
+    "Vincular dispositivo (Scan QR)",
+    "Aponte a câmera para este código"
+)
+
+/** Pede o foco do botão ao abrir o QR e ao cancelar o "Fechar o aplicativo?" (sinal global). */
+@Composable
+private fun rememberRestoredFocus(): FocusRequester {
+    val focus = remember { FocusRequester() }
+    val restoreSignal = com.ntv2.app.core.ui.LocalFocusRestoreSignal.current
+    LaunchedEffect(restoreSignal) { runCatching { focus.requestFocus() } }
+    return focus
+}
+
+/** 05 Login QR (celular). */
+@Composable
+private fun PhoneQrStep(
+    viewport: androidx.compose.ui.unit.Dp,
+    banner: Boolean,
+    payload: String?,
+    error: String?,
+    onUsePhone: () -> Unit
+) {
+    val phoneFocus = rememberRestoredFocus()
+    val qr = remember(payload) { payload?.let { generateQrBitmap(it, 400)?.asImageBitmap() } }
+    LoginPage(viewport = viewport, banner = banner, onBack = null) {
+        LoginTitleBlock("Entre na sua conta", "Escaneie com o Telegram no seu celular:")
+        LoginMethodLabel("Método 1 — QR Code")
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            LoginQrCard(qr, size = 220.dp, radius = 20.dp, qrSize = 170.dp)
+            LoginQrStatus(ready = qr != null)
+        }
+        error?.let { LoginError(it, Modifier.align(Alignment.CenterHorizontally)) }
+        LoginStepsBox(QR_STEPS)
+        LoginOrDivider()
+        Text(
+            "Método 2 — Entrar com o número de telefone",
+            style = NbrType.Secondary,
+            color = BrandColors.TextMuted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        LoginButton(
+            modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
+            primary = false,
+            onClick = onUsePhone
+        ) { BrandButtonLabel("Entrar com telefone") }
+    }
+}
+
+/** TV 05 Login QR: padding 48/60, gap 60; texto à esquerda, QR 240 à direita. */
+@Composable
+private fun TvQrStep(banner: Boolean, payload: String?, error: String?, onUsePhone: () -> Unit) {
+    val phoneFocus = rememberRestoredFocus()
+    val qr = remember(payload) { payload?.let { generateQrBitmap(it, 400)?.asImageBitmap() } }
+    Row(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 60.dp, vertical = 48.dp),
+        horizontalArrangement = Arrangement.spacedBy(60.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            qrContent()
-            instructions(Modifier.fillMaxWidth())
-        }
-    } else {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min),
-            horizontalArrangement = Arrangement.spacedBy(28.dp)
-        ) {
-            Column(modifier = Modifier.weight(1.4f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                SectionLabel("Método 1 · QR Code (recomendado)", BRAND)
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    qrContent()
-                    instructions(Modifier.weight(1f))
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .fillMaxHeight()
-                    .background(com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+            Image(
+                painter = painterResource(R.drawable.ic_brand_logo),
+                contentDescription = "NBR Play",
+                modifier = Modifier.size(width = 60.dp, height = 48.dp)
             )
-            Column(
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)
-            ) {
-                SectionLabel("Método 2 · Número de telefone", com.ntv2.app.core.ui.BrandColors.TextSecondary)
-                Text(
-                    "Prefere receber um código? Entre com o seu número do Telegram.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary
-                )
-                LoginButton(
-                    modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
-                    primary = false,
-                    onClick = onUsePhone
-                ) {
-                    BrandButtonLabel("Entrar com telefone")
-                }
+            if (banner) LoginSessionEndedBanner()
+            LoginTitleBlock("Entre na sua conta", subtitle = null, tv = true)
+            LoginMethodLabel("Método 1 · QR Code (recomendado)")
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                QR_STEPS.forEachIndexed { i, s -> LoginStepLine("${i + 1}", s, tv = true) }
             }
+            error?.let { LoginError(it) }
+            Text(
+                "Método 2 · Prefere receber um código? Entre com o seu número do Telegram.",
+                style = NbrType.Caption.copy(fontSize = 11.sp, lineHeight = (11 * 1.21f).sp),
+                color = BrandColors.TextMuted
+            )
+            LoginButton(
+                modifier = Modifier.width(220.dp).focusRequester(phoneFocus),
+                primary = false,
+                onClick = onUsePhone
+            ) { BrandButtonLabel("Entrar com telefone") }
         }
-        error?.let { ErrorText(it) }
-        return
-    }
-
-    error?.let { ErrorText(it) }
-
-    Divider("OU")
-
-    Text(
-        "Método 2 — Entrar com o número de telefone",
-        style = MaterialTheme.typography.bodySmall,
-        color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-        textAlign = TextAlign.Center
-    )
-    LoginButton(
-        modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
-        primary = false,
-        onClick = onUsePhone
-    ) {
-        BrandButtonLabel("Entrar com telefone")
-    }
-}
-
-/** Rótulo de método no login da TV (caixa alta, espaçado). */
-@Composable
-private fun SectionLabel(text: String, color: Color) {
-    Text(
-        text.uppercase(),
-        color = color,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-        letterSpacing = androidx.compose.ui.unit.TextUnit(1.2f, androidx.compose.ui.unit.TextUnitType.Sp)
-    )
-}
-
-@Composable
-private fun StepLine(number: String, text: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(Color(0x3366D9FF)),
-            contentAlignment = Alignment.Center
+        Column(
+            modifier = Modifier.width(280.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(number, color = BRAND, style = MaterialTheme.typography.labelMedium)
+            LoginQrCard(qr, size = 240.dp, radius = 16.dp, qrSize = 190.dp)
+            LoginQrStatus(ready = qr != null, tv = true)
         }
-        Text(text, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
+/** 06 Login telefone. */
 @Composable
 private fun PhoneStep(
+    viewport: androidx.compose.ui.unit.Dp,
+    banner: Boolean,
     value: String,
     loading: Boolean,
     error: String?,
@@ -417,42 +335,47 @@ private fun PhoneStep(
     val focus = remember { FocusRequester() }
     LaunchedEffect(autoFocus) { if (autoFocus) runCatching { focus.requestFocus() } }
 
-    Text("Entre na sua conta", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = Color.White)
-    Text(
-        "Método 1 — Número de telefone",
-        style = MaterialTheme.typography.titleSmall,
-        color = BRAND,
-        textAlign = TextAlign.Center
-    )
-    Text("Número do Brasil (+55) — informe DDD e celular", style = MaterialTheme.typography.bodyMedium, color = com.ntv2.app.core.ui.BrandColors.TextSecondary)
-    BrandTextField(
-        modifier = Modifier.fillMaxWidth().focusRequester(focus).dpadVerticalExit(),
-        value = value,
-        onValueChange = onChange,
-        isError = error != null,
-        prefix = "+55",
-        placeholder = "(11) 99999-9999",
-        textStyle = MaterialTheme.typography.bodyLarge,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done)
-    )
-    error?.let { ErrorText(it) }
-    LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
-        BrandButtonLabel(if (loading) "Enviando…" else "Continuar")
+    LoginPage(
+        viewport = viewport,
+        banner = banner,
+        onBack = null,
+        actions = {
+            LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
+                BrandButtonLabel(if (loading) "Enviando…" else "Continuar")
+            }
+            LoginOrDivider()
+            Text(
+                "Método 2 — Entrar com QR Code",
+                style = NbrType.Secondary,
+                color = BrandColors.TextMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            LoginButton(modifier = Modifier.fillMaxWidth(), primary = false, onClick = onUseQr) {
+                BrandButtonLabel("Entrar com QR Code")
+            }
+        }
+    ) {
+        LoginTitleBlock("Entre com o seu número", "Número do Brasil (+55) — informe DDD e celular")
+        LoginMethodLabel("Método 1 — Número de telefone")
+        LoginTextField(
+            modifier = Modifier.fillMaxWidth().focusRequester(focus).dpadVerticalExit(),
+            value = value,
+            onValueChange = onChange,
+            isError = error != null,
+            prefix = "+55",
+            placeholder = "(11) 99999-9999",
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done)
+        )
+        error?.let { LoginError(it) }
     }
-
-    Divider("OU")
-
-    Text(
-        "Método 2 — Entrar com QR Code",
-        style = MaterialTheme.typography.bodySmall,
-        color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-        textAlign = TextAlign.Center
-    )
-    LoginButton(modifier = Modifier.fillMaxWidth(), primary = false, onClick = onUseQr) { BrandButtonLabel("Entrar com QR Code") }
 }
 
+/** 07 Login código. O voltar (código → telefone) fica no chevron do topo. */
 @Composable
 private fun CodeStep(
+    viewport: androidx.compose.ui.unit.Dp,
+    banner: Boolean,
     phone: String,
     value: String,
     loading: Boolean,
@@ -466,37 +389,40 @@ private fun CodeStep(
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
-    Text("Confirme o código", style = MaterialTheme.typography.headlineSmall, color = Color.White)
-    Text(
-        "Enviamos um código para ${maskPhone(phone)}",
-        style = MaterialTheme.typography.bodyMedium,
-        color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-        textAlign = TextAlign.Center
-    )
-    BrandTextField(
-        modifier = Modifier.fillMaxWidth().focusRequester(focus).dpadVerticalExit(),
-        value = value,
-        onValueChange = onChange,
-        isError = error != null,
-        placeholder = "_ _ _ _ _",
-        textStyle = MaterialTheme.typography.headlineSmall,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done)
-    )
-    error?.let { ErrorText(it) }
-    LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
-        BrandButtonLabel(if (loading) "Validando…" else "Confirmar")
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        val canResend = resendCooldownSeconds <= 0
-        LoginButton(onClick = onResend, enabled = canResend, primary = false) {
-            BrandButtonLabel(if (canResend) "Reenviar código" else "Reenviar em ${resendCooldownSeconds}s")
+    LoginPage(
+        viewport = viewport,
+        banner = banner,
+        onBack = onBack,
+        actions = {
+            LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
+                BrandButtonLabel(if (loading) "Validando…" else "Confirmar")
+            }
         }
-        LoginButton(onClick = onBack, primary = false) { BrandButtonLabel("Voltar") }
+    ) {
+        LoginTitleBlock("Confirme o código", "Enviamos um código para ${maskPhone(phone)}")
+        LoginCodeField(
+            modifier = Modifier.fillMaxWidth().focusRequester(focus).dpadVerticalExit(),
+            value = value,
+            onValueChange = onChange,
+            isError = error != null,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done)
+        )
+        error?.let { LoginError(it, Modifier.align(Alignment.CenterHorizontally)) }
+        val canResend = resendCooldownSeconds <= 0
+        LoginTextLink(
+            text = if (canResend) "Reenviar código" else "Reenviar em ${resendCooldownSeconds}s",
+            enabled = canResend,
+            onClick = onResend,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
     }
 }
 
+/** 08 Verificação em duas etapas. */
 @Composable
 private fun PasswordStep(
+    viewport: androidx.compose.ui.unit.Dp,
+    banner: Boolean,
     value: String,
     loading: Boolean,
     error: String?,
@@ -506,56 +432,28 @@ private fun PasswordStep(
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
-    Text("Verificação em duas etapas", style = MaterialTheme.typography.headlineSmall, color = Color.White)
-    Text(
-        "Digite a senha da sua conta Telegram",
-        style = MaterialTheme.typography.bodyMedium,
-        color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-        textAlign = TextAlign.Center
-    )
-    BrandTextField(
-        modifier = Modifier.fillMaxWidth().focusRequester(focus).dpadVerticalExit(),
-        value = value,
-        onValueChange = onChange,
-        isError = error != null,
-        visualTransformation = PasswordVisualTransformation(),
-        textStyle = MaterialTheme.typography.bodyLarge,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done)
-    )
-    error?.let { ErrorText(it) }
-    LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
-        BrandButtonLabel(if (loading) "Entrando…" else "Entrar")
-    }
-}
-
-@Composable
-private fun SuccessStep() {
-    Box(
-        modifier = Modifier.size(72.dp).clip(CircleShape).background(BRAND),
-        contentAlignment = Alignment.Center
+    LoginPage(
+        viewport = viewport,
+        banner = banner,
+        onBack = null,
+        actions = {
+            LoginButton(modifier = Modifier.fillMaxWidth(), onClick = onSubmit) {
+                BrandButtonLabel(if (loading) "Entrando…" else "Entrar")
+            }
+        }
     ) {
-        Icon(NbrIcons.Check, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(44.dp))
+        LoginTitleBlock("Verificação em duas etapas", "Digite a senha da sua conta Telegram")
+        LoginTextField(
+            modifier = Modifier.fillMaxWidth().focusRequester(focus).dpadVerticalExit(),
+            value = value,
+            onValueChange = onChange,
+            isError = error != null,
+            textStyle = LoginPasswordStyle,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done)
+        )
+        error?.let { LoginError(it) }
     }
-    Text("Login realizado", style = MaterialTheme.typography.headlineSmall, color = Color.White)
-    Text("Preparando seu conteúdo…", style = MaterialTheme.typography.bodyMedium, color = com.ntv2.app.core.ui.BrandColors.TextSecondary)
-}
-
-@Composable
-private fun Divider(label: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Box(modifier = Modifier.weight(1f).height(1.dp).background(com.ntv2.app.core.ui.BrandColors.Border))
-        Text(label, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.labelMedium)
-        Box(modifier = Modifier.weight(1f).height(1.dp).background(com.ntv2.app.core.ui.BrandColors.Border))
-    }
-}
-
-@Composable
-private fun ErrorText(message: String) {
-    Text(message, color = com.ntv2.app.core.ui.BrandColors.Error, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
 }
 
 private fun maskPhone(phone: String): String {
@@ -578,7 +476,7 @@ private fun generateQrBitmap(content: String, size: Int): Bitmap? {
     }.getOrNull()
 }
 
-// Botão do login: componente de marca (foco por escala + contorno + glow).
+// Botão do login: componente de marca (pílula; foco por escala + contorno + glow).
 @Composable
 private fun LoginButton(
     onClick: () -> Unit,

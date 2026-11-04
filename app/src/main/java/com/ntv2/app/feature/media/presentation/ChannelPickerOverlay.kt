@@ -9,45 +9,43 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.ntv2.app.core.ui.trapFocus
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.feature.media.presentation.state.ChannelChipUi
 import com.ntv2.app.core.ui.icons.NbrIcons
+import com.ntv2.app.core.ui.BrandButton
+import com.ntv2.app.core.ui.BrandButtonLabel
+import com.ntv2.app.core.ui.BrandButtonStyle
+import com.ntv2.app.core.ui.BrandColors
+import com.ntv2.app.core.ui.BrandShapes
+import com.ntv2.app.core.ui.FocusGlideScope
+import com.ntv2.app.core.ui.NbrType
+import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
+import com.ntv2.app.feature.channels.presentation.ChannelRowCard
+import com.ntv2.app.feature.channels.presentation.ChannelText
 
 // Seletor de canal ativo.
 
@@ -91,121 +89,62 @@ internal fun ChannelPickerOverlay(
                     onClick = {}
                 )
         )
+        // Painel no estilo da Seleção de canais: surface, raio 24, borda sutil, padding 24.
+        val tv = rememberAdaptiveLayoutInfo().useTvLayout
+        val panelShape = BrandShapes.Xl
         Column(
             modifier = Modifier
                 // widthIn antes do fillMaxWidth: na ordem inversa o limite era ignorado na TV.
-                .widthIn(max = 680.dp)
+                .widthIn(max = if (tv) 480.dp else 680.dp)
                 .fillMaxWidth(0.92f)
                 .padding(vertical = 24.dp)
                 .trapFocus()
-                .clip(RoundedCornerShape(6.dp))
-                .background(com.ntv2.app.core.ui.BrandColors.Surface)
-                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(8.dp))
+                .clip(panelShape)
+                .background(BrandColors.Surface)
+                .border(1.dp, BrandColors.BorderSubtle, panelShape)
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Escolher canal", style = MaterialTheme.typography.titleLarge, color = Color.White)
+            Text("Escolher canal", style = NbrType.SheetTitle, color = ChannelText)
             Text(
                 text = "Selecione o canal usado para listar os vídeos na biblioteca.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xCCFFFFFF)
+                style = NbrType.Body,
+                color = BrandColors.TextSecondary
             )
             // Lista rolável (muitos canais não cabem na tela); foco inicial no canal ativo.
             val focusIndex = channels.indexOfFirst { it.id == activeId }.coerceAtLeast(0)
-            Column(
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .verticalScroll(rememberScrollState())
-                    .focusGroup(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                channels.forEachIndexed { index, ch ->
-                    val selected = ch.id == activeId
-                    var focused by remember { mutableStateOf(false) }
-                    val mod = if (index == focusIndex) Modifier.focusRequester(firstFocus) else Modifier
-                    val accent = com.ntv2.app.core.ui.BrandColors.Accent
-                    Row(
-                        modifier = mod
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
-                            .onFocusChanged { focused = it.isFocused }
-                            .clickable { onSelect(ch.id) }
-                            .background(
-                                when {
-                                    focused -> com.ntv2.app.core.ui.BrandColors.SurfaceAlt
-                                    selected -> Color(0x1F66D9FF)
-                                    else -> com.ntv2.app.core.ui.BrandColors.Fill
-                                }
-                            )
-                            .border(
-                                // Foco com anel azul de 3dp, igual ao resto do app (antes era borda branca).
-                                width = if (focused) 3.dp else if (selected) 2.dp else 1.dp,
-                                color = when {
-                                    focused -> accent
-                                    selected -> accent
-                                    else -> com.ntv2.app.core.ui.BrandColors.Border
-                                },
-                                shape = RoundedCornerShape(6.dp)
-                            )
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Avatar real do canal quando disponível; fallback: inicial colorida por título.
-                        if (ch.avatarPath != null) {
-                            AsyncImage(
-                                model = ch.avatarPath,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(colorForTitle(ch.title))
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(colorForTitle(ch.title)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(initialFor(ch.title), color = Color.White, style = MaterialTheme.typography.titleMedium)
+            FocusGlideScope(Modifier.weight(1f, fill = false)) {
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .focusGroup()
+                        // Folga para o anel de foco não ser cortado nas bordas da lista.
+                        .padding(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    channels.forEachIndexed { index, ch ->
+                        val selected = ch.id == activeId
+                        ChannelRowCard(
+                            title = ch.title,
+                            avatarPath = ch.avatarPath,
+                            selected = selected,
+                            onClick = { onSelect(ch.id) },
+                            modifier = if (index == focusIndex) Modifier.focusRequester(firstFocus) else Modifier
+                        ) {
+                            if (selected) {
+                                Icon(NbrIcons.CircleCheck, contentDescription = null, tint = BrandColors.Accent, modifier = Modifier.size(22.dp))
                             }
-                        }
-                        Text(
-                            text = ch.title,
-                            color = if (selected) accent else Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (selected) {
-                            Icon(NbrIcons.CircleCheck, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
             }
-            var closeFocused by remember { mutableStateOf(false) }
-            Row(
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .clip(RoundedCornerShape(6.dp))
-                    .onFocusChanged { closeFocused = it.isFocused }
-                    .clickable(onClick = onDismiss)
-                    .background(if (closeFocused) com.ntv2.app.core.ui.BrandColors.SurfaceAlt else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-                    .border(
-                        width = if (closeFocused) 3.dp else 1.dp,
-                        color = if (closeFocused) com.ntv2.app.core.ui.BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.Border,
-                        shape = RoundedCornerShape(6.dp)
-                    )
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            BrandButton(
+                onClick = onDismiss,
+                style = BrandButtonStyle.Secondary,
+                modifier = Modifier.align(Alignment.End)
             ) {
-                Icon(NbrIcons.X, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                Text("Fechar", color = Color.White, style = MaterialTheme.typography.titleSmall)
+                Icon(NbrIcons.X, contentDescription = null, tint = ChannelText, modifier = Modifier.size(18.dp))
+                BrandButtonLabel("Fechar")
             }
         }
     }

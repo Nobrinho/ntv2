@@ -220,7 +220,7 @@ fun PlaybackScreen(
                 }
                 WindowCompat.getInsetsController(window, view)
                     .show(WindowInsetsCompat.Type.systemBars())
-                WindowCompat.setDecorFitsSystemWindows(window, true)
+                // O app inteiro é edge-to-edge (MainActivity): ao sair do player não volta a encaixar nas barras.
             }
         }
     }

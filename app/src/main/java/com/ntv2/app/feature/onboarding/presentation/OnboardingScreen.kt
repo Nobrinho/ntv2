@@ -2,16 +2,11 @@ package com.ntv2.app.feature.onboarding.presentation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,20 +19,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -45,38 +35,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.ntv2.app.R
+import androidx.compose.ui.unit.sp
 import com.ntv2.app.core.ui.AdaptiveLayoutInfo
-import com.ntv2.app.core.ui.BrandBackdropKind
 import com.ntv2.app.core.ui.BrandButton
 import com.ntv2.app.core.ui.BrandButtonLabel
 import com.ntv2.app.core.ui.BrandButtonStyle
 import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.LocalAnimationsEnabled
-import com.ntv2.app.core.ui.brandBackdrop
+import com.ntv2.app.core.ui.NbrType
+import com.ntv2.app.core.ui.icons.NbrIcons
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import kotlinx.coroutines.launch
-import com.ntv2.app.core.ui.icons.NbrIcons
 
 private data class OnboardingPage(
     val title: String,
     val body: String,
-    val accent: Color,
     /** null = página de boas-vindas (mostra o logo no hero). */
     val icon: ImageVector?
 )
@@ -85,20 +66,17 @@ private fun onboardingPages(isTv: Boolean) = listOf(
     OnboardingPage(
         title = "Bem-vindo ao NBR Play",
         body = "Seus filmes e séries em um só lugar, no celular e na TV.",
-        accent = BrandColors.Accent,
         icon = null
     ),
     OnboardingPage(
         title = "Seus canais viram catálogo",
         body = "Escolha seus canais do Telegram e o NBR Play organiza os vídeos com capas, sinopse e elenco.",
-        accent = BrandColors.Violet,
         icon = NbrIcons.Clapperboard
     ),
     OnboardingPage(
         title = "Continue de onde parou",
         body = "Progresso, favoritos e histórico salvos para você voltar ao que estava assistindo.",
-        accent = BrandColors.Rose,
-        icon = NbrIcons.History
+        icon = NbrIcons.Play
     ),
     OnboardingPage(
         title = "Entre com o seu Telegram",
@@ -108,14 +86,14 @@ private fun onboardingPages(isTv: Boolean) = listOf(
         } else {
             "No próximo passo, entre com o seu número do Telegram. Sua conta fica só neste aparelho."
         },
-        accent = BrandColors.Cyan,
-        icon = NbrIcons.Lock
+        icon = NbrIcons.Send
     )
 )
 
 /**
- * Introdução da primeira abertura (antes do login). Carrossel com hero: phone = hero em cima e texto
- * embaixo com swipe; TV/tela larga = duas colunas, navegação por D-pad (←/→ trocam de página).
+ * Introdução da primeira abertura (antes do login), no visual do protótipo (02–04 / TV 02–04).
+ * Celular: logo + "Pular" no topo, órbita e texto deslizáveis, pontos e botão no rodapé.
+ * TV/tela larga: texto e ações à esquerda, órbita à direita; ←/→ do D-pad trocam de página.
  * [onFinished] é chamado em "Começar" e em "Pular".
  */
 @Composable
@@ -153,7 +131,6 @@ fun OnboardingScreen(onFinished: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(BrandColors.Background)
-            .brandBackdrop(BrandBackdropKind.Glow)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
@@ -187,11 +164,12 @@ fun OnboardingScreen(onFinished: () -> Unit) {
     }
 }
 
+/** Celular (02–04): padding 8/24/32/24, topo de 44, órbita 240/120/48, texto 28 + 16, pontos e botão de 52. */
 @Composable
 private fun PhoneOnboarding(
     pages: List<OnboardingPage>,
     page: Int,
-    pagerState: androidx.compose.foundation.pager.PagerState,
+    pagerState: PagerState,
     onNext: () -> Unit,
     onSkip: () -> Unit,
     onDot: (Int) -> Unit
@@ -201,16 +179,18 @@ private fun PhoneOnboarding(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
+            .padding(top = 8.dp, bottom = 32.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 8.dp),
+                .height(44.dp)
+                .padding(horizontal = 24.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            if (page < pages.lastIndex) SkipButton(onSkip)
+            OnboardingLogo(width = 56.dp, height = 44.dp)
+            if (page < pages.lastIndex) SkipText(onSkip)
         }
         HorizontalPager(
             state = pagerState,
@@ -222,112 +202,118 @@ private fun PhoneOnboarding(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(horizontal = 24.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .weight(1.15f)
+                        .weight(1f)
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center
-                ) { OnboardingHero(item, size = 260.dp) }
-                Column(
-                    modifier = Modifier.weight(0.85f),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    PageTexts(item, align = TextAlign.Center)
-                }
+                ) { OnboardingOrbit(item.icon, orbit = 240.dp, core = 120.dp, iconSize = 48.dp) }
+                PageTexts(item, tv = false)
             }
         }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            PageDots(count = pages.size, current = page, accent = pages[page].accent, onDot = onDot)
-            BrandButton(onClick = onNext, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 24.dp)) {
+            Box(Modifier.padding(vertical = 24.dp)) {
+                OnboardingDots(
+                    count = pages.size, current = page, dot = 8.dp, activeWidth = 24.dp, gap = 6.dp, onDot = onDot
+                )
+            }
+            BrandButton(
+                onClick = onNext,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+            ) {
                 PrimaryLabel(isLast = page == pages.lastIndex)
             }
         }
     }
 }
 
+/**
+ * TV/tela larga (TV 02–04, protótipo ÷ 2): padding 48 e gap 48; à esquerda logo, mensagem e rodapé
+ * (pontos, "Avançar" 180×36 + "Pular" 100×36, dica); à direita a órbita 280/130/55.
+ */
 @Composable
 private fun WideOnboarding(
     adaptive: AdaptiveLayoutInfo,
     pages: List<OnboardingPage>,
     page: Int,
-    pagerState: androidx.compose.foundation.pager.PagerState,
+    pagerState: PagerState,
     primaryFocus: FocusRequester,
     onNext: () -> Unit,
     onSkip: () -> Unit,
     onDot: (Int) -> Unit
 ) {
     val animations = LocalAnimationsEnabled.current
-    val heroSize = (adaptive.heightDp * 0.55f).coerceIn(220f, 420f).dp
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .then(
-                if (adaptive.isTv) {
-                    Modifier.padding(horizontal = adaptive.tvSafeHorizontal, vertical = adaptive.tvSafeVertical)
-                } else {
-                    Modifier.statusBarsPadding().navigationBarsPadding().padding(horizontal = 32.dp, vertical = 16.dp)
-                }
-            ),
+            .then(if (adaptive.isTv) Modifier else Modifier.statusBarsPadding().navigationBarsPadding())
+            .padding(48.dp),
+        horizontalArrangement = Arrangement.spacedBy(48.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Hero: no toque continua deslizável; na TV a troca vem do D-pad/botões.
-        HorizontalPager(
-            state = pagerState,
-            userScrollEnabled = !adaptive.isTv,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-        ) { index ->
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                OnboardingHero(pages[index], size = heroSize)
-            }
-        }
-        Spacer(Modifier.width(48.dp))
         Column(
             modifier = Modifier
                 .weight(1f)
-                .widthIn(max = 520.dp),
-            verticalArrangement = Arrangement.spacedBy(28.dp)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            PageDots(count = pages.size, current = page, accent = pages[page].accent, onDot = onDot)
-            // Altura fixa do texto: pontos e botões não "pulam" entre páginas de textos diferentes.
+            OnboardingLogo(width = 60.dp, height = 48.dp)
             AnimatedContent(
                 targetState = page,
-                modifier = Modifier.height(200.dp),
-                contentAlignment = Alignment.TopStart,
+                contentAlignment = Alignment.CenterStart,
                 transitionSpec = {
                     if (animations) fadeIn(tween(260)) togetherWith fadeOut(tween(180))
                     else fadeIn(tween(0)) togetherWith fadeOut(tween(0))
                 },
                 label = "onboardingText"
             ) { index ->
-                Column { PageTexts(pages[index], align = TextAlign.Start, large = true) }
+                Column { PageTexts(pages[index], tv = true) }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                BrandButton(onClick = onNext, modifier = Modifier.focusRequester(primaryFocus)) {
-                    PrimaryLabel(isLast = page == pages.lastIndex)
-                }
-                if (page < pages.lastIndex) {
-                    BrandButton(onClick = onSkip, style = BrandButtonStyle.Secondary) {
-                        BrandButtonLabel("Pular")
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                OnboardingDots(
+                    count = pages.size, current = page, dot = 7.dp, activeWidth = 22.dp, gap = 5.dp, onDot = onDot
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BrandButton(
+                        onClick = onNext,
+                        modifier = Modifier
+                            .focusRequester(primaryFocus)
+                            .width(180.dp)
+                            .height(36.dp)
+                    ) {
+                        PrimaryLabel(isLast = page == pages.lastIndex)
+                    }
+                    if (page < pages.lastIndex) {
+                        BrandButton(
+                            onClick = onSkip,
+                            style = BrandButtonStyle.Secondary,
+                            modifier = Modifier
+                                .width(100.dp)
+                                .height(36.dp)
+                        ) {
+                            BrandButtonLabel("Pular")
+                        }
                     }
                 }
+                if (adaptive.isTv) {
+                    Text("Use ◀ ▶ no controle para navegar", style = NbrType.Caption.copy(fontSize = 11.sp), color = BrandColors.TextMuted)
+                }
             }
-            if (adaptive.isTv) {
-                Text(
-                    "Use ◀ ▶ no controle para navegar",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = BrandColors.TextMuted
-                )
+        }
+        // Órbita: no toque continua deslizável; na TV a troca vem do D-pad/botões.
+        HorizontalPager(
+            state = pagerState,
+            userScrollEnabled = !adaptive.isTv,
+            modifier = Modifier
+                .width(360.dp)
+                .fillMaxHeight()
+        ) { index ->
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                OnboardingOrbit(pages[index].icon, orbit = 280.dp, core = 130.dp, iconSize = 55.dp)
             }
         }
     }
@@ -336,108 +322,44 @@ private fun WideOnboarding(
 @Composable
 private fun PrimaryLabel(isLast: Boolean) {
     BrandButtonLabel(if (isLast) "Começar" else "Avançar")
-    if (!isLast) {
-        Icon(NbrIcons.ArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
-    }
 }
 
+/** "Pular" do topo do celular: 14/600 muted. */
 @Composable
-private fun SkipButton(onSkip: () -> Unit) {
+private fun SkipText(onSkip: () -> Unit) {
     Text(
         "Pular",
-        style = MaterialTheme.typography.titleSmall,
-        color = BrandColors.TextSecondary,
+        style = NbrType.BodyStrong,
+        color = BrandColors.TextMuted,
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onSkip)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 4.dp, vertical = 8.dp)
     )
 }
 
+/** Título + descrição, gap 12. Celular 28/700 lh1.2 + 16/400 lh1.45; TV 32/800 lh1.1 + 14/400 lh1.45. */
 @Composable
-private fun PageTexts(page: OnboardingPage, align: TextAlign, large: Boolean = false) {
+private fun PageTexts(page: OnboardingPage, tv: Boolean) {
     Text(
         page.title,
-        style = if (large) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.Bold,
-        color = Color.White,
-        textAlign = align,
+        style = if (tv) {
+            NbrType.ScreenTitle.copy(fontSize = 32.sp, lineHeight = 35.2.sp, fontWeight = FontWeight.ExtraBold)
+        } else {
+            NbrType.ScreenTitle.copy(lineHeight = 33.6.sp)
+        },
+        color = OnboardingTextColor,
         modifier = Modifier.fillMaxWidth()
     )
-    Spacer(Modifier.height(14.dp))
+    Spacer(Modifier.height(12.dp))
     Text(
         page.body,
-        style = if (large) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
+        style = if (tv) {
+            NbrType.Body.copy(lineHeight = 20.3.sp)
+        } else {
+            NbrType.BodyLarge.copy(fontSize = 16.sp, lineHeight = 23.2.sp)
+        },
         color = BrandColors.TextSecondary,
-        textAlign = align,
         modifier = Modifier.fillMaxWidth()
     )
-}
-
-@Composable
-private fun PageDots(count: Int, current: Int, accent: Color, onDot: (Int) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        repeat(count) { i ->
-            val selected = i == current
-            val width by animateDpAsState(if (selected) 28.dp else 8.dp, label = "dotWidth")
-            val color by animateColorAsState(if (selected) accent else BrandColors.BorderStrong, label = "dotColor")
-            Box(
-                Modifier
-                    .height(8.dp)
-                    .width(width)
-                    .background(color, CircleShape)
-                    .clickable(onClick = { onDot(i) })
-            )
-        }
-    }
-}
-
-/** Arte do hero desenhada em código: halo radial na cor da página, anéis e o ícone num disco. */
-@Composable
-private fun OnboardingHero(page: OnboardingPage, size: Dp) {
-    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val r = this.size.minDimension / 2f
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(page.accent.copy(alpha = 0.38f), page.accent.copy(alpha = 0.08f), Color.Transparent),
-                    center = center,
-                    radius = r
-                ),
-                radius = r
-            )
-            drawCircle(color = page.accent.copy(alpha = 0.22f), radius = r * 0.78f, style = Stroke(width = 1.5.dp.toPx()))
-            drawCircle(color = page.accent.copy(alpha = 0.12f), radius = r * 0.96f, style = Stroke(width = 1.dp.toPx()))
-            // Pontos de "órbita" para dar profundidade.
-            listOf(0.2f to 0.78f, 0.62f to 0.96f, 1.15f to 0.78f).forEachIndexed { i, (angle, ring) ->
-                val a = (angle + i) * Math.PI.toFloat()
-                drawCircle(
-                    color = page.accent.copy(alpha = 0.7f),
-                    radius = (3 + i).dp.toPx(),
-                    center = Offset(center.x + kotlin.math.cos(a) * r * ring, center.y + kotlin.math.sin(a) * r * ring)
-                )
-            }
-        }
-        val disc = size * 0.46f
-        Box(
-            Modifier
-                .size(disc)
-                .background(
-                    Brush.linearGradient(listOf(BrandColors.SurfaceAlt, BrandColors.Surface)),
-                    CircleShape
-                )
-                .border(1.5.dp, page.accent.copy(alpha = 0.6f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            if (page.icon != null) {
-                Icon(page.icon, contentDescription = null, tint = page.accent, modifier = Modifier.size(disc * 0.42f))
-            } else {
-                Image(
-                    painter = painterResource(R.drawable.ic_brand_logo),
-                    contentDescription = "NBR Play",
-                    modifier = Modifier.size(disc * 0.7f)
-                )
-            }
-        }
-    }
 }

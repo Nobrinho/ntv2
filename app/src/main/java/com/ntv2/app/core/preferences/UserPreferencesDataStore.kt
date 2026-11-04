@@ -22,6 +22,7 @@ class UserPreferencesDataStore(
     private val showCoversKey = booleanPreferencesKey("show_covers")
     private val animationsKey = booleanPreferencesKey("animations_enabled")
     private val castPhotosKey = booleanPreferencesKey("cast_photos")
+    private val trailerPreviewKey = booleanPreferencesKey("trailer_preview")
     private val nativeBlurGlowKey = booleanPreferencesKey("ambient_native_blur")
     private val cardLoadingStyleKey = stringPreferencesKey("card_loading_style")
     private val onboardingCompletedKey = booleanPreferencesKey("onboarding_completed")
@@ -66,6 +67,13 @@ class UserPreferencesDataStore(
 
     suspend fun setCastPhotos(value: Boolean) {
         context.dataStore.edit { prefs -> prefs[castPhotosKey] = value }
+    }
+
+    /** Tocar o trailer (sem som) no fundo dos detalhes. */
+    val trailerPreview: Flow<Boolean> = context.dataStore.data.map { it[trailerPreviewKey] ?: true }
+
+    suspend fun setTrailerPreview(value: Boolean) {
+        context.dataStore.edit { prefs -> prefs[trailerPreviewKey] = value }
     }
 
     /**

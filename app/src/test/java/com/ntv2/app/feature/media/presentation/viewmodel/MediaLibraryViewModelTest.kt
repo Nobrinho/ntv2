@@ -53,7 +53,8 @@ class MediaLibraryViewModelTest {
 
     private class FakeSettingsRepo(
         override val minDurationMinutes: Flow<Int>,
-        override val activeChannelId: Flow<Long> = MutableStateFlow(0L)
+        override val activeChannelId: Flow<Long> = MutableStateFlow(0L),
+        override val trailerPreview: Flow<Boolean> = MutableStateFlow(true)
     ) : SettingsRepository {
         override suspend fun updateMinDurationMinutes(value: Int) = Unit
         override suspend fun updateActiveChannelId(value: Long) = Unit
@@ -110,16 +111,19 @@ class MediaLibraryViewModelTest {
     private fun buildViewModel(
         media: MediaRepository,
         progressStore: PlaybackProgressStore = FakeProgressStore(),
-        maxRetainedItems: Int = 2_000
+        maxRetainedItems: Int = 2_000,
+        trailerPreviewSetting: Flow<Boolean> = MutableStateFlow(true),
+        trailerPreviewRemote: () -> Boolean = { true }
     ) = MediaLibraryViewModel(
         mediaRepository = media,
         channelRepository = FakeChannelRepo(channelsFlow),
-        settingsRepository = FakeSettingsRepo(minDurationFlow, activeChannelFlow),
+        settingsRepository = FakeSettingsRepo(minDurationFlow, activeChannelFlow, trailerPreviewSetting),
         progressStore = progressStore,
         mediaDetailsCache = com.ntv2.app.feature.media.domain.MediaDetailsCache(),
         ioDispatcher = dispatcher,
         computeDispatcher = dispatcher,
-        maxRetainedItems = maxRetainedItems
+        maxRetainedItems = maxRetainedItems,
+        trailerPreviewRemote = trailerPreviewRemote
     )
 
     /** Canal com mensagens 1000 (mais nova) .. 1 (mais antiga), paginado como o TDLib. */
@@ -133,6 +137,44 @@ class MediaLibraryViewModelTest {
             val ids = ((anchor + 1)..newest).take(limit).reversed()
             MediaPage(ids.map { item("${id}_$it", id, 600, it.toInt()) }, nextCursor = 0L)
         }
+    }
+
+    @Test
+    fun `previa de trailer desligada na configuracao desliga o estado`() = runTest(dispatcher) {
+        val vm = buildViewModel(FakeMediaRepo(), trailerPreviewSetting = MutableStateFlow(false))
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.trailerPreviewEnabled)
+    }
+
+    @Test
+    fun `previa de trailer com flag remota desligada fica desligada`() = runTest(dispatcher) {
+        val vm = buildViewModel(FakeMediaRepo(), trailerPreviewRemote = { false })
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.trailerPreviewEnabled)
+    }
+
+    @Test
+    fun `previa de trailer com configuracao e flag ligadas fica ligada`() = runTest(dispatcher) {
+        val vm = buildViewModel(FakeMediaRepo())
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.trailerPreviewEnabled)
+    }
+
+    @Test
+    fun `flag remota virada com a sessao aberta vale na proxima abertura dos detalhes`() = runTest(dispatcher) {
+        var remote = true
+        val vm = buildViewModel(FakeMediaRepo(), trailerPreviewRemote = { remote })
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.trailerPreviewEnabled)
+        remote = false
+        vm.onAction(MediaLibraryAction.DetailsOpened(
+            com.ntv2.app.feature.media.presentation.state.MediaCardUi(
+                mediaId = "m", channelId = 1L, channelName = "C", title = "t", caption = null,
+                fileName = null, durationSeconds = 600, thumbnailPath = null, fileId = 0
+            )
+        ))
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.trailerPreviewEnabled)
     }
 
     @Test

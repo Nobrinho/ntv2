@@ -154,6 +154,8 @@ data class MediaLibraryUiState(
     val animationsEnabled: Boolean = true,
     /** Exibir fotos do elenco na tela de detalhes — toggle das Configurações. */
     val castPhotos: Boolean = true,
+    /** Prévia de trailer nos detalhes: configuração local E flag remota (reavaliada ao abrir os detalhes). */
+    val trailerPreviewEnabled: Boolean = true,
     val isLoading: Boolean = false,
     /** Resolvendo o vídeo (card do índice) antes de abrir o player — feedback no botão Assistir. */
     val isOpeningVideo: Boolean = false,

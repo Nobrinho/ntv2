@@ -126,8 +126,13 @@ class MediaLibraryViewModel(
     // Filmes divididos em partes: acha e registra as partes antes de abrir o player (null = sem suporte).
     private val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer? = null,
     // Eventos media_open/search_empty (null = sem telemetria, ex.: testes).
-    private val telemetry: com.ntv2.app.core.backend.telemetry.Telemetry? = null
+    private val telemetry: com.ntv2.app.core.backend.telemetry.Telemetry? = null,
+    // Flag remota da prévia de trailer, lida na hora (ausente = ligada).
+    private val trailerPreviewRemote: () -> Boolean = { true }
 ) : ViewModel() {
+
+    /** Última configuração local da prévia de trailer (o estado final também depende da flag remota). */
+    private var trailerPreviewSetting: Boolean = true
 
     // Gosto do usuário para recomendações (gêneros crus de favoritos/histórico) + ids a excluir.
     private var favoriteGenresRaw: List<String?> = emptyList()
@@ -357,6 +362,7 @@ class MediaLibraryViewModel(
                 _uiState.update { it.copy(libraryTab = action.tab) }
             }
             is MediaLibraryAction.OpenSeries -> {
+                refreshTrailerPreviewEnabled()
                 val ids = action.series.seasons.flatMap { s -> s.episodes.map { it.mediaId } }
                 viewModelScope.launch {
                     val saved = withContext(ioDispatcher) { progressStore.savedPositions(ids) }
@@ -383,7 +389,10 @@ class MediaLibraryViewModel(
                     openVideo(action.media.copy(progress = 0f))
                 }
             }
-            is MediaLibraryAction.DetailsOpened -> startPrefetch(action.media)
+            is MediaLibraryAction.DetailsOpened -> {
+                refreshTrailerPreviewEnabled()
+                startPrefetch(action.media)
+            }
             is MediaLibraryAction.DetailsClosed -> {
                 if (detailsOpenMediaId == action.mediaId) detailsOpenMediaId = null
                 // Saiu dos Detalhes com o Assistir carregando: aborta, senão o player abria sobre a grade.
@@ -523,6 +532,12 @@ class MediaLibraryViewModel(
                 _uiState.update { it.copy(castPhotos = on) }
             }
         }
+        viewModelScope.launch {
+            settingsRepository.trailerPreview.collect { on ->
+                trailerPreviewSetting = on
+                refreshTrailerPreviewEnabled()
+            }
+        }
     }
 
     /** Carrega a 1ª página do canal ativo (grade plana). */
@@ -621,6 +636,12 @@ class MediaLibraryViewModel(
                 )
             }
         }
+    }
+
+    /** Recalcula configuração local && flag remota (também ao abrir os detalhes). */
+    private fun refreshTrailerPreviewEnabled() {
+        val enabled = trailerPreviewSetting && trailerPreviewRemote()
+        _uiState.update { it.copy(trailerPreviewEnabled = enabled) }
     }
 
     private fun startPrefetch(media: MediaCardUi) {
@@ -1756,7 +1777,8 @@ class MediaLibraryViewModelFactory(
     private val upNextQueue: com.ntv2.app.feature.media.domain.UpNextQueue? = null,
     private val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer? = null,
     // Eventos media_open/search_empty (null = sem telemetria, ex.: testes).
-    private val telemetry: com.ntv2.app.core.backend.telemetry.Telemetry? = null
+    private val telemetry: com.ntv2.app.core.backend.telemetry.Telemetry? = null,
+    private val trailerPreviewRemote: () -> Boolean = { true }
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1776,7 +1798,8 @@ class MediaLibraryViewModelFactory(
                 maxRetainedItems = maxRetainedItems,
                 upNextQueue = upNextQueue,
                 multiPartPreparer = multiPartPreparer,
-                telemetry = telemetry
+                telemetry = telemetry,
+                trailerPreviewRemote = trailerPreviewRemote
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

@@ -289,7 +289,13 @@ fun AppNavHost(
                     mediaReporter = appContainer.mediaReporter,
                     upNextQueue = appContainer.upNextQueue,
                     multiPartPreparer = appContainer.multiPartPreparer,
-                    telemetry = appContainer.telemetryLogger
+                    telemetry = appContainer.telemetryLogger,
+                    trailerPreviewRemote = {
+                        appContainer.remoteConfigRepository.current.flag(
+                            com.ntv2.app.core.backend.config.RemoteConfig.FLAG_TRAILER_PREVIEW,
+                            default = true
+                        )
+                    }
                 )
             )
             MediaLibraryScreen(
@@ -325,6 +331,7 @@ fun AppNavHost(
             val animationsEnabled by settings.animationsEnabled.collectAsState(initial = true)
             val minDuration by settings.minDurationMinutes.collectAsState(initial = 15)
             val castPhotos by settings.castPhotos.collectAsState(initial = true)
+            val trailerPreview by settings.trailerPreview.collectAsState(initial = true)
             val nativeBlurGlow by settings.nativeBlurGlow.collectAsState(initial = true)
             val cardLoadingStyleName by settings.cardLoadingStyle
                 .collectAsState(initial = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT.name)
@@ -334,12 +341,14 @@ fun AppNavHost(
                 showCovers = showCovers,
                 animationsEnabled = animationsEnabled,
                 castPhotos = castPhotos,
+                trailerPreview = trailerPreview,
                 nativeBlurGlow = nativeBlurGlow,
                 minDurationMinutes = minDuration,
                 cardLoadingStyle = com.ntv2.app.core.ui.CardLoadingStyle.fromName(cardLoadingStyleName),
                 onToggleCovers = { scope.launch { settings.updateShowCovers(it) } },
                 onToggleAnimations = { scope.launch { settings.updateAnimationsEnabled(it) } },
                 onToggleCastPhotos = { scope.launch { settings.updateCastPhotos(it) } },
+                onToggleTrailerPreview = { scope.launch { settings.updateTrailerPreview(it) } },
                 onToggleNativeBlurGlow = { scope.launch { settings.updateNativeBlurGlow(it) } },
                 onChangeMinDuration = { scope.launch { settings.updateMinDurationMinutes(it) } },
                 onChangeCardLoadingStyle = { style -> scope.launch { settings.updateCardLoadingStyle(style.name) } },

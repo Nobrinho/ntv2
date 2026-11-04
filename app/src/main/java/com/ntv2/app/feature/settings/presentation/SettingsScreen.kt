@@ -41,6 +41,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.School
@@ -106,12 +107,14 @@ fun SettingsScreen(
     showCovers: Boolean,
     animationsEnabled: Boolean,
     castPhotos: Boolean,
+    trailerPreview: Boolean = true,
     nativeBlurGlow: Boolean = true,
     minDurationMinutes: Int,
     cardLoadingStyle: CardLoadingStyle = CardLoadingStyle.DEFAULT,
     onToggleCovers: (Boolean) -> Unit,
     onToggleAnimations: (Boolean) -> Unit,
     onToggleCastPhotos: (Boolean) -> Unit,
+    onToggleTrailerPreview: (Boolean) -> Unit = {},
     onToggleNativeBlurGlow: (Boolean) -> Unit = {},
     onChangeMinDuration: (Int) -> Unit,
     onChangeCardLoadingStyle: (CardLoadingStyle) -> Unit = {},
@@ -231,6 +234,14 @@ fun SettingsScreen(
                         value = castPhotos,
                         modifier = itemMod(2),
                         onToggle = { onToggleCastPhotos(!castPhotos) }
+                    )
+                    ToggleCard(
+                        icon = Icons.Filled.PlayCircle,
+                        title = "Prévia de trailer",
+                        subtitle = "Toca o trailer sem som no fundo dos detalhes",
+                        value = trailerPreview,
+                        modifier = itemMod(15),
+                        onToggle = { onToggleTrailerPreview(!trailerPreview) }
                     )
                     NavCard(
                         icon = Icons.Filled.Animation,
@@ -430,7 +441,7 @@ private fun ToggleCard(
     }
 }
 
-private const val SETTINGS_ITEM_COUNT = 15
+private const val SETTINGS_ITEM_COUNT = 16
 
 private val INSTALLED_VERSION_LABEL: String =
     "Versão ${BuildConfig.VERSION_NAME} (${if (BuildConfig.DEBUG) "debug" else "release"})"

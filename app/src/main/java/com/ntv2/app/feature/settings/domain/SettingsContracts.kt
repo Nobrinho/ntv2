@@ -21,6 +21,10 @@ interface SettingsRepository {
     val castPhotos: Flow<Boolean>
     suspend fun updateCastPhotos(value: Boolean)
 
+    /** Prévia de trailer no fundo dos detalhes (padrão: ligada). */
+    val trailerPreview: Flow<Boolean> get() = kotlinx.coroutines.flow.flowOf(true)
+    suspend fun updateTrailerPreview(value: Boolean) = Unit
+
     /** Iluminação da capa no player: desfoque nativo (true) ou versão compatível (false). */
     val nativeBlurGlow: Flow<Boolean> get() = kotlinx.coroutines.flow.flowOf(true)
 
@@ -64,6 +68,12 @@ class DataStoreSettingsRepository(
 
     override suspend fun updateCastPhotos(value: Boolean) {
         dataStore.setCastPhotos(value)
+    }
+
+    override val trailerPreview: Flow<Boolean> = dataStore.trailerPreview
+
+    override suspend fun updateTrailerPreview(value: Boolean) {
+        dataStore.setTrailerPreview(value)
     }
 
     override val cardLoadingStyle: Flow<String> = dataStore.cardLoadingStyle

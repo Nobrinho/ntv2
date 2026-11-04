@@ -67,6 +67,16 @@ internal fun LibraryHeader(
         if (channelName.isNotBlank()) {
             ChannelPill(channelName, onClick = onChannelClick)
         }
+        // Perfil atual (protótipo 45/66): avatar 36 dp que abre a troca de perfil; no infantil, selo violeta.
+        val profiles = com.ntv2.app.core.profiles.LocalProfileActions.current
+        profiles.current?.let { profile ->
+            if (profile.kids) com.ntv2.app.feature.profiles.presentation.KidsBadge()
+            com.ntv2.app.feature.profiles.presentation.ProfileAvatar(
+                profile = profile,
+                size = 36.dp,
+                modifier = if (useTvLayout) Modifier else Modifier.clip(BrandShapes.Sm).clickable(onClick = profiles.openSwitcher)
+            )
+        }
     }
 }
 

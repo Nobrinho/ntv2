@@ -157,6 +157,15 @@ fun SettingsScreen(
 
         // ---- Itens (os mesmos no celular e na TV; muda só a arrumação) ----
         val premiumActive = premiumStatus?.premium == true
+        // Perfis de acesso (MOCK local): abre a troca rápida, de onde se gerencia.
+        val profileActions = com.ntv2.app.core.profiles.LocalProfileActions.current
+        val itProfiles: @Composable () -> Unit = {
+            SettingsItem(
+                tv, NbrIcons.Users, "Perfis",
+                profileActions.current?.let { "Atual: ${it.name}" + if (it.kids) " · infantil" else "" } ?: "Trocar ou gerenciar perfis",
+                onClick = profileActions.openSwitcher
+            )
+        }
         val itConnect: (@Composable () -> Unit)? = if (deviceLink != null) { {
             SettingsItem(tv, NbrIcons.Link, "Conectar aparelhos",
                 "Compartilhar Minha lista e o progresso entre TV e celular",
@@ -298,7 +307,7 @@ fun SettingsScreen(
                     ) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             SettingsSectionLabel("Conta e app")
-                            SettingsGroup(true, listOfNotNull(itConnect, itPremium, itChannels, itPrivacy, itLogout))
+                            SettingsGroup(true, listOfNotNull(itProfiles, itConnect, itPremium, itChannels, itPrivacy, itLogout))
                             SettingsSectionLabel("Conteúdo", Modifier.padding(top = 10.dp))
                             SettingsGroup(true, listOfNotNull(itDuration, itIndex, itConnection))
                         }
@@ -324,7 +333,7 @@ fun SettingsScreen(
                 ) {
                     Text("Configurações", style = NbrType.ScreenTitle, color = SettingsText)
                     SettingsSectionLabel("Conta e app")
-                    SettingsGroup(false, listOfNotNull(itConnect, itPremium, itChannels, itConnection))
+                    SettingsGroup(false, listOfNotNull(itProfiles, itConnect, itPremium, itChannels, itConnection))
                     SettingsSectionLabel("Conteúdo")
                     SettingsGroup(false, listOfNotNull(itDuration, itIndex))
                     SettingsMoreButton("Interface e sobre", expanded = moreExpanded) { moreExpanded = !moreExpanded }

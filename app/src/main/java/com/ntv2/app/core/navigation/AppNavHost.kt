@@ -176,6 +176,29 @@ fun AppNavHost(
         }
     }
 
+  // Perfis de acesso (MOCK local, ver ProfileStore): "Quem está assistindo?" na primeira abertura da
+  // Biblioteca de cada execução quando há mais de um perfil; troca rápida pelo topo e Configurações.
+  val profileStore = remember(context) { com.ntv2.app.core.profiles.ProfileStore.get(context) }
+  var profileScreen by remember { mutableStateOf<com.ntv2.app.feature.profiles.presentation.ProfileScreen?>(null) }
+  var profilePickedThisRun by rememberSaveable { mutableStateOf(false) }
+  val activeProfileId by profileStore.activeId.collectAsState()
+  val profileList by profileStore.profiles.collectAsState()
+  LaunchedEffect(currentRoute, showSplash, showOnboarding) {
+      if (!profilePickedThisRun && currentRoute == RoutePath.MEDIA_LIBRARY && !showSplash && !showOnboarding) {
+          profilePickedThisRun = true
+          if (profileStore.profiles.value.size > 1) {
+              profileScreen = com.ntv2.app.feature.profiles.presentation.ProfileScreen.Picker
+          }
+      }
+  }
+  val profileActions = remember(activeProfileId, profileList) {
+      com.ntv2.app.core.profiles.ProfileActions(
+          current = profileList.firstOrNull { it.id == activeProfileId } ?: profileList.firstOrNull(),
+          openSwitcher = { profileScreen = com.ntv2.app.feature.profiles.presentation.ProfileScreen.Switcher },
+          openManage = { profileScreen = com.ntv2.app.feature.profiles.presentation.ProfileScreen.Manage }
+      )
+  }
+
   // "Animações" (Configurações) para qualquer tela: liga o anel de foco deslizante.
   val settingAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)
   // Respeita também o "movimento reduzido" do sistema (escala de animações = 0).
@@ -189,7 +212,8 @@ fun AppNavHost(
   Box(modifier = Modifier.fillMaxSize()) {
    androidx.compose.runtime.CompositionLocalProvider(
        com.ntv2.app.core.ui.LocalFocusRestoreSignal provides focusRestoreSignal,
-       com.ntv2.app.core.ui.LocalAnimationsEnabled provides globalAnimations
+       com.ntv2.app.core.ui.LocalAnimationsEnabled provides globalAnimations,
+       com.ntv2.app.core.profiles.LocalProfileActions provides profileActions
    ) {
     NavHost(
         navController = navController,
@@ -475,6 +499,15 @@ fun AppNavHost(
     }
 
    }
+
+    com.ntv2.app.feature.profiles.presentation.ProfilesHost(
+        store = profileStore,
+        screen = profileScreen,
+        onNavigate = { next ->
+            profileScreen = next
+            if (next == null) focusRestoreSignal++
+        }
+    )
 
     if (showOnboarding) {
         BackHandler(enabled = replayOnboarding) { showOnboarding = false; replayOnboarding = false }

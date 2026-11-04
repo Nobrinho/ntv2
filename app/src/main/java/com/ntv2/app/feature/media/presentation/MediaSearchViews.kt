@@ -62,6 +62,9 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.Spacer
+import com.ntv2.app.core.ui.NbrType
 import coil.compose.AsyncImage
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
@@ -74,13 +77,17 @@ import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Busca da biblioteca: teclado de TV, busca por toque e lista de resultados.
 
+// Teclado da TV do protótipo (TV 08): letras em ordem alfabética, 6 colunas, números no fim.
 internal val KEYBOARD_ROWS = listOf(
-    "1234567890",
-    "qwertyuiop",
-    "asdfghjkl",
-    "zxcvbnm"
+    "abcdef",
+    "ghijkl",
+    "mnopqr",
+    "stuvwx",
+    "yz1234",
+    "567890"
 )
 
+/** Contagem/estado da busca: 11/400 muted ao lado dos chips da TV ("4 resultados"). */
 @Composable
 internal fun SearchStatusText(
     query: String,
@@ -90,27 +97,30 @@ internal fun SearchStatusText(
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (searchInProgress && query.isNotBlank()) {
             CircularProgressIndicator(
                 color = BRAND_ACCENT,
                 strokeWidth = 2.dp,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(12.dp)
             )
         }
         Text(
             text = when {
                 query.isBlank() -> "Digite algo para buscar"
                 searchInProgress -> "Pesquisando…"
-                else -> "$resultCount resultado(s)"
+                else -> resultCountLabel(resultCount)
             },
-            color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-            style = MaterialTheme.typography.bodyMedium
+            color = com.ntv2.app.core.ui.BrandColors.TextMuted,
+            style = NbrType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp),
+            maxLines = 1
         )
     }
 }
+
+internal fun resultCountLabel(count: Int): String = if (count == 1) "1 resultado" else "$count resultados"
 
 /**
  * Busca da TV (estilo YouTube/Google TV): teclado próprio à esquerda, resultados ao vivo à
@@ -154,7 +164,8 @@ internal fun TvSearchOverlay(
     val backRequester = remember { FocusRequester() }
     var overlayHasFocus by remember { mutableStateOf(true) }
     // Busca por elenco: sem teclado, resultados em tela cheia numa grade de 6 colunas.
-    val gridColumns = if (textEnabled) 3 else 6
+    // Pôsteres de ~100 dp como no protótipo (TV 08): 5 colunas ao lado do teclado, 8 em tela cheia.
+    val gridColumns = if (textEnabled) 5 else 8
     var showFilters by remember { mutableStateOf(false) }
     val listState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val keyRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
@@ -291,179 +302,167 @@ internal fun TvSearchOverlay(
                 }
             }
     ) {
-        val compact = maxWidth < 900.dp
-        val outerPadding = if (compact) 24.dp else 40.dp
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(outerPadding),
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 20.dp else 32.dp)
+                .padding(horizontal = 36.dp, vertical = 32.dp),
+            horizontalArrangement = Arrangement.spacedBy(32.dp)
         ) {
-            // ── Coluna esquerda: campo + teclado (fora do modo elenco) ──
-            if (textEnabled) BoxWithConstraints(
+            // ── Coluna esquerda (320): título, campo e teclado (fora do modo elenco) ──
+            if (textEnabled) Column(
                 modifier = Modifier
-                    .weight(0.42f)
+                    .width(320.dp)
                     .fillMaxHeight()
+                    .focusGroup()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 val gap = 6.dp
-                val columns = KEYBOARD_ROWS.maxOf { it.length }
-                val keySize = ((maxWidth - gap * (columns - 1)) / columns).coerceIn(28.dp, 52.dp)
+                val keyWidth = 44.dp
+                val keyHeight = 38.dp
+                Text("Buscar", style = TvSearchTitleStyle, color = TEXT_PRIMARY)
+
+                // Campo mostrando o que já foi digitado.
+                TvSearchField(
+                    text = when {
+                        !textEnabled -> "Elenco: $query"
+                        query.isEmpty() -> "Digite para buscar por título, canal ou arquivo"
+                        else -> "$query|"
+                    },
+                    placeholder = query.isEmpty() || !textEnabled
+                )
+
+                // Última tecla de cada linha: → entra nos resultados.
+                val enterResultsOnRight = Modifier.onPreviewKeyEvent { e ->
+                    if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight) {
+                        if (currentCells.isNotEmpty()) focusResult(lastResultIndex)
+                        true
+                    } else false
+                }
+
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .focusGroup()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp)
+                    modifier = Modifier.alpha(if (textEnabled) 1f else 0.35f),
+                    verticalArrangement = Arrangement.spacedBy(gap)
                 ) {
-                    Text("Buscar", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-
-                    // Campo mostrando o que já foi digitado.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, com.ntv2.app.core.ui.BrandColors.ContentDisabled, RoundedCornerShape(8.dp))
-                            .background(com.ntv2.app.core.ui.BrandColors.Fill)
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                    ) {
-                        Text(
-                            text = when {
-                                !textEnabled -> "Elenco: $query"
-                                query.isEmpty() -> "Digite para buscar por título, canal ou arquivo"
-                                else -> "$query|"
-                            },
-                            color = if (query.isEmpty() || !textEnabled) com.ntv2.app.core.ui.BrandColors.TextMuted else Color.White,
-                            style = if (query.isEmpty() || !textEnabled) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    SearchStatusText(
-                        query = query,
-                        resultCount = resultCount,
-                        searchInProgress = searchInProgress
-                    )
-
-                    // Última tecla de cada linha: → entra nos resultados.
-                    val enterResultsOnRight = Modifier.onPreviewKeyEvent { e ->
-                        if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight) {
-                            if (currentCells.isNotEmpty()) focusResult(lastResultIndex)
-                            true
-                        } else false
-                    }
-
-                    Column(
-                        modifier = Modifier.alpha(if (textEnabled) 1f else 0.35f),
-                        verticalArrangement = Arrangement.spacedBy(gap)
-                    ) {
-                        KEYBOARD_ROWS.forEach { row ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                                row.forEachIndexed { colIndex, c ->
-                                    val id = c.toString()
-                                    KeyButton(
-                                        label = id,
-                                        modifier = Modifier
-                                            .then(if (colIndex == row.lastIndex) enterResultsOnRight else Modifier)
-                                            .then(keyMod(id))
-                                            .size(keySize),
-                                        onClick = { lastKeyId = id; typeChar(c) }
-                                    )
-                                }
-                            }
-                        }
-
-                        // Ações: espaço/apagar; buscar/limpar/fechar.
-                        val actionHeight = keySize.coerceAtLeast(40.dp)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(gap)
-                        ) {
-                            KeyButton(
-                                label = "Espaço",
-                                modifier = Modifier
-                                    .then(keyMod("space"))
-                                    .weight(1f)
-                                    .height(actionHeight),
-                                onClick = { lastKeyId = "space"; typeChar(' ') }
-                            )
-                            KeyButton(
-                                label = "⌫ Apagar",
-                                modifier = enterResultsOnRight
-                                    // OK segurado: apaga em sequência se o controle repetir a tecla.
-                                    .onPreviewKeyEvent { e ->
-                                        val isOk = e.key == Key.DirectionCenter || e.key == Key.Enter ||
-                                            e.key == Key.NumPadEnter
-                                        if (isOk && e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount > 0) {
-                                            onBackspace(); true
-                                        } else false
-                                    }
-                                    .then(keyMod("backspace"))
-                                    .weight(1f)
-                                    .height(actionHeight),
-                                onClick = { lastKeyId = "backspace"; onBackspace() }
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(gap)
-                        ) {
-                            KeyButton(
-                                label = "Buscar",
-                                modifier = Modifier
-                                    .then(keyMod("submit"))
-                                    .weight(1f)
-                                    .height(actionHeight),
-                                onClick = {
-                                    lastKeyId = "submit"
-                                    if (query.isNotBlank()) {
-                                        focusResultsWhenReady = true
-                                        onSubmit()
-                                    }
-                                }
-                            )
-                            KeyButton(
-                                label = "Limpar",
-                                modifier = Modifier
-                                    .then(keyMod("clear"))
-                                    .weight(1f)
-                                    .height(actionHeight),
-                                onClick = { lastKeyId = "clear"; onClear() }
-                            )
-                            if (filterOptions.isAvailable) {
-                                val activeCount = filters.genres.size + filters.years.size +
-                                    (if (filters.type != SearchTypeFilter.ALL) 1 else 0)
-                                KeyButton(
-                                    label = if (activeCount > 0) "Filtros ($activeCount)" else "Filtros",
+                    KEYBOARD_ROWS.forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                            row.forEachIndexed { colIndex, c ->
+                                val id = c.toString()
+                                TvKey(
+                                    label = id.uppercase(),
                                     modifier = Modifier
-                                        .then(keyMod("filters"))
-                                        .weight(1f)
-                                        .height(actionHeight),
-                                    onClick = { lastKeyId = "filters"; showFilters = true }
+                                        .then(if (colIndex == row.lastIndex) enterResultsOnRight else Modifier)
+                                        .then(keyMod(id))
+                                        .width(keyWidth)
+                                        .height(keyHeight),
+                                    onClick = { lastKeyId = id; typeChar(c) }
                                 )
                             }
-                            KeyButton(
-                                label = "Fechar",
-                                modifier = enterResultsOnRight
-                                    .then(keyMod("close"))
+                        }
+                    }
+                    Spacer(Modifier.height(gap))
+
+                    // Ações (protótipo): Espaço · ⌫ Apagar · Buscar (accent); depois Limpar · Filtros · Fechar.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(gap)
+                    ) {
+                        TvKey(
+                            label = "Espaço",
+                            small = true,
+                            modifier = Modifier
+                                .then(keyMod("space"))
+                                .weight(1f)
+                                .height(keyHeight),
+                            onClick = { lastKeyId = "space"; typeChar(' ') }
+                        )
+                        TvKey(
+                            label = "⌫ Apagar",
+                            small = true,
+                            modifier = Modifier
+                                // OK segurado: apaga em sequência se o controle repetir a tecla.
+                                .onPreviewKeyEvent { e ->
+                                    val isOk = e.key == Key.DirectionCenter || e.key == Key.Enter ||
+                                        e.key == Key.NumPadEnter
+                                    if (isOk && e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount > 0) {
+                                        onBackspace(); true
+                                    } else false
+                                }
+                                .then(keyMod("backspace"))
+                                .weight(1f)
+                                .height(keyHeight),
+                            onClick = { lastKeyId = "backspace"; onBackspace() }
+                        )
+                        TvKey(
+                            label = "Buscar",
+                            small = true,
+                            primary = true,
+                            modifier = enterResultsOnRight
+                                .then(keyMod("submit"))
+                                .weight(1f)
+                                .height(keyHeight),
+                            onClick = {
+                                lastKeyId = "submit"
+                                if (query.isNotBlank()) {
+                                    focusResultsWhenReady = true
+                                    onSubmit()
+                                }
+                            }
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(gap)
+                    ) {
+                        TvKey(
+                            label = "Limpar",
+                            small = true,
+                            modifier = Modifier
+                                .then(keyMod("clear"))
+                                .weight(1f)
+                                .height(keyHeight),
+                            onClick = { lastKeyId = "clear"; onClear() }
+                        )
+                        if (filterOptions.isAvailable) {
+                            val activeCount = filters.genres.size + filters.years.size +
+                                (if (filters.type != SearchTypeFilter.ALL) 1 else 0)
+                            TvKey(
+                                label = if (activeCount > 0) "Filtros ($activeCount)" else "Filtros",
+                                small = true,
+                                modifier = Modifier
+                                    .then(keyMod("filters"))
                                     .weight(1f)
-                                    .height(actionHeight),
-                                onClick = onClose
+                                    .height(keyHeight),
+                                onClick = { lastKeyId = "filters"; showFilters = true }
                             )
                         }
+                        TvKey(
+                            label = "Fechar",
+                            small = true,
+                            modifier = enterResultsOnRight
+                                .then(keyMod("close"))
+                                .weight(1f)
+                                .height(keyHeight),
+                            onClick = onClose
+                        )
                     }
                 }
             }
-
             // ── Coluna direita: filtros ativos + resultados ao vivo ──
             Column(
                 modifier = Modifier
-                    .weight(if (textEnabled) 0.58f else 1f)
+                    .weight(1f)
                     .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
             if (textEnabled) {
-                TvActiveFilters(filters)
+                TvFilterSummary(
+                    filters = filters,
+                    options = filterOptions,
+                    query = query,
+                    resultCount = resultCount,
+                    searchInProgress = searchInProgress
+                )
             } else {
                 val name = filters.actor.orEmpty()
                 val count = if (actorCount == 1) "1 filme" else "$actorCount filmes"
@@ -473,9 +472,9 @@ internal fun TvSearchOverlay(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (actorCount > 0) "$name • $count" else name,
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Color.White,
+                        text = if (actorCount > 0) "$name · $count" else name,
+                        style = TvSearchTitleStyle.copy(fontSize = 24.sp, lineHeight = 29.sp),
+                        color = TEXT_PRIMARY,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -513,8 +512,6 @@ internal fun TvSearchOverlay(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0x0DFFFFFF))
                     .focusGroup()
                     .onFocusChanged { focusInResults = it.hasFocus },
                 cellModifier = { index, id ->
@@ -563,31 +560,37 @@ internal fun TvSearchOverlay(
     }
 }
 
-/** Filtros ativos (tipo/ator/gênero/ano) acima dos resultados da TV; só exibição — edita-se no painel. */
+/**
+ * Linha acima dos resultados da TV (TV 08): chips Tipo/Gênero/Ano (accent quando há filtro) e a contagem.
+ * Só exibição — os filtros são editados no painel aberto pela tecla "Filtros".
+ */
 @Composable
-private fun TvActiveFilters(filters: SearchFilters) {
-    if (!filters.isActive) return
-    val labels = buildList {
-        if (filters.type != SearchTypeFilter.ALL) add(filters.type.label)
-        filters.actor?.let { add(it) }
-        addAll(filters.genres)
-        addAll(filters.years.sortedDescending().map { it.toString() })
-    }
+private fun TvFilterSummary(
+    filters: SearchFilters,
+    options: SearchFilterOptions,
+    query: String,
+    resultCount: Int,
+    searchInProgress: Boolean
+) {
+    val showCategories = options.isAvailable
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        labels.forEach { l ->
-            Text(
-                l,
-                color = Color.White,
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x3366D9FF))
-                    .padding(horizontal = 12.dp, vertical = 5.dp)
-            )
-        }
+        if (filters.type != SearchTypeFilter.ALL) SearchChip(filters.type.label, active = true, tv = true)
+        else if (showCategories) SearchChip("Tipo", active = false, tv = true)
+        filters.actor?.let { SearchChip(it, active = true, tv = true) }
+        if (filters.genres.isNotEmpty()) filters.genres.forEach { SearchChip(it, active = true, tv = true) }
+        else if (showCategories && options.genres.isNotEmpty()) SearchChip("Gênero", active = false, tv = true)
+        if (filters.years.isNotEmpty()) filters.years.sortedDescending().forEach { SearchChip(it.toString(), active = true, tv = true) }
+        else if (showCategories && options.years.isNotEmpty()) SearchChip("Ano", active = false, tv = true)
+        SearchStatusText(
+            query = query,
+            resultCount = resultCount,
+            searchInProgress = searchInProgress,
+            modifier = Modifier.padding(start = 6.dp)
+        )
     }
 }
 
@@ -611,7 +614,7 @@ private fun TvFilterPanel(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xF2000000))
+            .background(Color(0xF2090B0F))
             .onPreviewKeyEvent { e ->
                 if ((e.key == Key.Back || e.key == Key.Escape)) {
                     if (e.type == KeyEventType.KeyUp) onDismiss()
@@ -627,25 +630,26 @@ private fun TvFilterPanel(
                 .widthIn(max = 960.dp)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 40.dp, vertical = 32.dp),
+                .padding(horizontal = 36.dp, vertical = 32.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Filtros", style = MaterialTheme.typography.headlineMedium, color = Color.White, modifier = Modifier.weight(1f))
+                Text("Filtros", style = TvSearchTitleStyle, color = TEXT_PRIMARY, modifier = Modifier.weight(1f))
                 if (filters.isActive) {
-                    KeyButton("Limpar", Modifier.width(120.dp).height(44.dp)) { onChange(SearchFilters()) }
+                    TvKey("Limpar", Modifier.width(110.dp).height(38.dp), small = true) { onChange(SearchFilters()) }
                 }
-                KeyButton("Concluir", Modifier.width(120.dp).height(44.dp), onDismiss)
+                TvKey("Concluir", Modifier.width(110.dp).height(38.dp), primary = true, small = true, onClick = onDismiss)
             }
             TvFilterSection("Tipo") {
                 SearchTypeFilter.entries.forEach { t ->
-                    TvFilterChip(
+                    SearchFilterOptionChip(
                         text = t.label,
                         selected = filters.type == t,
+                        tv = true,
                         modifier = if (firstGenre == null && filters.type == t) Modifier.focusRequester(initialFocus) else Modifier
                     ) { onChange(filters.copy(type = t)) }
                 }
@@ -653,9 +657,10 @@ private fun TvFilterPanel(
             if (options.genres.isNotEmpty()) {
                 TvFilterSection("Gênero") {
                     options.genres.forEach { g ->
-                        TvFilterChip(
+                        SearchFilterOptionChip(
                             text = g,
                             selected = g in filters.genres,
+                            tv = true,
                             modifier = if (g == firstGenre) Modifier.focusRequester(initialFocus) else Modifier
                         ) {
                             onChange(filters.copy(genres = if (g in filters.genres) filters.genres - g else filters.genres + g))
@@ -666,7 +671,7 @@ private fun TvFilterPanel(
             if (options.years.isNotEmpty()) {
                 TvFilterSection("Ano") {
                     options.years.forEach { y ->
-                        TvFilterChip(text = y.toString(), selected = y in filters.years) {
+                        SearchFilterOptionChip(text = y.toString(), selected = y in filters.years, tv = true) {
                             onChange(filters.copy(years = if (y in filters.years) filters.years - y else filters.years + y))
                         }
                     }
@@ -676,45 +681,23 @@ private fun TvFilterPanel(
     }
 }
 
+/** Seção do painel de filtros: rótulo em maiúsculas 11/700 muted + chips. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun TvFilterSection(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.labelLarge)
+        Text(title.uppercase(), color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = NbrType.Overline)
         androidx.compose.foundation.layout.FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) { content() }
     }
 }
 
-@Composable
-private fun TvFilterChip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    Text(
-        text,
-        color = if (focused || selected) Color.Black else Color(0xFFE0E0E0),
-        style = MaterialTheme.typography.labelLarge,
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(
-                when {
-                    focused -> Color.White
-                    selected -> BRAND_ACCENT
-                    else -> Color(0xFF2A2A2A)
-                }
-            )
-            .border(
-                if (focused) 2.dp else 1.dp,
-                if (focused) Color.White else if (selected) BRAND_ACCENT else Color(0xFF3A3A3A),
-                RoundedCornerShape(4.dp)
-            )
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    )
-}
-
+/**
+ * Busca do celular (12/13 do protótipo): título "Buscar", campo em pílula, chips Tipo/Gênero/Ano
+ * (ativos em accent com "X"), contagem e lista de resultados em cartões.
+ */
 @Composable
 internal fun TouchSearchOverlay(
     query: String,
@@ -754,6 +737,9 @@ internal fun TouchSearchOverlay(
     }
     BackHandler(enabled = true) { onClose() }
 
+    val totalResults = series.size + suggestions.size
+    val showCount = !searchInProgress && totalResults > 0 && (query.isNotBlank() || filters.hasAttribute)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -761,100 +747,59 @@ internal fun TouchSearchOverlay(
             .brandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Gradient)
             .statusBarsPadding()
             .navigationBarsPadding()
+            .padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Título "Buscar" 28/700; o voltar fica à esquerda dele.
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .clickable(onClick = onClose),
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.material3.Icon(
+                Icon(
                     NbrIcons.ChevronLeft,
                     contentDescription = "Voltar",
-                    tint = Color.White,
-                    modifier = Modifier.size(30.dp)
+                    tint = TEXT_PRIMARY,
+                    modifier = Modifier.size(24.dp)
                 )
             }
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(50.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF252525))
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                androidx.compose.foundation.text.BasicTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    enabled = !actorMode,
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(fieldFocus),
-                    singleLine = true,
-                    textStyle = androidx.compose.material3.MaterialTheme.typography.titleMedium.copy(color = Color.White),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); onSubmit() }),
-                    decorationBox = { innerTextField ->
-                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                            if (query.isEmpty()) {
-                                androidx.compose.material3.Text(
-                                    if (actorMode) "Elenco: ${filters.actor}" else "Pesquisar",
-                                    color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-                                )
-                            }
-                            innerTextField()
-                        }
-                    }
-                )
-                if (query.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .clickable(onClick = onClear),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        androidx.compose.material3.Icon(
-                            NbrIcons.X,
-                            contentDescription = "Limpar",
-                            tint = Color(0xFFD8D8D8),
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
-            }
-            if (filterOptions.isAvailable) {
-                Box(
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .background(if (filters.isActive) BRAND_ACCENT else Color(0xFF252525))
-                        .clickable { keyboard?.hide(); showFilterSheet = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Icon(
-                        NbrIcons.SlidersHorizontal,
-                        contentDescription = "Filtros",
-                        tint = if (filters.isActive) Color.Black else Color.White,
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-            }
+            Text("Buscar", style = NbrType.ScreenTitle, color = TEXT_PRIMARY)
         }
 
-        ActiveFilterChips(filters, actorCount, onFiltersChange)
+        SearchField(
+            value = query,
+            onValueChange = onQueryChange,
+            placeholder = if (actorMode) "Elenco: ${filters.actor}" else "Digite para buscar por título, canal ou arquivo",
+            onSearch = { keyboard?.hide(); onSubmit() },
+            onClear = onClear,
+            enabled = !actorMode,
+            focusRequester = fieldFocus,
+            modifier = Modifier.padding(horizontal = 24.dp)
+        )
+
+        SearchFilterChipsRow(
+            filters = filters,
+            options = filterOptions,
+            actorCount = actorCount,
+            onChange = onFiltersChange,
+            onOpenFilters = { keyboard?.hide(); showFilterSheet = true }
+        )
+
+        if (showCount) {
+            Text(
+                resultCountLabel(totalResults),
+                style = NbrType.Secondary,
+                color = com.ntv2.app.core.ui.BrandColors.TextMuted,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+        }
 
         TouchSearchResultsGrid(
             query = query,
@@ -872,8 +817,8 @@ internal fun TouchSearchOverlay(
             animationsEnabled = animationsEnabled,
             filtersActive = filters.hasAttribute,
             modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
-                .padding(bottom = 16.dp)
         )
     }
 
@@ -887,51 +832,50 @@ internal fun TouchSearchOverlay(
     }
 }
 
-/** Chips dos filtros ativos (gênero/ano/tipo), cada um com "x" para remover. */
+/**
+ * Chips do protótipo (12/13): Tipo, Gênero e Ano abrem o painel de filtros; com filtro aplicado o chip
+ * vira o valor em accent com "X" (toque remove). O ator da busca por elenco também aparece aqui.
+ */
 @Composable
-private fun ActiveFilterChips(filters: SearchFilters, actorCount: Int, onChange: (SearchFilters) -> Unit) {
-    if (!filters.isActive) return
+private fun SearchFilterChipsRow(
+    filters: SearchFilters,
+    options: SearchFilterOptions,
+    actorCount: Int,
+    onChange: (SearchFilters) -> Unit,
+    onOpenFilters: () -> Unit
+) {
+    val showCategories = options.isAvailable
+    if (!showCategories && !filters.isActive) return
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 2.dp),
+            .padding(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (filters.type != SearchTypeFilter.ALL) {
-            RemovableChip(filters.type.label) { onChange(filters.copy(type = SearchTypeFilter.ALL)) }
+            SearchChip(filters.type.label, active = true, removable = true) { onChange(filters.copy(type = SearchTypeFilter.ALL)) }
+        } else if (showCategories) {
+            SearchChip("Tipo", active = false, onClick = onOpenFilters)
         }
         filters.actor?.let { a ->
             val count = if (actorCount == 1) "1 filme" else "$actorCount filmes"
-            RemovableChip(if (actorCount > 0) "$a \u2022 $count" else a) { onChange(filters.copy(actor = null)) }
+            SearchChip(if (actorCount > 0) "$a · $count" else a, active = true, removable = true) { onChange(filters.copy(actor = null)) }
         }
-        filters.genres.forEach { g -> RemovableChip(g) { onChange(filters.copy(genres = filters.genres - g)) } }
-        filters.years.sortedDescending().forEach { y -> RemovableChip(y.toString()) { onChange(filters.copy(years = filters.years - y)) } }
-    }
-}
-
-@Composable
-private fun RemovableChip(text: String, onRemove: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color(0x3366D9FF))
-            .clickable(onClick = onRemove)
-            .padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        androidx.compose.material3.Text(
-            text,
-            color = Color.White,
-            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
-        )
-        androidx.compose.material3.Icon(
-            NbrIcons.X,
-            contentDescription = "Remover filtro",
-            tint = Color(0xFFD8D8D8),
-            modifier = Modifier.size(16.dp)
-        )
+        if (filters.genres.isNotEmpty()) {
+            filters.genres.forEach { g ->
+                SearchChip(g, active = true, removable = true) { onChange(filters.copy(genres = filters.genres - g)) }
+            }
+        } else if (showCategories && options.genres.isNotEmpty()) {
+            SearchChip("Gênero", active = false, onClick = onOpenFilters)
+        }
+        if (filters.years.isNotEmpty()) {
+            filters.years.sortedDescending().forEach { y ->
+                SearchChip(y.toString(), active = true, removable = true) { onChange(filters.copy(years = filters.years - y)) }
+            }
+        } else if (showCategories && options.years.isNotEmpty()) {
+            SearchChip("Ano", active = false, onClick = onOpenFilters)
+        }
     }
 }
 
@@ -946,47 +890,44 @@ private fun SearchFilterSheet(
 ) {
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF181818)
+        containerColor = com.ntv2.app.core.ui.BrandColors.Surface,
+        shape = com.ntv2.app.core.ui.BrandShapes.Sheet
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                androidx.compose.material3.Text(
-                    "Filtros",
-                    color = Color.White,
-                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge
-                )
+                Text("Filtros", style = NbrType.SheetTitle, color = TEXT_PRIMARY)
                 if (filters.isActive) {
-                    androidx.compose.material3.Text(
+                    Text(
                         "Limpar",
                         color = BRAND_ACCENT,
-                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                        style = NbrType.Chip,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { onChange(SearchFilters()) }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
                     )
                 }
             }
             FilterSection("Tipo") {
                 SearchTypeFilter.entries.forEach { t ->
-                    SelectableChip(t.label, filters.type == t) { onChange(filters.copy(type = t)) }
+                    SearchFilterOptionChip(t.label, filters.type == t) { onChange(filters.copy(type = t)) }
                 }
             }
             if (options.genres.isNotEmpty()) {
                 FilterSection("Gênero") {
                     options.genres.forEach { g ->
-                        SelectableChip(g, g in filters.genres) {
+                        SearchFilterOptionChip(g, g in filters.genres) {
                             onChange(filters.copy(genres = if (g in filters.genres) filters.genres - g else filters.genres + g))
                         }
                     }
@@ -995,7 +936,7 @@ private fun SearchFilterSheet(
             if (options.years.isNotEmpty()) {
                 FilterSection("Ano") {
                     options.years.forEach { y ->
-                        SelectableChip(y.toString(), y in filters.years) {
+                        SearchFilterOptionChip(y.toString(), y in filters.years) {
                             onChange(filters.copy(years = if (y in filters.years) filters.years - y else filters.years + y))
                         }
                     }
@@ -1009,12 +950,8 @@ private fun SearchFilterSheet(
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun FilterSection(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        androidx.compose.material3.Text(
-            title,
-            color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title.uppercase(), color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = NbrType.Overline)
         androidx.compose.foundation.layout.FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1022,21 +959,21 @@ private fun FilterSection(title: String, content: @Composable () -> Unit) {
     }
 }
 
-@Composable
-private fun SelectableChip(text: String, selected: Boolean, onClick: () -> Unit) {
-    androidx.compose.material3.Text(
-        text,
-        color = if (selected) Color.Black else Color(0xFFE0E0E0),
-        style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (selected) BRAND_ACCENT else Color(0xFF2A2A2A))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 7.dp)
-    )
-}
+/** Meta do resultado (filme): canal · duração · partes. */
+private fun MediaCardUi.searchMeta(): String = listOfNotNull(
+    channelName.takeIf { it.isNotBlank() },
+    durationSeconds.takeIf { it > 0 }?.let { durationLabel(it) },
+    partCount.takeIf { it > 1 }?.let { "$it partes" }
+).joinToString(" · ")
 
-/** Resultados da busca no celular: grade de 3 colunas só com as capas (séries primeiro). */
+/** Meta do resultado (série): ano · 1º gênero · temporadas. */
+private fun com.ntv2.app.feature.media.domain.SeriesSummary.searchMeta(): String = listOfNotNull(
+    year?.toString(),
+    genres.firstOrNull(),
+    seasons.size.takeIf { it > 0 }?.let { if (it == 1) "1 temporada" else "$it temporadas" }
+).joinToString(" · ")
+
+/** Resultados da busca no celular (13): lista de cartões (séries primeiro). */
 @Composable
 internal fun TouchSearchResultsGrid(
     query: String,
@@ -1071,26 +1008,29 @@ internal fun TouchSearchResultsGrid(
     }
 
     androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
-        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(1),
         state = gridState,
         modifier = modifier,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 24.dp, end = 24.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(visibleSeries, key = { "series_${it.tmdbId}" }) { s ->
-            SearchCoverCell(
+            SearchResultRow(
+                title = s.title,
+                meta = s.searchMeta(),
+                badge = "SÉRIE",
                 cover = if (showCovers) (s.posterUrl ?: s.backdropUrl)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null,
-                description = s.title,
                 cardLoadingStyle = cardLoadingStyle,
                 animationsEnabled = animationsEnabled,
                 onClick = { onSeriesSelect(s) }
             )
         }
         items(visibleResults, key = { it.mediaId }) { media ->
-            SearchCoverCell(
+            SearchResultRow(
+                title = media.title,
+                meta = media.searchMeta(),
+                badge = com.ntv2.app.core.player.VideoResolution.label(height = media.videoHeight),
                 cover = if (showCovers) (media.posterPath ?: media.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null,
-                description = media.title,
                 cardLoadingStyle = cardLoadingStyle,
                 animationsEnabled = animationsEnabled,
                 onClick = { onSelect(media) }
@@ -1098,109 +1038,29 @@ internal fun TouchSearchResultsGrid(
         }
         if (totalCovers > 0) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (loadingMore) {
-                        CircularProgressIndicator(
-                            color = BRAND_ACCENT,
-                            strokeWidth = 3.dp,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    } else if (!hasMore) {
-                        androidx.compose.material3.Text(
-                            "Fim da lista",
-                            color = Color(0xFF6E6E6E),
-                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
+                SearchListFooter(loadingMore = loadingMore, hasMore = hasMore)
             }
         }
         if (searchInProgress && (query.isNotBlank() || filtersActive)) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 34.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 34.dp),
                     contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            color = BRAND_ACCENT,
-                            strokeWidth = 3.dp,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        androidx.compose.material3.Text(
-                            "Pesquisando…",
-                            color = Color.White,
-                            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-                        )
-                    }
-                }
+                ) { SearchingIndicator() }
             }
         } else if (totalCovers == 0 && (query.isNotBlank() || filtersActive)) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Text(
-                        "Nenhum resultado encontrado",
-                        color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-                    )
-                }
+                SearchEmptyPanel(query = query)
             }
-        }
-    }
-}
-
-@Composable
-private fun SearchCoverCell(
-    cover: String?,
-    description: String,
-    cardLoadingStyle: com.ntv2.app.core.ui.CardLoadingStyle,
-    animationsEnabled: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(2f / 3f)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF222222))
-            .clickable(onClick = onClick)
-    ) {
-        if (cover != null) {
-            com.ntv2.app.core.ui.CoverWithLoading(
-                cover = cover,
-                contentDescription = description,
-                style = cardLoadingStyle,
-                animationsEnabled = animationsEnabled,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            // Sem capa (opção desligada ou sem arte): mostra o nome, como na grade da TV.
-            Text(
-                description,
-                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.Center).padding(8.dp)
-            )
         }
     }
 }
 
 /**
- * Resultados da busca da TV: grade de 3 colunas só com as capas (séries primeiro), igual ao celular.
- * Mesmas regras de exibição (esconde durante a busca, "Pesquisando…", "Nenhum resultado encontrado",
- * "Fim da lista") e paginação infinita ao aproximar do fim. [cellModifier] recebe o índice da célula
- * na grade (séries + filmes) e o id dela, para a TV anexar foco/D-pad.
+ * Resultados da busca da TV (TV 08): grade de pôsteres com o título embaixo (séries primeiro).
+ * Mesmas regras de exibição (esconde durante a busca, "Pesquisando…", sem resultado, "Fim da lista")
+ * e paginação infinita ao aproximar do fim. [cellModifier] recebe o índice da célula na grade
+ * (séries + filmes) e o id dela, para a TV anexar foco/D-pad.
  */
 @Composable
 internal fun SearchResultsList(
@@ -1241,12 +1101,13 @@ internal fun SearchResultsList(
         columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(columns),
         state = listState,
         modifier = modifier,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+        // Folga para o zoom e o brilho do foco não serem cortados nas bordas.
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         itemsIndexed(visibleSeries, key = { _, s -> "series_${s.tmdbId}" }) { i, s ->
-            TvCoverCell(
+            TvSearchPoster(
                 cover = if (showCovers) (s.posterUrl ?: s.backdropUrl)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null,
                 title = s.title,
                 modifier = cellModifier(i, "series_${s.tmdbId}"),
@@ -1254,7 +1115,7 @@ internal fun SearchResultsList(
             )
         }
         itemsIndexed(visibleResults, key = { _, m -> m.mediaId }) { j, media ->
-            TvCoverCell(
+            TvSearchPoster(
                 cover = if (showCovers) (media.posterPath ?: media.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null,
                 title = media.title,
                 modifier = cellModifier(visibleSeries.size + j, media.mediaId),
@@ -1263,127 +1124,30 @@ internal fun SearchResultsList(
         }
         if (totalCovers > 0 && (loadingMore || !hasMore)) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (loadingMore) {
-                        CircularProgressIndicator(color = BRAND_ACCENT, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
-                    } else {
-                        androidx.compose.material3.Text(
-                            "Fim da lista",
-                            color = Color(0xFF6E6E6E),
-                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
+                SearchListFooter(loadingMore = loadingMore, hasMore = hasMore)
             }
         }
         if (searchInProgress && query.isNotBlank()) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 34.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 34.dp),
                     contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(color = BRAND_ACCENT, strokeWidth = 3.dp, modifier = Modifier.size(24.dp))
-                        androidx.compose.material3.Text(
-                            "Pesquisando…",
-                            color = Color.White,
-                            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-                        )
-                    }
-                }
+                ) { SearchingIndicator(tv = true) }
             }
         } else if (totalCovers == 0 && query.isNotBlank()) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Text(
-                        "Nenhum resultado encontrado",
-                        color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-                    )
-                }
+                SearchEmptyPanel(query = query, tv = true)
             }
         }
     }
 }
 
-/** Capa focável da grade da TV: borda branca e leve zoom no foco; sem capa, mostra o título. */
-@Composable
-private fun TvCoverCell(
-    cover: String?,
-    title: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(6.dp)
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(2f / 3f)
-            .graphicsLayer { val s = if (focused) com.ntv2.app.core.ui.BRAND_FOCUS_SCALE else 1f; scaleX = s; scaleY = s }
-            .clip(shape)
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(Color(0xFF222222))
-            .then(if (focused) Modifier.border(3.dp, BRAND_ACCENT, shape) else Modifier),
-        contentAlignment = Alignment.Center
-    ) {
-        if (cover != null) {
-            com.ntv2.app.core.ui.CoverWithLoading(
-                cover = cover,
-                contentDescription = title,
-                style = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT,
-                animationsEnabled = true,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Text(
-                title,
-                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(8.dp)
-            )
-        }
-    }
-}
-
+/** Tecla genérica do teclado da TV (mantida para quem já a usa): mesmo visual de [TvKey]. */
 @Composable
 internal fun KeyButton(
     label: String,
     modifier: Modifier,
     onClick: () -> Unit
 ) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.SurfaceAlt else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            // Foco igual ao resto do app: anel azul de marca (antes a tecla ficava toda branca).
-            .border(
-                width = if (focused) 3.dp else 1.dp,
-                color = if (focused) com.ntv2.app.core.ui.BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.BorderStrong,
-                shape = RoundedCornerShape(8.dp)
-            )
-            .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = Color.White,
-            maxLines = 1
-        )
-    }
+    TvKey(label = label, modifier = modifier, onClick = onClick)
 }

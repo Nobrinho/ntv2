@@ -703,18 +703,6 @@ fun MediaLibraryScreen(
             }
         }
 
-        if (!useTvLayout) {
-            MainBottomNav(
-                selected = if (showMyStuff) MainTab.MyStuff else MainTab.Library,
-                onLibrary = { showMyStuff = false },
-                onChannels = { channelPicker = true },
-                onSettings = onOpenSettings,
-                onSearch = { searching = true },
-                onMyStuff = { showMyStuff = true },
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
-        }
-
         if (showMyStuff) {
             MyStuffOverlay(
                 continueWatching = state.continueWatching,
@@ -739,6 +727,19 @@ fun MediaLibraryScreen(
                 onRemoveHistory = { mediaId -> viewModel.onAction(MediaLibraryAction.RemoveFromHistory(mediaId)) },
                 onClearHistory = { viewModel.onAction(MediaLibraryAction.ClearHistory) },
                 onClose = { showMyStuff = false }
+            )
+        }
+
+        // Tab bar depois da aba Meu: no protótipo ela fica visível por cima da tela Meu.
+        if (!useTvLayout) {
+            MainBottomNav(
+                selected = if (showMyStuff) MainTab.MyStuff else MainTab.Library,
+                onLibrary = { showMyStuff = false },
+                onChannels = { channelPicker = true },
+                onSettings = onOpenSettings,
+                onSearch = { searching = true },
+                onMyStuff = { showMyStuff = true },
+                modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
 

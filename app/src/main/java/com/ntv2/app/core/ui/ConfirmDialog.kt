@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -38,12 +40,14 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
 private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 private val DESTRUCTIVE = com.ntv2.app.core.ui.BrandColors.Error
+private val TEXT = Color(0xFFF5F5F7) // token "text" do protótipo
 
 /**
  * Diálogo de confirmação padronizado do app.
@@ -72,10 +76,11 @@ fun ConfirmDialog(
     val cancelFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { cancelFocus.requestFocus() } }
 
+    val tv = rememberAdaptiveLayoutInfo().useTvLayout
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xE6000000))
+            .background(Color(0xC7000000))
             .onPreviewKeyEvent { e ->
                 when {
                     e.type == KeyEventType.KeyUp && (e.key == Key.Back || e.key == Key.Escape) -> {
@@ -86,61 +91,70 @@ fun ConfirmDialog(
                         (e.key == Key.DirectionLeft || e.key == Key.DirectionRight) -> true
                     else -> false
                 }
-            },
+            }
+            .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
     ) {
+        // Protótipo (36 Sair da conta / TV 16): cartão surface, raio 24 (18 na TV), padding 24 (28 na TV),
+        // ícone em círculo de 56, título 20 bold, mensagem 14 com 1,45 de entrelinha, botões em pílula.
+        val shape = RoundedCornerShape(if (tv) 18.dp else 24.dp)
         Column(
             modifier = Modifier
-                // widthIn antes do fillMaxWidth: na ordem inversa o limite de 460dp era ignorado e a
-                // caixa ocupava 92% da TV.
-                .widthIn(max = 460.dp)
-                .fillMaxWidth(0.92f)
-                .clip(RoundedCornerShape(8.dp))
+                .widthIn(max = 380.dp)
+                .fillMaxWidth()
+                .clip(shape)
                 .background(BrandColors.Surface)
-                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(8.dp))
-                .padding(28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .border(1.dp, BrandColors.BorderSubtle, shape)
+                .padding(if (tv) 28.dp else 24.dp),
+            verticalArrangement = Arrangement.spacedBy(if (tv) 12.dp else 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
                     .size(56.dp)
                     .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.16f)),
+                    .background(accent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(30.dp))
+                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(26.dp))
             }
             Text(
                 title,
-                style = MaterialTheme.typography.titleLarge,
-                color = Color.White,
+                style = NbrType.SheetTitle.copy(fontSize = 20.sp, lineHeight = 24.sp),
+                color = TEXT,
                 textAlign = TextAlign.Center
             )
             if (message != null) {
                 Text(
                     message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
+                    style = NbrType.Body.copy(lineHeight = 20.sp),
+                    color = BrandColors.TextSecondary,
                     textAlign = TextAlign.Center
                 )
             }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(top = 4.dp)
                     .trapFocus(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DialogButton(
                     label = confirmLabel,
                     icon = confirmIcon,
+                    primary = true,
                     accent = accent,
+                    destructive = destructive,
+                    tv = tv,
                     onClick = onConfirm
                 )
                 DialogButton(
                     label = cancelLabel,
                     icon = cancelIcon,
-                    accent = Color.White,
+                    primary = false,
+                    accent = accent,
+                    destructive = false,
+                    tv = tv,
                     modifier = Modifier.focusRequester(cancelFocus),
                     onClick = onDismiss
                 )
@@ -149,41 +163,46 @@ fun ConfirmDialog(
     }
 }
 
+/** Botão do diálogo como no protótipo: pílula de 52 dp (44 na TV); confirmar cheio, cancelar neutro. */
 @Composable
 private fun DialogButton(
     label: String,
     icon: ImageVector,
+    primary: Boolean,
     accent: Color,
+    destructive: Boolean,
+    tv: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var focused by remember { mutableStateOf(false) }
+    val shape = BrandShapes.Pill
+    val fill = if (primary) accent else BrandColors.Fill
+    val content = when {
+        primary && destructive -> Color.White
+        primary -> BrandColors.OnCta
+        else -> TEXT
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
             .onFocusChanged { focused = it.isFocused }
+            .then(if (focused) Modifier.scale(1.03f) else Modifier)
+            .clip(shape)
             .clickable { onClick() }
-            // Foco igual ao resto do app: superfície mais clara + anel azul de 3dp (antes o botão
-            // inteiro virava branco/vermelho).
-            .background(if (focused) BrandColors.SurfaceAlt else com.ntv2.app.core.ui.BrandColors.Fill)
+            .background(fill)
             .border(
-                width = if (focused) 3.dp else 1.dp,
-                color = if (focused) BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.Border,
-                shape = RoundedCornerShape(6.dp)
+                width = if (focused) 2.dp else if (primary) 0.dp else 1.dp,
+                color = if (focused) (if (primary) Color.White else BrandColors.Accent) else BrandColors.BorderSubtle,
+                shape = shape
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+            .heightIn(min = if (tv) 44.dp else 52.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Ação destrutiva mantém a cor dela (vermelho); as demais ficam brancas.
-        val content = if (accent == Color.White) Color.White else accent
-        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
-        Text(
-            label,
-            color = content,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
+        // O protótipo não tem ícone nos botões; na TV ele ajuda a ler à distância.
+        if (tv) Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(18.dp))
+        Text(label, color = content, style = NbrType.Button)
     }
 }

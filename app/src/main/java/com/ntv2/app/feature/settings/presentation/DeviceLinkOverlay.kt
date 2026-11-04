@@ -7,6 +7,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.style.TextOverflow
+import com.ntv2.app.core.ui.BrandButtonStyle
+import com.ntv2.app.core.ui.BrandShapes
+import com.ntv2.app.core.ui.NbrType
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,47 +85,41 @@ internal fun DeviceLinkOverlay(
     onOpenPremium: (() -> Unit)? = null
 ) {
     var mode by remember { mutableStateOf(LinkMode.MENU) }
-    BackHandler(enabled = true) { if (mode == LinkMode.MENU) onClose() else mode = LinkMode.MENU }
+    val back = { if (mode == LinkMode.MENU) onClose() else mode = LinkMode.MENU }
+    BackHandler(enabled = true) { back() }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xCC000000))
-            .clickable(onClick = onClose)
-            .trapFocus(),
-        contentAlignment = Alignment.Center
-    ) {
+    val body: @Composable ColumnScope.() -> Unit = {
+        when (mode) {
+            LinkMode.MENU -> LinkMenu(
+                repository = repository,
+                isTv = isTv,
+                onShowCode = { mode = LinkMode.SHOW_CODE },
+                onEnterCode = { mode = LinkMode.ENTER_CODE },
+                onClose = onClose
+            )
+            LinkMode.SHOW_CODE -> ShowCode(repository, isTv, onDone = { mode = LinkMode.MENU })
+            LinkMode.ENTER_CODE -> EnterCode(repository, isTv, onDone = { mode = LinkMode.MENU }, onOpenPremium = onOpenPremium)
+        }
+    }
+    if (isTv) {
+        // TV 14: tela cheia, padding 48/60; título 32/800 à esquerda, cartão do código à direita.
         Column(
             modifier = Modifier
-                .padding(16.dp)
-                .widthIn(max = 560.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(BrandColors.Surface)
-                .border(1.dp, BrandColors.Border, RoundedCornerShape(8.dp))
+                .fillMaxSize()
+                .background(BrandColors.Background)
                 .clickable(enabled = false) {}
+                .trapFocus()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 60.dp, vertical = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)
         ) {
-            Text(
-                "Conectar aparelhos",
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            when (mode) {
-                LinkMode.MENU -> LinkMenu(
-                    repository = repository,
-                    isTv = isTv,
-                    onShowCode = { mode = LinkMode.SHOW_CODE },
-                    onEnterCode = { mode = LinkMode.ENTER_CODE },
-                    onClose = onClose
-                )
-                LinkMode.SHOW_CODE -> ShowCode(repository, onDone = { mode = LinkMode.MENU })
-                LinkMode.ENTER_CODE -> EnterCode(repository, onDone = { mode = LinkMode.MENU }, onOpenPremium = onOpenPremium)
-            }
+            Text("Conectar aparelhos", color = SettingsText, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold,
+                style = NbrType.ScreenTitle)
+            Column(Modifier.widthIn(max = 840.dp), verticalArrangement = Arrangement.spacedBy(14.dp), content = body)
         }
+    } else {
+        // Celular 29/30: subtela com padding 24 e gap 18.
+        SettingsPhonePage(title = "Conectar aparelhos", onBack = back, horizontalPadding = 24.dp, gap = 18.dp, content = body)
     }
 }
 
@@ -161,16 +163,17 @@ private fun LinkMenu(
         if (linked) "Estes aparelhos compartilham Minha lista, o progresso e o histórico:"
         else "Compartilhe Minha lista, o progresso e o histórico entre a TV e o celular. " +
             "Um aparelho mostra o código e o outro digita.",
-        color = BrandColors.TextMuted,
-        style = MaterialTheme.typography.bodyMedium
+        color = BrandColors.TextSecondary,
+        style = if (isTv) NbrType.Body else NbrType.Body.copy(lineHeight = 20.sp),
+        fontSize = if (isTv) 14.sp else (if (linked) 13.sp else 14.sp)
     )
     when {
         devices == null && !loadFailed -> CircularProgressIndicator(
             color = BrandColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(20.dp)
         )
-        loadFailed -> Text("Não foi possível carregar os aparelhos. Verifique a internet.", color = BrandColors.Warning,
-            style = MaterialTheme.typography.bodyMedium)
-        linked -> devices!!.forEach { DeviceRow(it) }
+        loadFailed -> SettingsNotice(NbrIcons.TriangleAlert, BrandColors.Warning,
+            "Não foi possível carregar os aparelhos. Verifique a internet.", tv = isTv)
+        linked -> devices!!.forEach { DeviceRow(it, isTv) }
     }
 
     val show: @Composable (Modifier, Boolean) -> Unit = { m, primary ->
@@ -181,26 +184,26 @@ private fun LinkMenu(
     }
     // TV: o normal é mostrar (digitar com o controle é chato); celular: digitar o código da TV.
     if (isTv) {
-        show(Modifier.fillMaxWidth().focusRequester(firstFocus), true)
-        enter(Modifier.fillMaxWidth(), false)
+        show(bw(isTv).focusRequester(firstFocus), true)
+        enter(bw(isTv), false)
     } else {
-        enter(Modifier.fillMaxWidth().focusRequester(firstFocus), true)
-        show(Modifier.fillMaxWidth(), false)
+        enter(bw(isTv).focusRequester(firstFocus), true)
+        show(bw(isTv), false)
     }
     if (linked) {
         if (!confirmLeave) {
             TestButton(icon = NbrIcons.Unlink, label = "Desconectar este aparelho",
-                modifier = Modifier.fillMaxWidth().focusRequester(leaveFocus),
+                modifier = bw(isTv).focusRequester(leaveFocus),
                 onClick = { leaveTouched = true; confirmLeave = true })
         } else {
-            Text("Este aparelho sai da conta e fica com uma cópia dos dados. Os outros continuam conectados.",
-                color = BrandColors.Warning, style = MaterialTheme.typography.bodyMedium)
+            SettingsNotice(NbrIcons.TriangleAlert, BrandColors.Warning,
+                "Este aparelho sai da conta e fica com uma cópia dos dados. Os outros continuam conectados.", tv = isTv)
             TestButton(
                 icon = NbrIcons.Unlink,
                 label = if (leaving) "Desconectando…" else "Confirmar desconexão",
                 enabled = !leaving,
-                primary = true,
-                modifier = Modifier.fillMaxWidth().focusRequester(leaveFocus),
+                style = BrandButtonStyle.Destructive,
+                modifier = bw(isTv).focusRequester(leaveFocus),
                 onClick = {
                     leaving = true
                     scope.launch {
@@ -213,31 +216,37 @@ private fun LinkMenu(
             )
         }
     }
-    TestButton(icon = NbrIcons.X, label = "Fechar", modifier = Modifier.fillMaxWidth(), onClick = onClose)
+    TestButton(icon = NbrIcons.X, label = "Fechar", modifier = bw(isTv), onClick = onClose)
 }
 
+/** Aparelho conectado (30): surface, raio 14, padding 14, ícone 22 azul; este aparelho com borda azul. */
 @Composable
-private fun DeviceRow(device: LinkedDevice) {
+private fun DeviceRow(device: LinkedDevice, tv: Boolean) {
+    val name = device.name ?: "Aparelho"
+    val isTvDevice = name.startsWith("TV", ignoreCase = true) || name.contains("Fire", ignoreCase = true)
+    val shape = RoundedCornerShape(if (tv) 10.dp else 14.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(BrandColors.SurfaceAlt)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .clip(shape)
+            .background(BrandColors.Surface)
+            .border(1.dp, if (device.thisDevice) BrandColors.Accent else BrandColors.BorderSubtle, shape)
+            .padding(if (tv) 10.dp else 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(NbrIcons.Link, contentDescription = null, tint = BrandColors.Accent, modifier = Modifier.size(20.dp))
-        Text(device.name ?: "Aparelho", color = Color.White, style = MaterialTheme.typography.titleSmall,
-            maxLines = 1, modifier = Modifier.weight(1f))
-        if (device.thisDevice) {
-            Text("este aparelho", color = BrandColors.Accent, style = MaterialTheme.typography.labelMedium)
-        }
+        Icon(if (isTvDevice) NbrIcons.Tv else NbrIcons.Smartphone, contentDescription = null, tint = BrandColors.Accent,
+            modifier = Modifier.size(if (tv) 18.dp else 22.dp))
+        Text(
+            if (device.thisDevice) "$name · este aparelho" else name,
+            color = SettingsText, style = NbrType.BodyStrong, fontSize = if (tv) 13.sp else 14.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+        )
     }
 }
 
 @Composable
-private fun ShowCode(repository: DeviceLinkRepository, onDone: () -> Unit) {
+private fun ShowCode(repository: DeviceLinkRepository, tv: Boolean, onDone: () -> Unit) {
     var attempt by remember { mutableIntStateOf(0) }
     var code by remember { mutableStateOf<LinkCode?>(null) }
     var status by remember { mutableStateOf(LinkStatus.PENDING) }
@@ -275,52 +284,92 @@ private fun ShowCode(repository: DeviceLinkRepository, onDone: () -> Unit) {
 
     when {
         failed -> {
-            Text("Não foi possível gerar o código. Verifique a internet.", color = BrandColors.Warning,
-                style = MaterialTheme.typography.bodyMedium)
+            SettingsNotice(NbrIcons.TriangleAlert, BrandColors.Warning, "Não foi possível gerar o código. Verifique a internet.", tv = tv)
             TestButton(icon = NbrIcons.RefreshCw, label = "Tentar de novo", primary = true,
-                modifier = Modifier.fillMaxWidth().focusRequester(actionFocus), onClick = { attempt++ })
+                modifier = bw(tv).focusRequester(actionFocus), onClick = { attempt++ })
         }
         status == LinkStatus.LINKED -> {
-            ResultLine(NbrIcons.CircleCheck, BrandColors.Accent,
-                "Conectado${linkedTo?.let { " a $it" } ?: ""}. Minha lista e o progresso já estão sendo sincronizados.")
+            ResultLine(NbrIcons.CircleCheck, BrandColors.Success,
+                "Conectado${linkedTo?.let { " a $it" } ?: ""}. Minha lista e o progresso já estão sendo sincronizados.", tv)
             TestButton(icon = NbrIcons.CircleCheck, label = "OK", primary = true,
-                modifier = Modifier.fillMaxWidth().focusRequester(actionFocus), onClick = onDone)
+                modifier = bw(tv).focusRequester(actionFocus), onClick = onDone)
         }
         status == LinkStatus.EXPIRED || status == LinkStatus.NOT_FOUND -> {
-            Text("O código expirou.", color = BrandColors.Warning, style = MaterialTheme.typography.bodyMedium)
+            SettingsNotice(NbrIcons.TriangleAlert, BrandColors.Warning, "O código expirou.", tv = tv)
             TestButton(icon = NbrIcons.RefreshCw, label = "Gerar outro código", primary = true,
-                modifier = Modifier.fillMaxWidth().focusRequester(actionFocus), onClick = { attempt++ })
+                modifier = bw(tv).focusRequester(actionFocus), onClick = { attempt++ })
         }
         code == null -> CircularProgressIndicator(color = BrandColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
         else -> {
             val c = code!!
-            Text("No outro aparelho, abra Configurações › Conectar aparelhos › Digitar código e informe:",
-                color = BrandColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                c.code.chunked(3).joinToString(" "),
-                color = Color.White,
-                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 52.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp),
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(BrandColors.SurfaceAlt)
-                    .padding(vertical = 18.dp)
-            )
             val left = ((c.expiresAtMs - now) / 1000).coerceAtLeast(0)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(color = BrandColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-                Text("Aguardando confirmação · expira em %d:%02d".format(left / 60, left % 60),
-                    color = BrandColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+            val expires = "Aguardando confirmação · expira em %d:%02d".format(left / 60, left % 60)
+            val cancel: @Composable () -> Unit = {
+                TestButton(icon = NbrIcons.X, label = "Cancelar", modifier = bw(tv).focusRequester(actionFocus), onClick = onDone)
             }
-            TestButton(icon = NbrIcons.X, label = "Cancelar", modifier = Modifier.fillMaxWidth().focusRequester(actionFocus),
-                onClick = onDone)
+            if (tv) {
+                // TV 14: passos numerados à esquerda, cartão "Seu código" à direita.
+                Row(horizontalArrangement = Arrangement.spacedBy(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        LinkStep(1, "No outro aparelho, abra o NBR Play › Configurações")
+                        LinkStep(2, "Toque em Conectar aparelhos › Digitar código")
+                        LinkStep(3, "Digite o código que aparece nesta tela")
+                        Box(Modifier.padding(top = 5.dp)) { cancel() }
+                    }
+                    CodeCard(c.code, expires, tv = true, modifier = Modifier.width(320.dp))
+                }
+            } else {
+                Text("No outro aparelho, abra Configurações › Conectar aparelhos › Digitar código e informe:",
+                    color = BrandColors.TextSecondary, style = NbrType.Secondary)
+                CodeCard(c.code, expires, tv = false)
+                cancel()
+            }
         }
     }
 }
 
+/** Passo numerado da TV 14: círculo 24 (fill) + texto 13 text-2, gap 10. */
 @Composable
-private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit, onOpenPremium: (() -> Unit)? = null) {
+private fun LinkStep(n: Int, text: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(24.dp).clip(CircleShape).background(BrandColors.Fill), contentAlignment = Alignment.Center) {
+            Text("$n", color = SettingsText, fontSize = 12.sp, fontWeight = FontWeight.Bold, style = NbrType.Caption)
+        }
+        Text(text, color = BrandColors.TextSecondary, fontSize = 13.sp, style = NbrType.Secondary)
+    }
+}
+
+/** Cartão "Seu código" (29 / TV 14): surface, borda azul, raio 20; código 44/800 azul (TV 55). */
+@Composable
+private fun CodeCard(code: String, expires: String, tv: Boolean, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(BrandColors.Surface)
+            .border(1.dp, BrandColors.Accent, shape)
+            .padding(if (tv) 28.dp else 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Seu código", color = BrandColors.TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, style = NbrType.Caption)
+        Text(
+            code.chunked(3).joinToString("-"),
+            color = BrandColors.Accent,
+            style = NbrType.Hero,
+            fontSize = if (tv) 55.sp else 44.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = if (tv) 2.sp else 4.sp,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
+        Text(expires, color = BrandColors.Warning, style = NbrType.Caption, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun EnterCode(repository: DeviceLinkRepository, tv: Boolean, onDone: () -> Unit, onOpenPremium: (() -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
@@ -346,21 +395,20 @@ private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit, onOp
         }
     }
     if (result == ClaimResult.LINKED || result == ClaimResult.ALREADY_LINKED) {
-        ResultLine(NbrIcons.CircleCheck, BrandColors.Accent,
+        ResultLine(NbrIcons.CircleCheck, BrandColors.Success,
             if (result == ClaimResult.LINKED) "Aparelhos conectados. Minha lista e o progresso já estão sendo sincronizados."
-            else "Estes aparelhos já estavam conectados.")
+            else "Estes aparelhos já estavam conectados.", tv)
         TestButton(icon = NbrIcons.CircleCheck, label = "OK", primary = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(okFocus), onClick = onDone)
+            modifier = bw(tv).focusRequester(okFocus), onClick = onDone)
         return
     }
 
-    Text("Digite o código que aparece na outra tela:", color = BrandColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
+    Text("Digite o código que aparece na outra tela:", color = BrandColors.TextSecondary, style = NbrType.Secondary)
     BasicTextField(
         value = text,
         onValueChange = { text = DeviceLinkRepository.normalizeCode(it); result = null },
         singleLine = true,
-        textStyle = TextStyle(color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 36.sp,
-            fontWeight = FontWeight.Bold, letterSpacing = 8.sp, textAlign = TextAlign.Center),
+        textStyle = NbrType.Section.copy(color = SettingsText, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
         cursorBrush = SolidColor(BrandColors.Accent),
         keyboardOptions = KeyboardOptions(
             capitalization = KeyboardCapitalization.Characters,
@@ -369,14 +417,19 @@ private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit, onOp
             imeAction = ImeAction.Done
         ),
         keyboardActions = KeyboardActions(onDone = { submit() }),
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = bw(tv)
             .focusRequester(fieldFocus)
             .onFocusChanged { fieldFocused = it.isFocused }
-            .clip(RoundedCornerShape(8.dp))
-            .background(BrandColors.SurfaceAlt)
-            .border(if (fieldFocused) 3.dp else 1.dp, if (fieldFocused) BrandColors.Accent else BrandColors.Border, RoundedCornerShape(8.dp))
-            .padding(vertical = 16.dp)
+            .clip(BrandShapes.Field)
+            .background(BrandColors.Surface)
+            .border(if (fieldFocused) 1.5.dp else 1.dp, if (fieldFocused) BrandColors.Accent else BrandColors.Border, BrandShapes.Field)
+            .padding(horizontal = 16.dp),
+        decorationBox = { inner ->
+            Box(Modifier.heightIn(min = if (tv) 44.dp else 56.dp), contentAlignment = Alignment.CenterStart) {
+                if (text.isEmpty()) Text("Digitar código", color = BrandColors.TextMuted, style = NbrType.BodyLarge)
+                inner()
+            }
+        }
     )
     result?.let { r ->
         val msg = when (r) {
@@ -387,10 +440,10 @@ private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit, onOp
             ClaimResult.RATE_LIMITED -> "Muitas tentativas. Aguarde um minuto e tente de novo."
             else -> "Não foi possível conectar. Verifique a internet."
         }
-        Text(msg, color = BrandColors.Warning, style = MaterialTheme.typography.bodyMedium)
+        SettingsNotice(NbrIcons.TriangleAlert, BrandColors.Warning, msg, tv = tv)
         if (r == ClaimResult.PREMIUM_REQUIRED && onOpenPremium != null) {
-            TestButton(icon = NbrIcons.Link, label = "Conhecer o Premium", primary = true,
-                modifier = Modifier.fillMaxWidth(), onClick = onOpenPremium)
+            TestButton(icon = NbrIcons.Link, label = "Conhecer o Premium", style = BrandButtonStyle.Premium,
+                modifier = bw(tv), onClick = onOpenPremium)
         }
     }
     TestButton(
@@ -398,26 +451,19 @@ private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit, onOp
         label = if (sending) "Conectando…" else "Conectar",
         enabled = !sending && text.length == DeviceLinkRepository.CODE_LENGTH,
         primary = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = bw(tv),
         onClick = { submit() }
     )
-    TestButton(icon = NbrIcons.X, label = "Voltar", modifier = Modifier.fillMaxWidth(), onClick = onDone)
+    TestButton(icon = NbrIcons.X, label = "Voltar", modifier = bw(tv), onClick = onDone)
 }
 
+/** Sucesso (30): faixa verde@10% com borda verde, raio 14, texto 13 text-2. */
 @Composable
-private fun ResultLine(icon: ImageVector, color: Color, text: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(color.copy(alpha = 0.12f))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
-        Text(text, color = color, style = MaterialTheme.typography.bodyMedium)
-    }
+private fun ResultLine(icon: ImageVector, color: Color, text: String, tv: Boolean) {
+    SettingsNotice(icon, color, text, tv = tv)
 }
+
+/** Largura dos botões: cheia no celular; na TV, 260 dp (botões lado a lado no protótipo). */
+private fun bw(tv: Boolean): Modifier = if (tv) Modifier.width(260.dp) else Modifier.fillMaxWidth()
 
 private const val POLL_MS = 3_000L

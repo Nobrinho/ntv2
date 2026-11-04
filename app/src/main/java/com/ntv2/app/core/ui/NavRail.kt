@@ -7,7 +7,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -34,15 +36,21 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.R
 import com.ntv2.app.core.ui.icons.NbrIcons
 
 private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
+
+/** Largura do menu lateral do protótipo (TV 07: 128 px em 1920 → 64 dp). */
+private val RailWidth = 64.dp
+/** Bloco do item (80 px → 40 dp, raio 24 px → 12 dp) e ícone (36 px → 18 dp). */
+private val RailTile = 40.dp
+private val RailTileShape = RoundedCornerShape(12.dp)
 
 /** Coluna base do rail (logo NBR Play no topo + slot de itens), compartilhada entre telas. */
 @Composable
@@ -51,33 +59,45 @@ fun RailColumn(
     enterFocus: (() -> FocusRequester?)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxHeight()
-            .width(116.dp)
-            .background(Color(0xFF0C0C0C))
-            .then(if (enterFocus != null) Modifier.focusEnterTo(enterFocus) else Modifier)
-            .focusGroup()
-            // Rolável só como salvaguarda em telas muito baixas; nos tamanhos normais tudo cabe sem
-            // rolar (espaçamentos/margens enxutos abaixo).
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 14.dp, horizontal = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Image(
-            painter = painterResource(R.drawable.ic_brand_logo_small),
-            contentDescription = "NBR Play",
-            modifier = Modifier.size(96.dp)
+    Row(modifier = Modifier.fillMaxHeight()) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(RailWidth)
+                // Menu lateral do protótipo: fundo Surface com divisória sutil à direita.
+                .background(com.ntv2.app.core.ui.BrandColors.Surface)
+                .then(if (enterFocus != null) Modifier.focusEnterTo(enterFocus) else Modifier)
+                .focusGroup()
+                // Rolável só como salvaguarda em telas muito baixas; nos tamanhos normais tudo cabe sem rolar.
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_brand_logo_small),
+                contentDescription = "NBR Play",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(width = 36.dp, height = 28.dp)
+            )
+            // Espaço do protótipo entre o logo e o 1º item (20 px + gaps).
+            Spacer(Modifier.height(16.dp))
+            content()
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(com.ntv2.app.core.ui.BrandColors.BorderSubtle)
         )
-        content()
     }
 }
 
 /**
- * Item de rail (ícone + rótulo), focável, com estados de destaque e desabilitado.
+ * Item de rail do protótipo: bloco de 40 dp com o ícone, destaque azul translúcido no item ativo.
+ * O protótipo não tem rótulo; o app mantém o rótulo pequeno sob o bloco para não perder a informação.
  *
- * [primary] = ação principal (call-to-action): quando habilitado fica com fundo verde sólido e
+ * [primary] = ação principal (call-to-action): quando habilitado fica com fundo azul sólido e
  * conteúdo escuro, deixando evidente que já pode ser clicado (ex.: "Continuar" após selecionar).
  */
 @Composable
@@ -101,52 +121,56 @@ fun RailButton(
         label = "rail-focus-scale"
     )
     val cta = primary && enabled // botão de ação em destaque
-    val onCta = com.ntv2.app.core.ui.BrandColors.OnCta // conteúdo escuro sobre o CTA branco
+    val onCta = com.ntv2.app.core.ui.BrandColors.OnCta // conteúdo escuro sobre o CTA
     val tint = when {
         !enabled -> com.ntv2.app.core.ui.BrandColors.BorderStrong
         cta -> onCta
         active -> BRAND
-        else -> Color.White
+        else -> com.ntv2.app.core.ui.BrandColors.TextMuted
     }
     val background = when {
         cta -> com.ntv2.app.core.ui.BrandColors.Cta
         focused -> Color(0x3366D9FF)
+        highlighted -> Color(0x2666D9FF)
         else -> Color.Transparent
     }
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .glideTarget(6.dp, scale = BRAND_FOCUS_SCALE)
-            .onFocusChanged { focused = it.isFocused }
-            .then(if (enabled && interactive) Modifier.clickable(onClick = onClick) else Modifier)
-            .graphicsLayer { scaleX = focusScale; scaleY = focusScale }
-            .clip(RoundedCornerShape(6.dp))
-            .background(background)
-            // Foco sobre o CTA verde: borda branca para não "sumir" o realce de foco.
-            .then(
-                if (cta && focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp))
-                else Modifier
-            )
-            .padding(vertical = 7.dp),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
+        Box(
+            modifier = Modifier
+                .size(RailTile)
+                .glideTarget(12.dp, scale = BRAND_FOCUS_SCALE)
+                .onFocusChanged { focused = it.isFocused }
+                .then(if (enabled && interactive) Modifier.clickable(onClick = onClick) else Modifier)
+                .graphicsLayer { scaleX = focusScale; scaleY = focusScale }
+                .clip(RailTileShape)
+                .background(background)
+                // Foco sobre o CTA: borda azul para não "sumir" o realce de foco.
+                .then(
+                    if (cta && focused && !gliding) Modifier.border(2.dp, com.ntv2.app.core.ui.BrandColors.Accent, RailTileShape)
+                    else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
+        }
         Text(
             label,
             color = when {
                 !enabled -> com.ntv2.app.core.ui.BrandColors.BorderStrong
-                cta -> onCta
                 active -> BRAND
-                else -> com.ntv2.app.core.ui.BrandColors.TextSecondary
+                else -> com.ntv2.app.core.ui.BrandColors.TextMuted
             },
-            style = MaterialTheme.typography.labelSmall,
+            style = NbrType.Tab,
             maxLines = 1
         )
     }
 }
 
-/** Rail de navegação (Início/Busca/Canais/Atualizar/Config). */
+/** Rail de navegação (Início/Busca/Minha lista/Canais/Config, como no protótipo, + Limpar/Atualizar do app). */
 @Composable
 fun NavRail(
     firstItemFocus: FocusRequester? = null,
@@ -179,6 +203,10 @@ fun NavRail(
         if (showClearFilter) {
             RailButton(NbrIcons.FunnelX, "Limpar", onClick = onClearFilter)
         }
+        // Ordem do protótipo: Início, Busca, Minha lista, Canais, Config (Atualizar é do app).
+        if (onMyList != null) {
+            RailButton(NbrIcons.Heart, "Minha lista", onClick = onMyList)
+        }
         RailButton(
             NbrIcons.Library,
             "Canais",
@@ -186,9 +214,6 @@ fun NavRail(
             onClick = onChannels
         )
         RailButton(NbrIcons.RefreshCw, "Atualizar", onClick = onRefresh)
-        if (onMyList != null) {
-            RailButton(NbrIcons.Clapperboard, "Minha lista", onClick = onMyList)
-        }
         RailButton(
             NbrIcons.Settings,
             "Config",

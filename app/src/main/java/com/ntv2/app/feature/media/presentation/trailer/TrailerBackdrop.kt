@@ -7,10 +7,14 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -82,6 +86,31 @@ private class TrailerBridge(
 /** Guarda o WebView criado pelo AndroidView, para a pausa/retomada do ciclo de vida. */
 private class WebViewHolder {
     var view: WebView? = null
+
+    /** O processo de renderização morreu: o WebView não pode mais receber chamadas (só destroy). */
+    var rendererGone = false
+
+    /** WebView vivo e utilizável (criado e com o renderizador de pé). */
+    val usable: WebView? get() = if (rendererGone) null else view
+}
+
+/**
+ * Cliente que segura o WebView na página do trailer: navegação de página inteira (ex.: "Assistir no
+ * YouTube") é bloqueada, em vez de abrir o navegador; os iframes do player não passam por aqui.
+ * Se o renderizador morrer (comum com vídeo no Fire TV de pouca RAM), devolve `true` para o app
+ * não ser encerrado junto e conta como falha (fica a imagem).
+ */
+private class TrailerWebViewClient(private val onRendererGone: () -> Unit) : WebViewClient() {
+    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = true
+
+    @Deprecated("API < 24")
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
+
+    override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+        onRendererGone()
+        return true
+    }
 }
 
 /**
@@ -127,26 +156,44 @@ private fun TrailerBackdropContent(
     LaunchedEffect(failed) {
         if (failed) currentOnFailed(videoId)
     }
-    // O prazo começa junto com o carregamento (o WebView é criado nesta mesma composição) e é
-    // cancelado quando `playing` chega (a chave muda e o efeito anterior é cancelado).
-    LaunchedEffect(playing) {
-        if (!playing) {
-            delay(PLAYING_TIMEOUT_MS)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var started by remember {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    val timeout = remember { PlayingTimeout(PLAYING_TIMEOUT_MS) }
+    // O prazo começa junto com o carregamento (o WebView é criado nesta mesma composição), só corre
+    // com a tela em primeiro plano (para em ON_STOP e continua do ponto em ON_START) e é cancelado
+    // quando `playing` chega.
+    LaunchedEffect(playing, started) {
+        if (playing || !started) return@LaunchedEffect
+        val t0 = SystemClock.uptimeMillis()
+        try {
+            delay(timeout.remainingMs)
             failed = true
+        } finally {
+            timeout.consume(SystemClock.uptimeMillis() - t0)
         }
     }
 
-    // Pausa ao ir para o fundo e retoma ao voltar. As guardas evitam erro se o player não estiver pronto.
-    val lifecycleOwner = LocalLifecycleOwner.current
+    // Pausa ao ir para o fundo e retoma ao voltar. onPause/onResume do WebView suspendem a mídia mesmo
+    // com o player ainda carregando; o JS (com guardas) cuida do player já pronto.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> holder.view?.evaluateJavascript(
-                    "player && player.pauseVideo && player.pauseVideo()", null
-                )
-                Lifecycle.Event.ON_START -> holder.view?.evaluateJavascript(
-                    "player && player.playVideo && player.playVideo()", null
-                )
+                Lifecycle.Event.ON_STOP -> {
+                    started = false
+                    holder.usable?.let { web ->
+                        web.evaluateJavascript("player && player.pauseVideo && player.pauseVideo()", null)
+                        web.onPause()
+                    }
+                }
+                Lifecycle.Event.ON_START -> {
+                    started = true
+                    holder.usable?.let { web ->
+                        web.onResume()
+                        web.evaluateJavascript("player && player.playVideo && player.playVideo()", null)
+                    }
+                }
                 else -> Unit
             }
         }
@@ -191,18 +238,31 @@ private fun TrailerBackdropContent(
                         settings.domStorageEnabled = true
                         settings.mediaPlaybackRequiresUserGesture = false
                         settings.allowFileAccess = false
+                        // Chamado na thread principal: marca o renderizador como morto (nada mais é
+                        // chamado no WebView além de destroy) e segue o caminho de falha.
+                        webViewClient = TrailerWebViewClient(onRendererGone = {
+                            holder.rendererGone = true
+                            bridge.release()
+                            failed = true
+                        })
                         addJavascriptInterface(bridge, "NtvTrailer")
                         loadDataWithBaseURL(TrailerHtml.BASE_URL, TrailerHtml.build(videoId), "text/html", "utf-8", null)
+                        // Criado com a tela já em segundo plano: começa suspenso até o ON_START.
+                        if (!started) onPause()
                     }.also { holder.view = it }
                 }
             },
             onRelease = { view ->
                 bridge.release()
+                val rendererAlive = !holder.rendererGone
                 holder.view = null
                 if (view is WebView) {
-                    view.stopLoading()
-                    view.loadUrl("about:blank")
-                    view.removeJavascriptInterface("NtvTrailer")
+                    // Com o renderizador morto, só destroy() é seguro.
+                    if (rendererAlive) {
+                        view.stopLoading()
+                        view.loadUrl("about:blank")
+                        view.removeJavascriptInterface("NtvTrailer")
+                    }
                     (view.parent as? ViewGroup)?.removeView(view)
                     view.destroy()
                 }

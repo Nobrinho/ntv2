@@ -50,12 +50,12 @@ No plano do catálogo o trailer ia no `extra`. Isso não funciona para o `import
    não for).
 
 ## Bot (`agente_filmes`)
-1. **`gerar_indice.py`:** `_fetch_tmdb` e `_fetch_episode_tmdb` pedem `videos` no `append_to_response` e gravam
-   `trailer_url` com `tmdb_client._extrair_trailer`. O episódio usa o trailer do episódio ou, se não houver, o da série.
-   A série no índice também ganha `trailer_url`.
-   - **Itens já no cache:** criar `_backfill_trailers`, como os `_backfill_logos`/`_backfill_imdb` que já existem.
-     Usa uma chave de cache `"trailer_url"` e só busca o que ainda não tem essa chave. `None` também fica salvo, para
-     não buscar de novo a cada 6 h.
+1. **`gerar_indice.py`:** filmes e séries do índice ganham `trailer_url`; os episódios não (o app herda o da série).
+   - Um único `_backfill_trailers`, como os `_backfill_logos`/`_backfill_imdb` que já existem, cobre itens novos e
+     antigos. Busca `/{movie|tv}/{id}/videos`, uma vez por série. Só busca o que ainda não tem a chave no cache e grava
+     `None` também, para não buscar de novo a cada 6 h.
+   - `tmdb_client._extrair_trailer` prefere o trailer em pt e cai no en. Toda chamada com `videos` passa
+     `include_video_language=pt,en,null`, porque com `language=pt-BR` o TMDB só devolveria vídeos em pt.
 2. **`catalogo.py`:** `trailer_url` passa a ir **na coluna**: sai do `extra` em `item_filme`/`item_episodio` e entra
    no nível de cima. A série (`item_serie_do_episodio`) também passa a mandar o dela.
 3. **Testes:** pytest com o `trailer_url` no item do índice, o backfill que não busca de novo, e o item do

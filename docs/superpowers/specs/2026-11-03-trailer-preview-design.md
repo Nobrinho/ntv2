@@ -77,7 +77,10 @@ No plano do catálogo o trailer ia no `extra`. Isso não funciona para o `import
   do player: sem origem/referer, o YouTube devolve erro 153.
 - WebView: `mediaPlaybackRequiresUserGesture = false`, JavaScript ligado, `isFocusable = false`,
   `isFocusableInTouchMode = false`, sem tratar toques. O foco do controle continua nos botões da tela.
-- Ponte JS → Kotlin (`@JavascriptInterface`) com os estados `playing`, `ended` e `error(code)`.
+- Ponte JS → Kotlin (`@JavascriptInterface`) com os estados `playing` e `error(code)`. Não há `ended`: o loop é
+  feito no próprio JS da página (o vídeo recomeça sem passar pelo Kotlin).
+- Navegação: só a de página inteira (frame principal, ex.: "Assistir no YouTube") é bloqueada; as do iframe do
+  player (redirecionamentos, consentimento, verificação de idade) seguem normais.
 - Exibição:
   - a imagem de fundo aparece primeiro, como hoje;
   - o WebView só é criado depois de **2 s** de tela aberta e de a imagem ter carregado;
@@ -90,7 +93,9 @@ No plano do catálogo o trailer ia no `extra`. Isso não funciona para o `import
     fica a imagem;
   - o ID que falhou fica guardado em memória durante a sessão, para não tentar de novo.
 - Ciclo de vida: `stopLoading` + `destroy()` quando o componente sai da tela (sair dos detalhes, trocar de item, abrir
-  o player). Em `ON_STOP` o vídeo pausa e em `ON_START` volta. Nunca roda junto com o player do app.
+  o player). Em `ON_STOP` o vídeo pausa e em `ON_START` volta. Nunca roda junto com o player do app: ao apertar
+  "Assistir" (filme, enquanto o vídeo abre) ou um episódio (série), o trailer sai na hora e o WebView é destruído.
+- Ordem de deploy (backend → bot → índice → app): obrigatória, ver `OPERACAO.md` do `ntv2-backend`.
 - Usado em `MovieDetailsOverlay` (layout de celular e de TV) e `SeriesDetailsOverlay`, no mesmo lugar do
   `AsyncImage` do fundo.
 

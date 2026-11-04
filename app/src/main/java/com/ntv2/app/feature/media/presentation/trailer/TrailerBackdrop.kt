@@ -96,13 +96,16 @@ private class WebViewHolder {
 
 /**
  * Cliente que segura o WebView na página do trailer: navegação de página inteira (ex.: "Assistir no
- * YouTube") é bloqueada, em vez de abrir o navegador; os iframes do player não passam por aqui.
+ * YouTube") é bloqueada, em vez de abrir o navegador. Navegação dentro do iframe do player
+ * (redirecionamentos, consentimento, verificação de idade) segue normal.
  * Se o renderizador morrer (comum com vídeo no Fire TV de pouca RAM), devolve `true` para o app
  * não ser encerrado junto e conta como falha (fica a imagem).
  */
 private class TrailerWebViewClient(private val onRendererGone: () -> Unit) : WebViewClient() {
-    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = true
+    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
+        request?.isForMainFrame == true
 
+    // Só é chamado para o frame principal: sempre bloqueia.
     @Deprecated("API < 24")
     @Suppress("OVERRIDE_DEPRECATION")
     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true

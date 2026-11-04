@@ -97,7 +97,8 @@ object CatalogIndexSnapshot {
                 overview = d.text("overview"),
                 genres = d.strings("genres"),
                 cast = cast,
-                videoMessageId = d.optLong("video_message_id", 0L)
+                videoMessageId = d.optLong("video_message_id", 0L),
+                trailerUrl = d.text("trailer_url")
             )
         }
 

@@ -38,4 +38,14 @@ class SearchIndexImageTest {
         assertEquals("https://youtu.be/abcdefghijk", com.trailerUrl)
         assertNull(sem.trailerUrl)
     }
+
+    @Test
+    fun `filme do index json mantem trailer_url e None ou ausente vira nulo`() {
+        val com = repo.parseMovie(JSONObject("""{"tmdb_id":603,"title":"Matrix","video_message_id":5,"trailer_url":"https://www.youtube.com/watch?v=abcdefghijk"}"""))!!
+        val none = repo.parseMovie(JSONObject("""{"tmdb_id":604,"title":"B","video_message_id":6,"trailer_url":"None"}"""))!!
+        val ausente = repo.parseMovie(JSONObject("""{"tmdb_id":605,"title":"C","video_message_id":7}"""))!!
+        assertEquals("https://www.youtube.com/watch?v=abcdefghijk", com.trailerUrl)
+        assertNull(none.trailerUrl)
+        assertNull(ausente.trailerUrl)
+    }
 }

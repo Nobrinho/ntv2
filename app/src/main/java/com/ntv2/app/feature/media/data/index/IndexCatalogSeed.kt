@@ -49,6 +49,7 @@ object IndexCatalogSeed {
             })
             .putOpt("video_message_id", m.videoMessageId.takeIf { it > 0 })
             .putOpt("chat_id", chatId)
+            .putOpt("trailer_url", m.trailerUrl)
         return CatalogMerge.rowOf(KIND_MOVIE, NtvIds.movie(m.tmdbId), null, d)
     }
 

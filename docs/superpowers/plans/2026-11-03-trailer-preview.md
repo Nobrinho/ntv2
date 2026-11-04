@@ -303,6 +303,10 @@ Não gera código novo. Só corrige o que aparecer.
 ---
 
 ## Depois do plano (só com o pedido do usuário)
-1. `supabase db push` e deploy de `catalog-upsert` e `import-index`.
-2. Gerar o índice com o backfill dos trailers e publicar.
-3. Release do app pela skill `ntv2-release`.
+Ordem **obrigatória** (detalhes em `OPERACAO.md` do `ntv2-backend`):
+1. `supabase db push` (migration da coluna `trailer_url`). Antes disso o `import-index` novo falha toda importação com 500.
+2. Deploy de `catalog-upsert` e `import-index`.
+3. Só então merge e reinício do bot (com o `catalog-upsert` antigo, todo item com `trailer_url` volta 400
+   `unknown_column`; o bot reenvia sem o trailer, mas o certo é não depender disso).
+4. Gerar o índice com o backfill dos trailers e publicar (dispara o `import-index`).
+5. Release do app pela skill `ntv2-release`.

@@ -175,7 +175,8 @@ internal fun MovieDetailsOverlay(
                         // Prévia do trailer por cima da imagem e por baixo do degradê; a imagem fica como reserva.
                         DetailsTrailerBackdrop(
                             trailerUrl = details?.trailerUrl,
-                            trailerPreviewEnabled = trailerPreviewEnabled,
+                            // "Assistir" apertado: sai o trailer (o WebView é destruído) antes do player abrir.
+                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading,
                             showCovers = showCovers,
                             imageLoaded = backdropLoaded,
                             animationsEnabled = animationsEnabled,
@@ -237,7 +238,8 @@ internal fun MovieDetailsOverlay(
                         // Prévia do trailer por cima da imagem e por baixo do degradê; a imagem fica como reserva.
                         DetailsTrailerBackdrop(
                             trailerUrl = details?.trailerUrl,
-                            trailerPreviewEnabled = trailerPreviewEnabled,
+                            // "Assistir" apertado: sai o trailer (o WebView é destruído) antes do player abrir.
+                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading,
                             showCovers = showCovers,
                             imageLoaded = backdropLoaded,
                             animationsEnabled = animationsEnabled,

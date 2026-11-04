@@ -27,7 +27,9 @@ data class IndexMovie(
     val overview: String?,
     val genres: List<String>,
     val cast: List<CastMemberMeta>,
-    val videoMessageId: Long
+    val videoMessageId: Long,
+    /** Link do trailer (YouTube) do filme. */
+    val trailerUrl: String? = null
 ) {
     val searchKey: String = normalizeForIndex(listOfNotNull(title, originalTitle).joinToString(" "))
     val searchWords: Set<String> by lazy { wordsOf(searchKey) }
@@ -302,7 +304,7 @@ class SearchIndexRepository(
         else -> { reader.skipValue(); JSONObject.NULL }
     }
 
-    private fun parseMovie(o: JSONObject): IndexMovie? {
+    internal fun parseMovie(o: JSONObject): IndexMovie? {
         val mids = o.optJSONArray("message_ids")
         val videoMsg = o.optLong("video_message_id", 0L).takeIf { it != 0L }
             ?: (mids?.let { if (it.length() > 0) it.optLong(it.length() - 1) else 0L } ?: 0L)
@@ -325,7 +327,8 @@ class SearchIndexRepository(
             overview = o.optString("overview").ifBlank { null },
             genres = genres,
             cast = cast,
-            videoMessageId = videoMsg
+            videoMessageId = videoMsg,
+            trailerUrl = o.cleanString("trailer_url")
         )
     }
 
@@ -516,6 +519,17 @@ class SearchIndexRepository(
             filme?.logoUrl?.let { return it }
         }
         return tmdbId?.let { idx.logoByTmdb[it] }
+    }
+
+    /** Trailer do filme pelo message_id do vídeo (mesma resolução de [logoFor]). Item do TDLib
+     *  com legenda v3 não traz trailer: sem o catálogo remoto, só o índice tem o link. */
+    fun movieTrailerFor(channelId: Long, messageId: Long?): String? {
+        val idx = cached?.takeIf { it.channelId == channelId } ?: return null
+        if (messageId == null) return null
+        val byId = idx.movieByVideoMessage
+        val filme = byId[messageId]
+            ?: if (messageId > 0xFFFFF && (messageId and 0xFFFFF) == 0L) byId[messageId shr 20] else null
+        return filme?.trailerUrl
     }
 
     /** Busca local por título/título original (sem acento/caixa). Vazio se não cobrir o canal. */

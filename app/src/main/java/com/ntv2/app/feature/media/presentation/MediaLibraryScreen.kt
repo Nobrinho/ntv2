@@ -948,7 +948,8 @@ fun MediaLibraryScreen(
                 series = series,
                 episodeProgress = state.episodeProgress,
                 showCovers = state.showCovers,
-                trailerPreviewEnabled = state.trailerPreviewEnabled,
+                // Episódio abrindo: sai o trailer (nunca toca junto com o player do app).
+                trailerPreviewEnabled = state.trailerPreviewEnabled && !state.isOpeningVideo,
                 animationsEnabled = state.animationsEnabled,
                 onPlayEpisode = { ep, following ->
                     viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)

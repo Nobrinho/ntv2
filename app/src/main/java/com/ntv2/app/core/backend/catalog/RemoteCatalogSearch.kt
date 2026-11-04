@@ -121,7 +121,8 @@ private fun parseCatalogMovie(o: JSONObject) = IndexMovie(
         val name = c.text("name") ?: return@mapNotNull null
         CastMemberMeta(name = name, photoUrl = c.text("profile_url") ?: c.text("photo_url"))
     },
-    videoMessageId = o.optLong("video_message_id", 0L)
+    videoMessageId = o.optLong("video_message_id", 0L),
+    trailerUrl = o.text("trailer_url")
 )
 
 private fun parseCatalogSeries(o: JSONObject) = IndexSeries(

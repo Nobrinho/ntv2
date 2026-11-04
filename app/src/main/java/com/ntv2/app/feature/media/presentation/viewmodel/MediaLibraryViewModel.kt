@@ -864,7 +864,8 @@ class MediaLibraryViewModel(
         backdropPath = backdropUrl,
         logoPath = logoUrl,
         cast = cast,
-        tmdbId = tmdbId.toString()
+        tmdbId = tmdbId.toString(),
+        trailerUrl = trailerUrl
     )
 
     /** Episódio do índice v2 → unidade reproduzível. Herda pôster/fundo/gêneros da série quando
@@ -898,7 +899,9 @@ class MediaLibraryViewModel(
         seriesTitle = series.title,
         seasonNumber = seasonNumber,
         episodeNumber = episodeNumber,
-        airDate = airDate
+        airDate = airDate,
+        // O trailer do episódio é sempre o da série.
+        trailerUrl = series.trailerUrl
     )
 
     /** Série do índice v2 → agrupador não reproduzível (para o card e o overlay de temporadas). */
@@ -1644,7 +1647,7 @@ class MediaLibraryViewModel(
     /** Detalhes ricos para a tela de Detalhes (lidos do cache por mediaId). */
     fun detailsFor(mediaId: String): MovieDetails? {
         val details = mediaDetailsCache.get(mediaId) ?: return null
-        return if (details.logoPath != null) details else details.withIndexLogo(mediaId)
+        return if (details.logoPath != null && details.trailerUrl != null) details else details.withIndexLogo(mediaId)
     }
 
     /**
@@ -1661,14 +1664,21 @@ class MediaLibraryViewModel(
         if (!idx.loadedFor(channelId)) return this
         logoLookedUp += mediaId
         val summary = channelItems[channelId].orEmpty().firstOrNull { it.mediaId == mediaId }
-        val logo = runCatching {
+        val messageId = mediaId.substringAfterLast('_').toLongOrNull()
+        val logo = if (logoPath != null) null else runCatching {
             idx.logoFor(
                 channelId = channelId,
-                messageId = mediaId.substringAfterLast('_').toLongOrNull(),
+                messageId = messageId,
                 tmdbId = summary?.seriesTmdbId ?: summary?.tmdbId?.toLongOrNull()
             )
-        }.getOrNull() ?: return this
-        return copy(logoPath = logo).also { mediaDetailsCache.put(mediaId, it) }
+        }.getOrNull()
+        // Trailer também vem do índice quando a legenda/catálogo não trouxe (filmes; episódios já
+        // recebem o da série no resumo).
+        val trailer = if (trailerUrl != null || summary?.mediaType == com.ntv2.app.feature.media.domain.MediaType.EPISODE) null
+            else runCatching { idx.movieTrailerFor(channelId, messageId) }.getOrNull()
+        if (logo == null && trailer == null) return this
+        return copy(logoPath = logo ?: logoPath, trailerUrl = trailer ?: trailerUrl)
+            .also { mediaDetailsCache.put(mediaId, it) }
     }
 
     /** "Porque você viu X": recomendações pelos gêneros DESTE título, dentro do catálogo do canal. */

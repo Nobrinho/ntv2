@@ -75,6 +75,22 @@ class CatalogIndexSnapshotTest {
     }
 
     @Test
+    fun `trailer do filme do indice passa pelo catalogo local e None vira null`() = runTest {
+        val com = movie(7, "Com", "2001", emptyList(), emptyList(), 70).copy(trailerUrl = "https://youtu.be/abcdefghijk")
+        val sem = movie(8, "Sem", "2002", emptyList(), emptyList(), 80)
+        val store = InMemoryCatalogStore().apply {
+            apply(CatalogBatch(upserts = IndexCatalogSeed.from(IndexSnapshot(chat, listOf(com, sem), emptyList(), 1L)).rows))
+            apply(CatalogBatch(upserts = listOf(
+                CatalogMerge.rowOf(KIND_MOVIE, "m_9", null, JSONObject().put("tmdb_id", 9).put("title", "Nulo").put("trailer_url", "None"))
+            )))
+        }
+        val byTitle = CatalogIndexSnapshot.load(store)!!.movies.associateBy { it.title }
+        assertEquals("https://youtu.be/abcdefghijk", byTitle.getValue("Com").trailerUrl)
+        assertNull(byTitle.getValue("Sem").trailerUrl)
+        assertNull(byTitle.getValue("Nulo").trailerUrl)
+    }
+
+    @Test
     fun `trailer_url da serie no catalogo vira trailerUrl e None vira null`() = runTest {
         val store = InMemoryCatalogStore()
         store.apply(CatalogBatch(upserts = listOf(

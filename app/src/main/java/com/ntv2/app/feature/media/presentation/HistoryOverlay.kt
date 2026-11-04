@@ -2,8 +2,6 @@ package com.ntv2.app.feature.media.presentation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +9,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,13 +16,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,24 +31,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.ConfirmDialog
+import com.ntv2.app.core.ui.NbrType
+import com.ntv2.app.core.ui.icons.NbrIcons
 import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.feature.media.presentation.state.HistoryEntryUi
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import java.util.Calendar
-import com.ntv2.app.core.ui.icons.NbrIcons
 
 /** Abas da tela "Minha lista" da TV. */
 internal enum class ShelfTab(val label: String) { MyList("Minha lista"), History("Histórico") }
@@ -103,7 +95,7 @@ internal fun MyListHistoryOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(com.ntv2.app.core.ui.BrandColors.Background)
+            .background(BrandColors.Background)
             .statusBarsPadding()
             .navigationBarsPadding()
             .trapFocus()
@@ -113,31 +105,33 @@ internal fun MyListHistoryOverlay(
             )
     ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(
-                "Meu",
-                color = Color.White,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-            )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Topo do protótipo (TV 12 Meu): "Meu" 32/800 à esquerda e os chips de segmento à direita.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                MyStuffTitle(useTvLayout = true, modifier = Modifier.weight(1f))
                 ShelfTab.entries.forEach { t ->
-                    ShelfTabPill(
+                    // Ao receber foco (D-pad) a aba é escolhida — ← / → trocam de aba.
+                    MyStuffTvChip(
                         label = t.label,
                         selected = t == tab,
                         modifier = Modifier.focusRequester(tabFocus.getValue(t)),
-                        onSelect = { onTabChange(t) }
+                        onFocused = { if (t != tab) onTabChange(t) },
+                        onClick = { onTabChange(t) }
                     )
                 }
-                Box(modifier = Modifier.weight(1f))
                 if (tab == ShelfTab.History && entries.isNotEmpty()) {
-                    HistoryTextButton(
-                        icon = NbrIcons.Trash2,
+                    MyStuffTextAction(
                         label = "Limpar tudo",
-                        destructive = true,
+                        useTvLayout = true,
+                        color = BrandColors.Error,
+                        icon = NbrIcons.Trash2,
                         onClick = { confirmClear = true }
                     )
                 }
-                HistoryIconButton(icon = NbrIcons.X, description = "Fechar", onClick = onClose)
+                MyStuffCircleButton(icon = NbrIcons.X, description = "Fechar", useTvLayout = true, onClick = onClose)
             }
 
             if (tab == ShelfTab.MyList) {
@@ -149,27 +143,16 @@ internal fun MyListHistoryOverlay(
                     onOpenDetails = onOpenDetails
                 )
             } else if (entries.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        "Nada por aqui ainda. Os títulos que você assistir aparecem no histórico.",
-                        color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
+                MyStuffEmpty("Nada por aqui ainda. Os títulos que você assistir aparecem no histórico.")
             } else {
                 val grouped = remember(entries) { entries.groupBy { dayBucket(it.updatedAt) } }
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
                     grouped.forEach { (label, rows) ->
                         item(key = "h_$label") {
-                            Text(
-                                label.uppercase(),
-                                color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp)
-                            )
+                            MyStuffDayLabel(label, useTvLayout = true, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
                         }
                         items(rows, key = { it.card.mediaId }) { entry ->
                             HistoryRow(
@@ -201,34 +184,10 @@ internal fun MyListHistoryOverlay(
     }
 }
 
-/** Aba selecionada: preenchida. Ao receber foco (D-pad) a aba é escolhida — ← / → trocam de aba. */
-@Composable
-private fun ShelfTabPill(label: String, selected: Boolean, modifier: Modifier, onSelect: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused && !selected) onSelect()
-            }
-            .clickable(onClick = onSelect)
-            .background(if (selected) BRAND_ACCENT else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .then(
-                if (focused) Modifier.border(3.dp, if (selected) Color.White else BRAND_ACCENT, RoundedCornerShape(4.dp))
-                else Modifier
-            )
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-    ) {
-        Text(
-            label,
-            color = if (selected) com.ntv2.app.core.ui.BrandColors.OnCta else Color.White,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.SemiBold else null
-        )
-    }
-}
-
+/**
+ * Minha lista da TV: pôsteres 100×150 (raio 10) com título 11/600 embaixo (gap 6), 12 entre cards,
+ * e a dica do protótipo no fim. A parte "segure OK para remover" da dica fica de fora: o app não tem.
+ */
 @Composable
 private fun MyListGrid(
     items: List<MediaCardUi>,
@@ -238,45 +197,40 @@ private fun MyListGrid(
     onOpenDetails: (MediaCardUi) -> Unit
 ) {
     if (items.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                "Sua lista está vazia. Use o coração nos detalhes de um filme para salvá-lo.",
-                color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-                style = MaterialTheme.typography.bodyLarge
-            )
-        }
+        MyStuffEmpty("Sua lista está vazia. Use o coração nos detalhes de um filme para salvá-lo.")
         return
     }
     LazyVerticalGrid(
         state = gridState,
-        // Mesmo tamanho das capas das trilhas da grade principal.
-        columns = GridCells.FixedSize(160.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        columns = GridCells.FixedSize(100.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
+        contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp)
     ) {
         gridItems(items, key = { it.mediaId }) { media ->
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 PosterCard(
                     media = media,
                     showCovers = showCovers,
-                    width = 160.dp,
+                    width = 100.dp,
+                    radius = 10.dp,
                     modifier = Modifier.focusRequester(focusFor(media.mediaId)),
                     onClick = { onOpenDetails(media) }
                 )
-                Text(
-                    media.title,
-                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.width(160.dp)
-                )
+                MyStuffPosterTitle(media.title, useTvLayout = true, modifier = Modifier.width(100.dp))
             }
+        }
+        item(key = "hint", span = { GridItemSpan(maxLineSpan) }) {
+            Text(
+                "Aperte OK em um título para abrir",
+                style = NbrType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                color = BrandColors.TextMuted
+            )
         }
     }
 }
 
+/** Linha do histórico na TV: cartão do protótipo (2.14 TV) com Continuar / Assistido e remover. */
 @Composable
 private fun HistoryRow(
     entry: HistoryEntryUi,
@@ -284,112 +238,44 @@ private fun HistoryRow(
     onContinue: () -> Unit,
     onRemove: () -> Unit
 ) {
-    val media = entry.card
-    val cover = media.posterPath ?: media.thumbnailPath
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(com.ntv2.app.core.ui.BrandColors.Surface)
-            .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(6.dp))
-            .padding(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+    MyStuffMediaRow(
+        media = entry.card,
+        showCovers = showCovers,
+        subtitle = historySubtitle(entry),
+        subtitleColor = myStuffSubtitleColor(entry.completed, entry.card.progress),
+        useTvLayout = true,
+        onClick = null
     ) {
-        Box(
-            modifier = Modifier
-                .width(132.dp)
-                .height(74.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
-        ) {
-            if (showCovers && cover != null) {
-                AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            }
-            if (media.progress > 0f) {
-                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x38FFFFFF))) {
-                    Box(modifier = Modifier.fillMaxWidth(media.progress).fillMaxSize().background(BRAND_ACCENT))
-                }
-            }
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(media.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(historySubtitle(entry), color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
         if (entry.completed) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(NbrIcons.Check, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Success, modifier = Modifier.size(18.dp))
-                Text("Assistido", color = com.ntv2.app.core.ui.BrandColors.Success, style = MaterialTheme.typography.labelMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Icon(NbrIcons.CircleCheck, contentDescription = null, tint = BrandColors.Success, modifier = Modifier.size(16.dp))
+                Text("Assistido", color = BrandColors.Success, style = NbrType.Chip.copy(fontSize = 11.sp, lineHeight = 13.sp))
             }
         } else {
-            HistoryTextButton(icon = NbrIcons.PlayFilled, label = "Continuar", destructive = false, onClick = onContinue)
+            MyStuffTextAction(
+                label = "Continuar",
+                useTvLayout = true,
+                color = TEXT_PRIMARY,
+                icon = NbrIcons.PlayFilled,
+                onClick = onContinue
+            )
         }
-        HistoryIconButton(icon = NbrIcons.Minus, description = "Remover do histórico", onClick = onRemove)
+        MyStuffCircleButton(icon = NbrIcons.X, description = "Remover do histórico", useTvLayout = true, onClick = onRemove)
     }
 }
 
-/** "Canal • parou em 1 h 27 de 2 h 08" ou "Canal • concluído". */
+/** "Canal · parou em 1 h 27 de 2 h 08" ou "Canal · concluído" (separador do protótipo). */
 internal fun historySubtitle(entry: HistoryEntryUi): String {
     val media = entry.card
     val total = media.durationSeconds
     val channel = media.channelName
     if (entry.completed || media.progress <= 0f) {
-        return if (entry.completed) "$channel • concluído" else channel
+        return if (entry.completed) "$channel · concluído" else channel
     }
     val watched = (total * media.progress).toInt()
     val totalLabel = if (total > 0) durationLabel(total) else ""
-    return if (totalLabel.isNotEmpty()) "$channel • parou em ${durationLabel(watched)} de $totalLabel"
-    else "$channel • parou em ${durationLabel(watched)}"
-}
-
-@Composable
-private fun HistoryTextButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    destructive: Boolean,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val content = when {
-        destructive -> com.ntv2.app.core.ui.BrandColors.Error
-        else -> Color.White
-    }
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .then(if (focused) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(18.dp))
-        Text(label, color = content, style = MaterialTheme.typography.labelLarge)
-    }
-}
-
-@Composable
-private fun HistoryIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.SurfaceAlt else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .then(if (focused) Modifier.border(3.dp, BRAND_ACCENT, CircleShape) else Modifier),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, contentDescription = description, tint = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(20.dp))
-    }
+    return if (totalLabel.isNotEmpty()) "$channel · parou em ${durationLabel(watched)} de $totalLabel"
+    else "$channel · parou em ${durationLabel(watched)}"
 }
 
 /** Rótulo do dia: Hoje / Ontem / dd/MM/yyyy. */

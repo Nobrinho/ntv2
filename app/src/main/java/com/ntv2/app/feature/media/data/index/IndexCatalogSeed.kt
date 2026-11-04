@@ -63,6 +63,7 @@ object IndexCatalogSeed {
             .putOpt("logo_url", s.logoUrl)
             .putOpt("overview", s.overview)
             .put("genres", JSONArray(s.genres))
+            .putOpt("trailer_url", s.trailerUrl)
         return CatalogMerge.rowOf(KIND_SERIES, NtvIds.series(s.tmdbId), null, d)
     }
 

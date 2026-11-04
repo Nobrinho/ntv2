@@ -133,7 +133,8 @@ private fun parseCatalogSeries(o: JSONObject) = IndexSeries(
     logoUrl = o.image("logo_url"),
     overview = o.text("overview"),
     genres = o.strings("genres"),
-    seasons = emptyList()
+    seasons = emptyList(),
+    trailerUrl = o.text("trailer_url")
 )
 
 private fun parseCatalogEpisode(o: JSONObject, seasonNumber: Int) = IndexEpisode(

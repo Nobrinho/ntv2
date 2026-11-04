@@ -892,6 +892,7 @@ class MediaLibraryViewModel(
             backdropUrl = backdropUrl,
             genres = genres,
             year = year,
+            trailerUrl = trailerUrl,
             seasons = seasons.map { season ->
                 com.ntv2.app.feature.media.domain.SeasonSummary(
                     number = season.number,

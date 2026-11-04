@@ -81,6 +81,33 @@ class CatalogCardResolverTest {
     }
 
     @Test
+    fun `episodio sem trailer herda o trailer_url da serie`() = runTest {
+        val series = CatalogMerge.rowOf(
+            KIND_SERIES, "s_1399", null,
+            JSONObject().put("tmdb_id", 1399).put("title", "Game of Thrones").put("trailer_url", "https://youtu.be/abcdefghijk")
+        )
+        val ep = CatalogMerge.rowOf(
+            KIND_EPISODE, "e_1399_01_03", null,
+            JSONObject().put("series_tmdb_id", 1399).put("season_number", 1).put("episode_number", 3)
+                .put("title", "Lord Snow").put("video_message_id", 90).put("chat_id", chat)
+        )
+        val meta = CatalogCardResolver(storeWith(series, ep)) { true }.metaFor("e_1399_01_03", chat, 0)!!
+        assertEquals("https://youtu.be/abcdefghijk", meta.trailerUrl)
+    }
+
+    @Test
+    fun `filme com trailer_url na coluna e em extra vale a coluna`() = runTest {
+        val row = CatalogMerge.rowOf(
+            KIND_MOVIE, NtvIds.movie(7), null,
+            JSONObject().put("tmdb_id", 7).put("title", "X").put("chat_id", chat).put("video_message_id", 5)
+                .put("trailer_url", "https://youtu.be/coluna00000")
+                .put("extra", JSONObject().put("trailer_url", "https://youtu.be/extra000000"))
+        )
+        val meta = CatalogCardResolver(storeWith(row)) { true }.metaFor("m_7", chat, 0)!!
+        assertEquals("https://youtu.be/coluna00000", meta.trailerUrl)
+    }
+
+    @Test
     fun `ordem do nome do cartao catalogo legenda arquivo e nunca a linha v3`() {
         val v3 = "ntv:m_603 tmdb:603"
         val v3Meta = MovieMetadataParser.parse(v3)

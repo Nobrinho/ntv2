@@ -5,6 +5,7 @@ import com.ntv2.app.core.catalog.CatalogCursor
 import com.ntv2.app.core.catalog.CatalogMerge
 import com.ntv2.app.core.catalog.InMemoryCatalogStore
 import com.ntv2.app.core.catalog.KIND_MOVIE
+import com.ntv2.app.core.catalog.KIND_SERIES
 import com.ntv2.app.core.telegram.media.CastMemberMeta
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
@@ -36,6 +37,7 @@ class CatalogIndexSnapshotTest {
             IndexSeries(
                 tmdbId = 1399, title = "Game of Thrones", originalTitle = null, posterUrl = null, backdropUrl = null,
                 logoUrl = null, overview = null, genres = listOf("Drama"),
+                trailerUrl = "https://youtu.be/abcdefghijk",
                 seasons = listOf(
                     IndexSeason(2, listOf(IndexEpisode(null, 2, 1, "O Norte", null, "2012-04-01", 50, null, null, null, null, null, 40))),
                     IndexSeason(1, listOf(
@@ -68,7 +70,20 @@ class CatalogIndexSnapshotTest {
         assertEquals(listOf(1, 2), got.seasons.map { it.number })
         assertEquals(listOf(1, 2), got.seasons.first().episodes.map { it.episodeNumber })
         assertEquals(2011, got.year)
+        assertEquals("https://youtu.be/abcdefghijk", got.trailerUrl)
         assertEquals(99L, snap.generatedAtMillis)
+    }
+
+    @Test
+    fun `trailer_url da serie no catalogo vira trailerUrl e None vira null`() = runTest {
+        val store = InMemoryCatalogStore()
+        store.apply(CatalogBatch(upserts = listOf(
+            CatalogMerge.rowOf(KIND_SERIES, "s_1", null, JSONObject().put("tmdb_id", 1).put("title", "Com").put("trailer_url", "https://youtu.be/abcdefghijk")),
+            CatalogMerge.rowOf(KIND_SERIES, "s_2", null, JSONObject().put("tmdb_id", 2).put("title", "Sem").put("trailer_url", "None"))
+        )))
+        val byTitle = CatalogIndexSnapshot.load(store)!!.series.associateBy { it.title }
+        assertEquals("https://youtu.be/abcdefghijk", byTitle.getValue("Com").trailerUrl)
+        assertNull(byTitle.getValue("Sem").trailerUrl)
     }
 
     @Test

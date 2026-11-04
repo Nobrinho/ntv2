@@ -28,4 +28,14 @@ class SearchIndexImageTest {
         assertNull(JSONObject("""{"logo_url":"null"}""").tmdbImage("logo_url", base))
         assertNull(JSONObject("""{"logo_url":"None"}""").tmdbImage("logo_url", base))
     }
+
+    private val repo = SearchIndexRepository(indexUrl = "http://invalido.localhost/index.json", client = okhttp3.OkHttpClient())
+
+    @Test
+    fun `serie do index json mantem trailer_url e None vira nulo`() {
+        val com = repo.parseOneSeries(JSONObject("""{"tmdb_id":1,"title":"A","trailer_url":"https://youtu.be/abcdefghijk"}"""))
+        val sem = repo.parseOneSeries(JSONObject("""{"tmdb_id":2,"title":"B","trailer_url":"None"}"""))
+        assertEquals("https://youtu.be/abcdefghijk", com.trailerUrl)
+        assertNull(sem.trailerUrl)
+    }
 }

@@ -76,6 +76,7 @@ object CatalogMetaMapper {
             posterUrl = own.posterUrl ?: seriesMeta?.posterUrl,
             backdropUrl = own.backdropUrl ?: seriesMeta?.backdropUrl,
             logoUrl = own.logoUrl ?: seriesMeta?.logoUrl,
+            trailerUrl = own.trailerUrl ?: seriesMeta?.trailerUrl,
             genres = own.genres ?: seriesMeta?.genres,
             cast = own.cast.ifEmpty { seriesMeta?.cast.orEmpty() },
             year = own.year ?: d.cleanString("air_date")?.take(4)?.toIntOrNull() ?: seriesMeta?.year,

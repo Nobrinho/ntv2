@@ -68,7 +68,9 @@ data class IndexSeries(
     val logoUrl: String?,
     val overview: String?,
     val genres: List<String>,
-    val seasons: List<IndexSeason>
+    val seasons: List<IndexSeason>,
+    /** Link do trailer (YouTube) da série; os episódios usam este. */
+    val trailerUrl: String? = null
 ) {
     /** Ano da série = ano do 1º episódio (menor temporada/episódio) que traz data de exibição. */
     val year: Int? = seasons.asSequence().flatMap { it.episodes.asSequence() }
@@ -327,7 +329,7 @@ class SearchIndexRepository(
         )
     }
 
-    private fun parseOneSeries(o: JSONObject): IndexSeries {
+    internal fun parseOneSeries(o: JSONObject): IndexSeries {
         val genresArr = o.optJSONArray("genres")
         val genres = if (genresArr != null) (0 until genresArr.length()).map { genresArr.optString(it) } else emptyList()
         return IndexSeries(
@@ -339,7 +341,8 @@ class SearchIndexRepository(
             logoUrl = o.tmdbImage("logo_url", TMDB_LOGO),
             overview = o.cleanString("overview"),
             genres = genres,
-            seasons = parseSeasons(o.optJSONArray("seasons"))
+            seasons = parseSeasons(o.optJSONArray("seasons")),
+            trailerUrl = o.cleanString("trailer_url")
         )
     }
 

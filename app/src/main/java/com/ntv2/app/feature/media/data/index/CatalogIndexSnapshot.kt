@@ -65,7 +65,8 @@ object CatalogIndexSnapshot {
                     logoUrl = d.logo(),
                     overview = d.text("overview"),
                     genres = d.strings("genres"),
-                    seasons = seasons
+                    seasons = seasons,
+                    trailerUrl = d.text("trailer_url")
                 )
             }
             // Mesma ordem do index.json (gerar_indice.py: título em minúsculas).

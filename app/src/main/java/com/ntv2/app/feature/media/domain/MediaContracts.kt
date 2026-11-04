@@ -75,7 +75,9 @@ data class SeriesSummary(
     val genres: List<String>,
     val seasons: List<SeasonSummary>,
     /** Ano da série (do 1º episódio com data), se o índice trouxer. */
-    val year: Int? = null
+    val year: Int? = null,
+    /** Link do trailer (YouTube) da série, se o índice trouxer. */
+    val trailerUrl: String? = null
 ) {
     /** Chave de biblioteca da série (favoritar o card da série). */
     val libraryKey: String get() = "tv:$tmdbId"

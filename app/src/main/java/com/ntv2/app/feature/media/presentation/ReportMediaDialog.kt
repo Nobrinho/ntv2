@@ -20,18 +20,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.HighQuality
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,6 +48,7 @@ import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.feature.media.data.report.ReportOutcome
 import kotlinx.coroutines.delay
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /** Motivos de reporte de uma mídia. [code] é o valor estável enviado ao backend (`reason`). */
 enum class MediaReportReason(val code: String, val label: String, val hint: String) {
@@ -205,7 +194,7 @@ private fun ReportHeader(title: String) {
                 .background(BrandColors.Warning.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Flag, contentDescription = null, tint = BrandColors.Warning, modifier = Modifier.size(22.dp))
+            Icon(NbrIcons.Flag, contentDescription = null, tint = BrandColors.Warning, modifier = Modifier.size(22.dp))
         }
         Text("Reportar problema", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     }
@@ -302,9 +291,9 @@ private fun ReportButton(text: String, primary: Boolean, modifier: Modifier = Mo
 @Composable
 private fun ReportResult(outcome: ReportOutcome, buttonModifier: Modifier, onDismiss: () -> Unit) {
     val (icon, tint) = when (outcome) {
-        ReportOutcome.Sent -> Icons.Filled.CheckCircle to BRAND_ACCENT
-        ReportOutcome.Duplicate -> Icons.Filled.Info to BrandColors.Accent
-        ReportOutcome.RateLimited, ReportOutcome.Failed -> Icons.Filled.ErrorOutline to BrandColors.Warning
+        ReportOutcome.Sent -> NbrIcons.CircleCheck to BRAND_ACCENT
+        ReportOutcome.Duplicate -> NbrIcons.Info to BrandColors.Accent
+        ReportOutcome.RateLimited, ReportOutcome.Failed -> NbrIcons.CircleAlert to BrandColors.Warning
     }
     val (headline, detail) = when (outcome) {
         ReportOutcome.Sent -> "Reporte enviado, obrigado" to
@@ -355,16 +344,16 @@ private fun ReportReasonRow(reason: MediaReportReason, modifier: Modifier, onCli
             Text(reason.label, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(reason.hint, color = BrandColors.TextMuted, style = MaterialTheme.typography.bodySmall)
         }
-        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = BrandColors.TextMuted, modifier = Modifier.size(20.dp))
+        Icon(NbrIcons.ChevronRight, contentDescription = null, tint = BrandColors.TextMuted, modifier = Modifier.size(20.dp))
     }
 }
 
 private fun MediaReportReason.icon(): ImageVector = when (this) {
-    MediaReportReason.WrongVideo -> Icons.Filled.SwapHoriz
-    MediaReportReason.NotDubbed -> Icons.Filled.Mic
-    MediaReportReason.AudioProblem -> Icons.Filled.VolumeOff
-    MediaReportReason.SubtitleProblem -> Icons.Filled.ClosedCaption
-    MediaReportReason.BadQuality -> Icons.Filled.HighQuality
-    MediaReportReason.DoesNotPlay -> Icons.Filled.ErrorOutline
-    MediaReportReason.Other -> Icons.Filled.MoreHoriz
+    MediaReportReason.WrongVideo -> NbrIcons.ArrowLeftRight
+    MediaReportReason.NotDubbed -> NbrIcons.Mic
+    MediaReportReason.AudioProblem -> NbrIcons.VolumeX
+    MediaReportReason.SubtitleProblem -> NbrIcons.Captions
+    MediaReportReason.BadQuality -> NbrIcons.ImageOff
+    MediaReportReason.DoesNotPlay -> NbrIcons.CircleAlert
+    MediaReportReason.Other -> NbrIcons.Ellipsis
 }

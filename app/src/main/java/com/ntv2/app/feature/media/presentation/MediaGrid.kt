@@ -26,10 +26,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -88,6 +84,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import kotlin.math.roundToInt
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Grade da biblioteca: cards, esqueleto de carregamento e "Carregar mais".
 
@@ -125,7 +122,7 @@ internal fun LoadMoreButton(
             CircularProgressIndicator(color = content, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
             Text("Carregando…", color = content, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         } else {
-            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
+            Icon(NbrIcons.ChevronDown, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
             Text("Carregar mais", color = content, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
     }
@@ -465,7 +462,7 @@ internal fun MediaCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Filled.Movie,
+                            NbrIcons.Clapperboard,
                             contentDescription = null,
                             tint = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
                             modifier = Modifier.size(48.dp)
@@ -518,7 +515,7 @@ internal fun MediaCard(
                             .padding(4.dp)
                     ) {
                         Icon(
-                            Icons.Filled.Warning,
+                            NbrIcons.TriangleAlert,
                             contentDescription = "Pode não reproduzir vídeo neste aparelho",
                             tint = com.ntv2.app.core.ui.BrandColors.Warning,
                             modifier = Modifier.size(16.dp)
@@ -704,7 +701,7 @@ private fun SeriesGridCard(
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Icon(
-                            Icons.Filled.Movie,
+                            NbrIcons.Clapperboard,
                             contentDescription = null,
                             tint = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
                             modifier = Modifier.size(48.dp)

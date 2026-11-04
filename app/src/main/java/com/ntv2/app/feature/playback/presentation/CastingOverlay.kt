@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,6 +25,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /**
  * Ocupa a área do vídeo enquanto transmite: capa desfocada + "Transmitindo para <aparelho>" e o
@@ -66,7 +64,7 @@ internal fun CastingOverlay(
             if (connecting) {
                 CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(40.dp))
             } else {
-                Icon(Icons.Filled.CastConnected, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
+                Icon(NbrIcons.Cast, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
             }
             Text(
                 if (connecting) "Conectando a $deviceName…" else "Transmitindo para $deviceName",
@@ -90,7 +88,7 @@ internal fun CastingOverlay(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Cast, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(NbrIcons.Cast, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 Text("Parar transmissão", color = Color.White, style = MaterialTheme.typography.labelLarge)
             }
         }

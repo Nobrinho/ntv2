@@ -19,14 +19,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.LinkOff
-import androidx.compose.material.icons.filled.QrCode2
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -68,6 +60,7 @@ import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.trapFocus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 private enum class LinkMode { MENU, SHOW_CODE, ENTER_CODE }
 
@@ -181,10 +174,10 @@ private fun LinkMenu(
     }
 
     val show: @Composable (Modifier, Boolean) -> Unit = { m, primary ->
-        TestButton(icon = Icons.Filled.QrCode2, label = "Mostrar código", primary = primary, modifier = m, onClick = onShowCode)
+        TestButton(icon = NbrIcons.QrCode, label = "Mostrar código", primary = primary, modifier = m, onClick = onShowCode)
     }
     val enter: @Composable (Modifier, Boolean) -> Unit = { m, primary ->
-        TestButton(icon = Icons.Filled.Keyboard, label = "Digitar código", primary = primary, modifier = m, onClick = onEnterCode)
+        TestButton(icon = NbrIcons.Keyboard, label = "Digitar código", primary = primary, modifier = m, onClick = onEnterCode)
     }
     // TV: o normal é mostrar (digitar com o controle é chato); celular: digitar o código da TV.
     if (isTv) {
@@ -196,14 +189,14 @@ private fun LinkMenu(
     }
     if (linked) {
         if (!confirmLeave) {
-            TestButton(icon = Icons.Filled.LinkOff, label = "Desconectar este aparelho",
+            TestButton(icon = NbrIcons.Unlink, label = "Desconectar este aparelho",
                 modifier = Modifier.fillMaxWidth().focusRequester(leaveFocus),
                 onClick = { leaveTouched = true; confirmLeave = true })
         } else {
             Text("Este aparelho sai da conta e fica com uma cópia dos dados. Os outros continuam conectados.",
                 color = BrandColors.Warning, style = MaterialTheme.typography.bodyMedium)
             TestButton(
-                icon = Icons.Filled.LinkOff,
+                icon = NbrIcons.Unlink,
                 label = if (leaving) "Desconectando…" else "Confirmar desconexão",
                 enabled = !leaving,
                 primary = true,
@@ -220,7 +213,7 @@ private fun LinkMenu(
             )
         }
     }
-    TestButton(icon = Icons.Filled.Close, label = "Fechar", modifier = Modifier.fillMaxWidth(), onClick = onClose)
+    TestButton(icon = NbrIcons.X, label = "Fechar", modifier = Modifier.fillMaxWidth(), onClick = onClose)
 }
 
 @Composable
@@ -234,7 +227,7 @@ private fun DeviceRow(device: LinkedDevice) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Filled.Devices, contentDescription = null, tint = BrandColors.Accent, modifier = Modifier.size(20.dp))
+        Icon(NbrIcons.Link, contentDescription = null, tint = BrandColors.Accent, modifier = Modifier.size(20.dp))
         Text(device.name ?: "Aparelho", color = Color.White, style = MaterialTheme.typography.titleSmall,
             maxLines = 1, modifier = Modifier.weight(1f))
         if (device.thisDevice) {
@@ -284,18 +277,18 @@ private fun ShowCode(repository: DeviceLinkRepository, onDone: () -> Unit) {
         failed -> {
             Text("Não foi possível gerar o código. Verifique a internet.", color = BrandColors.Warning,
                 style = MaterialTheme.typography.bodyMedium)
-            TestButton(icon = Icons.Filled.Refresh, label = "Tentar de novo", primary = true,
+            TestButton(icon = NbrIcons.RefreshCw, label = "Tentar de novo", primary = true,
                 modifier = Modifier.fillMaxWidth().focusRequester(actionFocus), onClick = { attempt++ })
         }
         status == LinkStatus.LINKED -> {
-            ResultLine(Icons.Filled.CheckCircle, BrandColors.Accent,
+            ResultLine(NbrIcons.CircleCheck, BrandColors.Accent,
                 "Conectado${linkedTo?.let { " a $it" } ?: ""}. Minha lista e o progresso já estão sendo sincronizados.")
-            TestButton(icon = Icons.Filled.CheckCircle, label = "OK", primary = true,
+            TestButton(icon = NbrIcons.CircleCheck, label = "OK", primary = true,
                 modifier = Modifier.fillMaxWidth().focusRequester(actionFocus), onClick = onDone)
         }
         status == LinkStatus.EXPIRED || status == LinkStatus.NOT_FOUND -> {
             Text("O código expirou.", color = BrandColors.Warning, style = MaterialTheme.typography.bodyMedium)
-            TestButton(icon = Icons.Filled.Refresh, label = "Gerar outro código", primary = true,
+            TestButton(icon = NbrIcons.RefreshCw, label = "Gerar outro código", primary = true,
                 modifier = Modifier.fillMaxWidth().focusRequester(actionFocus), onClick = { attempt++ })
         }
         code == null -> CircularProgressIndicator(color = BrandColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
@@ -320,7 +313,7 @@ private fun ShowCode(repository: DeviceLinkRepository, onDone: () -> Unit) {
                 Text("Aguardando confirmação · expira em %d:%02d".format(left / 60, left % 60),
                     color = BrandColors.TextMuted, style = MaterialTheme.typography.bodySmall)
             }
-            TestButton(icon = Icons.Filled.Close, label = "Cancelar", modifier = Modifier.fillMaxWidth().focusRequester(actionFocus),
+            TestButton(icon = NbrIcons.X, label = "Cancelar", modifier = Modifier.fillMaxWidth().focusRequester(actionFocus),
                 onClick = onDone)
         }
     }
@@ -353,10 +346,10 @@ private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit, onOp
         }
     }
     if (result == ClaimResult.LINKED || result == ClaimResult.ALREADY_LINKED) {
-        ResultLine(Icons.Filled.CheckCircle, BrandColors.Accent,
+        ResultLine(NbrIcons.CircleCheck, BrandColors.Accent,
             if (result == ClaimResult.LINKED) "Aparelhos conectados. Minha lista e o progresso já estão sendo sincronizados."
             else "Estes aparelhos já estavam conectados.")
-        TestButton(icon = Icons.Filled.CheckCircle, label = "OK", primary = true,
+        TestButton(icon = NbrIcons.CircleCheck, label = "OK", primary = true,
             modifier = Modifier.fillMaxWidth().focusRequester(okFocus), onClick = onDone)
         return
     }
@@ -396,19 +389,19 @@ private fun EnterCode(repository: DeviceLinkRepository, onDone: () -> Unit, onOp
         }
         Text(msg, color = BrandColors.Warning, style = MaterialTheme.typography.bodyMedium)
         if (r == ClaimResult.PREMIUM_REQUIRED && onOpenPremium != null) {
-            TestButton(icon = Icons.Filled.Devices, label = "Conhecer o Premium", primary = true,
+            TestButton(icon = NbrIcons.Link, label = "Conhecer o Premium", primary = true,
                 modifier = Modifier.fillMaxWidth(), onClick = onOpenPremium)
         }
     }
     TestButton(
-        icon = Icons.Filled.Devices,
+        icon = NbrIcons.Link,
         label = if (sending) "Conectando…" else "Conectar",
         enabled = !sending && text.length == DeviceLinkRepository.CODE_LENGTH,
         primary = true,
         modifier = Modifier.fillMaxWidth(),
         onClick = { submit() }
     )
-    TestButton(icon = Icons.Filled.Close, label = "Voltar", modifier = Modifier.fillMaxWidth(), onClick = onDone)
+    TestButton(icon = NbrIcons.X, label = "Voltar", modifier = Modifier.fillMaxWidth(), onClick = onDone)
 }
 
 @Composable

@@ -29,10 +29,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,6 +69,7 @@ import com.ntv2.app.feature.media.domain.SeasonSummary
 import com.ntv2.app.feature.media.domain.SeriesSummary
 import com.ntv2.app.feature.media.presentation.state.SearchFilter
 import com.ntv2.app.feature.media.presentation.state.SearchFilterKind
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /**
  * Detalhes de uma série: arte + seletor de temporada + lista de episódios em ordem. Cada linha
@@ -240,7 +237,7 @@ internal fun SeriesDetailsOverlay(
                                     .clickable(onClick = onClose),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = Color.White, modifier = Modifier.size(26.dp))
+                                Icon(NbrIcons.ChevronLeft, "Voltar", tint = Color.White, modifier = Modifier.size(26.dp))
                             }
                         }
                         Column(
@@ -371,7 +368,7 @@ private fun PlayButton(
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(24.dp))
+        Icon(NbrIcons.PlayFilled, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(24.dp))
         Text(label, color = com.ntv2.app.core.ui.BrandColors.OnCta, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 }
@@ -500,7 +497,7 @@ private fun EpisodeRow(
                     )
                 }
                 if (progress >= WATCHED_FRACTION) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = "Assistido", tint = com.ntv2.app.core.ui.BrandColors.Success, modifier = Modifier.size(16.dp))
+                    Icon(NbrIcons.CircleCheck, contentDescription = "Assistido", tint = com.ntv2.app.core.ui.BrandColors.Success, modifier = Modifier.size(16.dp))
                 }
             }
             episode.title?.takeIf { it.isNotBlank() }?.let {
@@ -542,7 +539,7 @@ internal fun BackChip(onClose: () -> Unit, modifier: Modifier) {
             .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, CircleShape) else Modifier),
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = Color.White, modifier = Modifier.size(26.dp))
+        Icon(NbrIcons.ChevronLeft, "Voltar", tint = Color.White, modifier = Modifier.size(26.dp))
     }
 }
 

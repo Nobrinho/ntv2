@@ -27,12 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -75,6 +70,7 @@ import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import com.ntv2.app.feature.media.presentation.state.SearchFilterOptions
 import com.ntv2.app.feature.media.presentation.state.SearchFilters
 import com.ntv2.app.feature.media.presentation.state.SearchTypeFilter
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Busca da biblioteca: teclado de TV, busca por toque e lista de resultados.
 
@@ -781,7 +777,7 @@ internal fun TouchSearchOverlay(
                 contentAlignment = Alignment.Center
             ) {
                 androidx.compose.material3.Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
+                    NbrIcons.ChevronLeft,
                     contentDescription = "Voltar",
                     tint = Color.White,
                     modifier = Modifier.size(30.dp)
@@ -831,7 +827,7 @@ internal fun TouchSearchOverlay(
                         contentAlignment = Alignment.Center
                     ) {
                         androidx.compose.material3.Icon(
-                            Icons.Filled.Close,
+                            NbrIcons.X,
                             contentDescription = "Limpar",
                             tint = Color(0xFFD8D8D8),
                             modifier = Modifier.size(22.dp)
@@ -849,7 +845,7 @@ internal fun TouchSearchOverlay(
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.material3.Icon(
-                        Icons.Filled.FilterList,
+                        NbrIcons.SlidersHorizontal,
                         contentDescription = "Filtros",
                         tint = if (filters.isActive) Color.Black else Color.White,
                         modifier = Modifier.size(26.dp)
@@ -931,7 +927,7 @@ private fun RemovableChip(text: String, onRemove: () -> Unit) {
             style = androidx.compose.material3.MaterialTheme.typography.labelLarge
         )
         androidx.compose.material3.Icon(
-            Icons.Filled.Close,
+            NbrIcons.X,
             contentDescription = "Remover filtro",
             tint = Color(0xFFD8D8D8),
             modifier = Modifier.size(16.dp)

@@ -19,14 +19,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.QrCode2
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,6 +59,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /**
  * NBR Play Premium: status, escolha do plano e pagamento por Pix. Na TV o QR Code fica grande para
@@ -104,7 +97,7 @@ internal fun PremiumOverlay(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = BrandColors.Accent, modifier = Modifier.size(28.dp))
+                Icon(NbrIcons.Crown, contentDescription = null, tint = BrandColors.Accent, modifier = Modifier.size(28.dp))
                 Text("NBR Play Premium", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
             val current = charge
@@ -135,7 +128,7 @@ private fun PlanChooser(repository: PremiumRepository, onCharge: (PixCharge) -> 
     val s = status
     if (s?.premium == true) {
         val until = s.premiumUntilMs?.let { formatDate(it) }
-        ResultBox(Icons.Filled.CheckCircle, BrandColors.Accent, "Premium ativo${until?.let { " até $it" } ?: ""}. Obrigado por apoiar o app!")
+        ResultBox(NbrIcons.CircleCheck, BrandColors.Accent, "Premium ativo${until?.let { " até $it" } ?: ""}. Obrigado por apoiar o app!")
     }
     Text(
         "Com o Premium, a TV e o celular compartilham Minha lista, o progresso e o histórico " +
@@ -143,7 +136,7 @@ private fun PlanChooser(repository: PremiumRepository, onCharge: (PixCharge) -> 
         color = BrandColors.TextMuted,
         style = MaterialTheme.typography.bodyMedium
     )
-    Benefit(Icons.Filled.Devices, "Conectar aparelhos e sincronizar Minha lista, progresso e histórico")
+    Benefit(NbrIcons.Link, "Conectar aparelhos e sincronizar Minha lista, progresso e histórico")
     Text(
         "Pagamento por Pix, sem renovação automática: quando estiver perto de vencer, é só pagar de novo " +
             "(os dias se somam).",
@@ -156,13 +149,13 @@ private fun PlanChooser(repository: PremiumRepository, onCharge: (PixCharge) -> 
         s == null || s.plans.isEmpty() -> {
             Text("Não foi possível carregar os planos. Verifique a internet.", color = BrandColors.Warning,
                 style = MaterialTheme.typography.bodyMedium)
-            TestButton(icon = Icons.Filled.Close, label = "Fechar", modifier = Modifier.fillMaxWidth().focusRequester(firstFocus), onClick = onClose)
+            TestButton(icon = NbrIcons.X, label = "Fechar", modifier = Modifier.fillMaxWidth().focusRequester(firstFocus), onClick = onClose)
             return
         }
         else -> s.plans.forEachIndexed { i, plan ->
             val busy = creating == plan.id
             TestButton(
-                icon = Icons.Filled.QrCode2,
+                icon = NbrIcons.QrCode,
                 label = if (busy) "Gerando Pix…" else planLabel(plan, s.plans),
                 enabled = creating == null,
                 primary = i == s.plans.lastIndex,
@@ -184,7 +177,7 @@ private fun PlanChooser(repository: PremiumRepository, onCharge: (PixCharge) -> 
         }
     }
     error?.let { Text(it, color = BrandColors.Warning, style = MaterialTheme.typography.bodyMedium) }
-    TestButton(icon = Icons.Filled.Close, label = "Fechar", modifier = Modifier.fillMaxWidth(), onClick = onClose)
+    TestButton(icon = NbrIcons.X, label = "Fechar", modifier = Modifier.fillMaxWidth(), onClick = onClose)
 }
 
 @Composable
@@ -228,9 +221,9 @@ private fun PixPayment(
     when (state) {
         PaymentState.APPROVED -> {
             val until = repository.status.value?.premiumUntilMs?.let { formatDate(it) }
-            ResultBox(Icons.Filled.CheckCircle, BrandColors.Accent,
+            ResultBox(NbrIcons.CircleCheck, BrandColors.Accent,
                 "Pagamento confirmado! Premium ativo${until?.let { " até $it" } ?: ""}.")
-            TestButton(icon = Icons.Filled.CheckCircle, label = "OK", primary = true,
+            TestButton(icon = NbrIcons.CircleCheck, label = "OK", primary = true,
                 modifier = Modifier.fillMaxWidth().focusRequester(actionFocus), onClick = onDone)
         }
         PaymentState.EXPIRED, PaymentState.FAILED, PaymentState.NOT_FOUND -> {
@@ -239,7 +232,7 @@ private fun PixPayment(
                 else "O pagamento não foi concluído. Gere um novo código.",
                 color = BrandColors.Warning, style = MaterialTheme.typography.bodyMedium
             )
-            TestButton(icon = Icons.Filled.Refresh, label = "Escolher plano de novo", primary = true,
+            TestButton(icon = NbrIcons.RefreshCw, label = "Escolher plano de novo", primary = true,
                 modifier = Modifier.fillMaxWidth().focusRequester(actionFocus), onClick = onBack)
         }
         PaymentState.PENDING -> {
@@ -266,7 +259,7 @@ private fun PixPayment(
             }
             if (!isTv) {
                 TestButton(
-                    icon = if (copied) Icons.Filled.CheckCircle else Icons.Filled.ContentCopy,
+                    icon = if (copied) NbrIcons.CircleCheck else NbrIcons.Copy,
                     label = if (copied) "Código copiado" else "Copiar código Pix",
                     primary = true,
                     modifier = Modifier.fillMaxWidth().focusRequester(actionFocus),
@@ -280,7 +273,7 @@ private fun PixPayment(
                     color = BrandColors.TextMuted, style = MaterialTheme.typography.bodySmall)
             }
             TestButton(
-                icon = Icons.Filled.Close, label = "Cancelar",
+                icon = NbrIcons.X, label = "Cancelar",
                 modifier = Modifier.fillMaxWidth().then(if (isTv) Modifier.focusRequester(actionFocus) else Modifier),
                 onClick = onBack
             )

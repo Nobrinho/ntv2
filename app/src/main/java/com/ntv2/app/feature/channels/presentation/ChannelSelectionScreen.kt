@@ -29,15 +29,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Deselect
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -80,6 +71,7 @@ import com.ntv2.app.feature.channels.presentation.state.ChannelSelectionUiState
 import com.ntv2.app.feature.channels.presentation.viewmodel.ChannelSelectionAction
 import com.ntv2.app.feature.channels.presentation.viewmodel.ChannelSelectionViewModel
 import kotlin.math.abs
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 @Composable
 fun ChannelSelectionScreen(
@@ -205,11 +197,11 @@ fun ChannelSelectionScreen(
             ConfirmDialog(
                 title = "Sair da conta?",
                 message = "Você precisará entrar novamente para usar o app.",
-                icon = Icons.AutoMirrored.Filled.Logout,
+                icon = NbrIcons.LogOut,
                 confirmLabel = "Sair",
-                confirmIcon = Icons.AutoMirrored.Filled.Logout,
+                confirmIcon = NbrIcons.LogOut,
                 cancelLabel = "Cancelar",
-                cancelIcon = Icons.Filled.Close,
+                cancelIcon = NbrIcons.X,
                 destructive = true,
                 onConfirm = { confirmLogout = false; onLogout() },
                 onDismiss = { confirmLogout = false }
@@ -237,16 +229,16 @@ private fun ChannelActionsRail(
     RailColumn(enterFocus = { if (state.canContinue) continueFocus else null }) {
         // Foco inicial na Atualizar (sempre presente); Limpar só aparece com seleção.
         RailButton(
-            icon = Icons.Filled.Refresh,
+            icon = NbrIcons.RefreshCw,
             label = "Atualizar",
             modifier = Modifier.focusRequester(firstActionFocusRequester),
             onClick = onRefresh
         )
         if (hasSelection) {
-            RailButton(Icons.Filled.Deselect, "Limpar", onClick = onClear)
+            RailButton(NbrIcons.SquareDashed, "Limpar", onClick = onClear)
         }
         RailButton(
-            icon = Icons.AutoMirrored.Filled.ArrowForward,
+            icon = NbrIcons.ArrowRight,
             label = "Continuar",
             enabled = state.canContinue,
             primary = state.canContinue,
@@ -254,10 +246,10 @@ private fun ChannelActionsRail(
             onClick = onContinue
         )
         if (showBack) {
-            RailButton(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", onClick = onBack)
+            RailButton(NbrIcons.ChevronLeft, "Voltar", onClick = onBack)
         }
         RailButton(
-            Icons.AutoMirrored.Filled.Logout,
+            NbrIcons.LogOut,
             "Sair",
             modifier = Modifier.focusRequester(logoutFocus),
             onClick = onLogout
@@ -287,17 +279,17 @@ private fun ChannelBottomBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (showBack) {
-            ChannelNavItem(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", Modifier.weight(1f), onClick = onBack)
+            ChannelNavItem(NbrIcons.ChevronLeft, "Voltar", Modifier.weight(1f), onClick = onBack)
         }
         if (hasSelection) {
-            ChannelNavItem(Icons.Filled.Deselect, "Limpar", Modifier.weight(1f), onClick = onClear)
+            ChannelNavItem(NbrIcons.SquareDashed, "Limpar", Modifier.weight(1f), onClick = onClear)
         }
         ChannelNavItem(
-            Icons.AutoMirrored.Filled.Logout, "Sair",
+            NbrIcons.LogOut, "Sair",
             Modifier.weight(1f).focusRequester(logoutFocusRequester), onClick = onLogout
         )
         ChannelNavItem(
-            Icons.AutoMirrored.Filled.ArrowForward, "Continuar",
+            NbrIcons.ArrowRight, "Continuar",
             Modifier.weight(if (showBack || hasSelection) 2f else 3f),
             enabled = state.canContinue, primary = state.canContinue, showLabel = true, onClick = onContinue
         )
@@ -562,7 +554,7 @@ private fun ChannelCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Filled.Check,
+                            NbrIcons.Check,
                             contentDescription = null,
                             tint = com.ntv2.app.core.ui.BrandColors.OnCta,
                             modifier = Modifier.size(14.dp)
@@ -587,7 +579,7 @@ private fun ChannelCard(
                 ) {
                     if (selected) {
                         Icon(
-                            Icons.Filled.CheckCircle,
+                            NbrIcons.CircleCheck,
                             contentDescription = null,
                             tint = accent,
                             modifier = Modifier.size(16.dp)

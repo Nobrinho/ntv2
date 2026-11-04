@@ -32,11 +32,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -76,6 +71,7 @@ import com.ntv2.app.core.ui.LocalAnimationsEnabled
 import com.ntv2.app.core.ui.brandBackdrop
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import kotlinx.coroutines.launch
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 private data class OnboardingPage(
     val title: String,
@@ -96,13 +92,13 @@ private fun onboardingPages(isTv: Boolean) = listOf(
         title = "Seus canais viram catálogo",
         body = "Escolha seus canais do Telegram e o NBR Play organiza os vídeos com capas, sinopse e elenco.",
         accent = BrandColors.Violet,
-        icon = Icons.Filled.VideoLibrary
+        icon = NbrIcons.Clapperboard
     ),
     OnboardingPage(
         title = "Continue de onde parou",
         body = "Progresso, favoritos e histórico salvos para você voltar ao que estava assistindo.",
         accent = BrandColors.Rose,
-        icon = Icons.Filled.History
+        icon = NbrIcons.History
     ),
     OnboardingPage(
         title = "Entre com o seu Telegram",
@@ -113,7 +109,7 @@ private fun onboardingPages(isTv: Boolean) = listOf(
             "No próximo passo, entre com o seu número do Telegram. Sua conta fica só neste aparelho."
         },
         accent = BrandColors.Cyan,
-        icon = Icons.Filled.Lock
+        icon = NbrIcons.Lock
     )
 )
 
@@ -341,7 +337,7 @@ private fun WideOnboarding(
 private fun PrimaryLabel(isLast: Boolean) {
     BrandButtonLabel(if (isLast) "Começar" else "Avançar")
     if (!isLast) {
-        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+        Icon(NbrIcons.ArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
     }
 }
 

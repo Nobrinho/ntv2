@@ -17,16 +17,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +41,7 @@ import com.ntv2.app.core.network.CheckResult
 import com.ntv2.app.core.network.ConnectionReport
 import com.ntv2.app.core.ui.trapFocus
 import kotlinx.coroutines.flow.Flow
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 private val OK_GREEN = com.ntv2.app.core.ui.BrandColors.Accent
 private val WARN_YELLOW = com.ntv2.app.core.ui.BrandColors.Warning
@@ -99,10 +90,10 @@ internal fun ConnectionTestOverlay(
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
             )
-            CheckRow(Icons.Filled.Wifi, "Rede", report.network)
-            CheckRow(Icons.Filled.Cloud, "Internet", report.internet)
-            CheckRow(Icons.Filled.Send, "Telegram", report.telegram)
-            CheckRow(Icons.Filled.Speed, "Velocidade", report.speed)
+            CheckRow(NbrIcons.Wifi, "Rede", report.network)
+            CheckRow(NbrIcons.Cloud, "Internet", report.internet)
+            CheckRow(NbrIcons.Send, "Telegram", report.telegram)
+            CheckRow(NbrIcons.Gauge, "Velocidade", report.speed)
 
             report.verdict?.let { verdict ->
                 val color = if (report.verdictGood) OK_GREEN else WARN_YELLOW
@@ -122,7 +113,7 @@ internal fun ConnectionTestOverlay(
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 val retry: @Composable (Modifier) -> Unit = { m ->
                     TestButton(
-                        icon = Icons.Filled.Refresh,
+                        icon = NbrIcons.RefreshCw,
                         label = if (report.running) "Testando…" else "Testar de novo",
                         enabled = !report.running,
                         primary = true,
@@ -133,12 +124,12 @@ internal fun ConnectionTestOverlay(
                 if (maxWidth < 400.dp) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         retry(Modifier.fillMaxWidth())
-                        TestButton(icon = Icons.Filled.Close, label = "Fechar", modifier = Modifier.fillMaxWidth(), onClick = onClose)
+                        TestButton(icon = NbrIcons.X, label = "Fechar", modifier = Modifier.fillMaxWidth(), onClick = onClose)
                     }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         retry(Modifier.weight(1f))
-                        TestButton(icon = Icons.Filled.Close, label = "Fechar", modifier = Modifier.weight(1f), onClick = onClose)
+                        TestButton(icon = NbrIcons.X, label = "Fechar", modifier = Modifier.weight(1f), onClick = onClose)
                     }
                 }
             }
@@ -165,9 +156,9 @@ private fun CheckRow(icon: ImageVector, label: String, result: CheckResult) {
             is CheckResult.Ok -> StatusValue(
                 result.value,
                 if (result.good) OK_GREEN else WARN_YELLOW,
-                if (result.good) Icons.Filled.CheckCircle else Icons.Filled.Warning
+                if (result.good) NbrIcons.CircleCheck else NbrIcons.TriangleAlert
             )
-            is CheckResult.Failed -> StatusValue(result.reason, FAIL_RED, Icons.Filled.Cancel)
+            is CheckResult.Failed -> StatusValue(result.reason, FAIL_RED, NbrIcons.CircleX)
         }
     }
 }

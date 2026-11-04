@@ -24,17 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -90,6 +80,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Tela de detalhes do filme (Continuar/Recomeçar/Voltar).
 
@@ -241,7 +232,7 @@ internal fun MovieDetailsOverlay(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = Color(0xFFB7BBC4), modifier = Modifier.size(20.dp))
+                            Icon(NbrIcons.ChevronDown, contentDescription = null, tint = Color(0xFFB7BBC4), modifier = Modifier.size(20.dp))
                             Text("Mais abaixo: recomendados", color = Color(0xFFB7BBC4), style = MaterialTheme.typography.labelMedium)
                         }
                     }
@@ -343,7 +334,7 @@ internal fun DetailsCloseButton(onClick: () -> Unit, modifier: Modifier = Modifi
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.Filled.Close, contentDescription = "Fechar", tint = Color.White, modifier = Modifier.size(22.dp))
+        Icon(NbrIcons.X, contentDescription = "Fechar", tint = Color.White, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -677,7 +668,7 @@ internal fun DetailsActionRow(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             DetailButton(
-                icon = Icons.Filled.PlayArrow,
+                icon = NbrIcons.PlayFilled,
                 label = playLabel,
                 primary = true,
                 modifier = Modifier.fillMaxWidth().focusRequester(playFocus),
@@ -689,9 +680,9 @@ internal fun DetailsActionRow(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                DetailButton(icon = Icons.Filled.Replay, label = "Recomeçar", primary = false, onClick = onRestart, modifier = Modifier.weight(1f))
+                DetailButton(icon = NbrIcons.RotateCcw, label = "Recomeçar", primary = false, onClick = onRestart, modifier = Modifier.weight(1f))
                 FavoriteToggleButton(isFavorite = isFavorite, onClick = onToggleFavorite)
-                DetailIconButton(icon = Icons.Filled.Flag, description = "Reportar problema", onClick = onReportClick)
+                DetailIconButton(icon = NbrIcons.Flag, description = "Reportar problema", onClick = onReportClick)
             }
         }
         return
@@ -704,7 +695,7 @@ internal fun DetailsActionRow(
     ) {
         val share = if (fillWidth) Modifier.weight(1f) else Modifier
         DetailButton(
-            icon = Icons.Filled.PlayArrow,
+            icon = NbrIcons.PlayFilled,
             label = playLabel,
             primary = true,
             modifier = share.focusRequester(playFocus),
@@ -712,11 +703,11 @@ internal fun DetailsActionRow(
             onClick = onPlay
         )
         if (showRestart) {
-            DetailButton(icon = Icons.Filled.Replay, label = "Recomeçar", primary = false, onClick = onRestart, modifier = share)
+            DetailButton(icon = NbrIcons.RotateCcw, label = "Recomeçar", primary = false, onClick = onRestart, modifier = share)
         }
         // Coração e reportar: quadrados só-ícone ao lado das ações (como no protótipo).
         FavoriteToggleButton(isFavorite = isFavorite, onClick = onToggleFavorite)
-        DetailIconButton(icon = Icons.Filled.Flag, description = "Reportar problema", onClick = onReportClick)
+        DetailIconButton(icon = NbrIcons.Flag, description = "Reportar problema", onClick = onReportClick)
     }
 }
 
@@ -750,7 +741,7 @@ private fun DetailMetaRow(
         ) {
             details?.rating?.let { rating ->
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Star, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(15.dp))
+                    Icon(NbrIcons.StarFilled, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(15.dp))
                     Text("%.1f".format(rating), color = BRAND_ACCENT, style = MaterialTheme.typography.titleSmall)
                 }
             }
@@ -830,7 +821,7 @@ internal fun InListLabel() {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Filled.Check, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(15.dp))
+        Icon(NbrIcons.Check, contentDescription = null, tint = BRAND_ACCENT, modifier = Modifier.size(15.dp))
         Text("Na sua lista", color = BRAND_ACCENT, style = MaterialTheme.typography.labelLarge)
     }
 }
@@ -884,7 +875,7 @@ internal fun FavoriteToggleButton(isFavorite: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            imageVector = if (isFavorite) NbrIcons.HeartFilled else NbrIcons.Heart,
             contentDescription = if (isFavorite) "Remover da minha lista" else "Adicionar à minha lista",
             tint = if (isFavorite) BRAND_ACCENT else Color.White,
             modifier = Modifier.size(24.dp)

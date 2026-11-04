@@ -19,9 +19,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +47,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.feature.media.presentation.state.ChannelChipUi
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Seletor de canal ativo.
 
@@ -184,7 +182,7 @@ internal fun ChannelPickerOverlay(
                             modifier = Modifier.weight(1f)
                         )
                         if (selected) {
-                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
+                            Icon(NbrIcons.CircleCheck, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
@@ -206,7 +204,7 @@ internal fun ChannelPickerOverlay(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(NbrIcons.X, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 Text("Fechar", color = Color.White, style = MaterialTheme.typography.titleSmall)
             }
         }

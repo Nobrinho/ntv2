@@ -14,12 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /** Altura da barra, sem a área das teclas de navegação. Alvo de toque acima dos 48dp. */
 private val BarHeight = 68.dp
@@ -71,7 +66,7 @@ fun MainBottomNav(
             verticalAlignment = Alignment.CenterVertically
         ) {
             MainBottomNavItem(
-                icon = Icons.Filled.Movie,
+                icon = NbrIcons.Clapperboard,
                 label = "Biblioteca",
                 selected = selected == MainTab.Library,
                 modifier = Modifier.weight(1f),
@@ -79,7 +74,7 @@ fun MainBottomNav(
             )
             if (onSearch != null) {
                 MainBottomNavItem(
-                    icon = Icons.Filled.Search,
+                    icon = NbrIcons.Search,
                     label = "Busca",
                     selected = false,
                     modifier = Modifier.weight(1f),
@@ -88,7 +83,7 @@ fun MainBottomNav(
             }
             if (onMyStuff != null) {
                 MainBottomNavItem(
-                    icon = Icons.Filled.Favorite,
+                    icon = NbrIcons.HeartFilled,
                     label = "Meu",
                     selected = selected == MainTab.MyStuff,
                     modifier = Modifier.weight(1f),
@@ -96,14 +91,14 @@ fun MainBottomNav(
                 )
             }
             MainBottomNavItem(
-                icon = Icons.Filled.Subscriptions,
+                icon = NbrIcons.Library,
                 label = "Canais",
                 selected = selected == MainTab.Channels,
                 modifier = Modifier.weight(1f),
                 onClick = onChannels
             )
             MainBottomNavItem(
-                icon = Icons.Filled.Settings,
+                icon = NbrIcons.Settings,
                 label = "Config",
                 selected = selected == MainTab.Settings,
                 modifier = Modifier.weight(1f),

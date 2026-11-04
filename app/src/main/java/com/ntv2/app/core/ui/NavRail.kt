@@ -19,14 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FilterAltOff
-import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +40,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.R
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 
@@ -174,9 +167,9 @@ fun NavRail(
     onMyList: (() -> Unit)? = null
 ) {
     RailColumn(enterFocus = firstItemFocus?.let { f -> { f } }) {
-        RailButton(icon = Icons.Filled.Home, label = "Início", highlighted = homeActive, onClick = onHome)
+        RailButton(icon = NbrIcons.House, label = "Início", highlighted = homeActive, onClick = onHome)
         RailButton(
-            icon = Icons.Filled.Search,
+            icon = NbrIcons.Search,
             label = "Busca",
             highlighted = searchActive,
             modifier = if (firstItemFocus != null) Modifier.focusRequester(firstItemFocus) else Modifier,
@@ -184,20 +177,20 @@ fun NavRail(
         )
         // Só aparece com filtro de texto ativo: limpa sem precisar entrar na busca.
         if (showClearFilter) {
-            RailButton(Icons.Filled.FilterAltOff, "Limpar", onClick = onClearFilter)
+            RailButton(NbrIcons.FunnelX, "Limpar", onClick = onClearFilter)
         }
         RailButton(
-            Icons.Filled.Subscriptions,
+            NbrIcons.Library,
             "Canais",
             modifier = if (channelsFocus != null) Modifier.focusRequester(channelsFocus) else Modifier,
             onClick = onChannels
         )
-        RailButton(Icons.Filled.Refresh, "Atualizar", onClick = onRefresh)
+        RailButton(NbrIcons.RefreshCw, "Atualizar", onClick = onRefresh)
         if (onMyList != null) {
-            RailButton(Icons.Filled.VideoLibrary, "Minha lista", onClick = onMyList)
+            RailButton(NbrIcons.Clapperboard, "Minha lista", onClick = onMyList)
         }
         RailButton(
-            Icons.Filled.Settings,
+            NbrIcons.Settings,
             "Config",
             highlighted = settingsActive,
             interactive = !settingsActive,

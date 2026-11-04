@@ -34,9 +34,6 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.ntv2.app.feature.auth.domain.model.AuthState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -69,7 +66,7 @@ import com.ntv2.app.feature.splash.presentation.SplashScreen
 import com.ntv2.app.feature.update.presentation.UpdateStage
 import com.ntv2.app.feature.update.presentation.UpdateViewModel
 import com.ntv2.app.feature.update.presentation.UpdateViewModelFactory
-import androidx.compose.material.icons.filled.SystemUpdate
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 @Composable
 fun AppNavHost(
@@ -502,11 +499,11 @@ fun AppNavHost(
         ConfirmDialog(
             title = "Deseja fechar o aplicativo?",
             message = null,
-            icon = Icons.Filled.ExitToApp,
+            icon = NbrIcons.LogOut,
             confirmLabel = "Sim, sair",
-            confirmIcon = Icons.Filled.ExitToApp,
+            confirmIcon = NbrIcons.LogOut,
             cancelLabel = "Não",
-            cancelIcon = Icons.Filled.Close,
+            cancelIcon = NbrIcons.X,
             destructive = true,
             onConfirm = { (context as? Activity)?.finish() },
             onDismiss = { showExitDialog = false; focusRestoreSignal++ }
@@ -526,11 +523,11 @@ fun AppNavHost(
                 append("NTV ${update?.versionName.orEmpty()}")
                 if (notes.isNotBlank()) append("\n\n").append(notes)
             },
-            icon = Icons.Filled.SystemUpdate,
+            icon = NbrIcons.Download,
             confirmLabel = "Baixar atualização",
-            confirmIcon = Icons.Filled.SystemUpdate,
+            confirmIcon = NbrIcons.Download,
             cancelLabel = if (updateState.mandatory) "Atualização necessária" else "Agora não",
-            cancelIcon = Icons.Filled.Close,
+            cancelIcon = NbrIcons.X,
             onConfirm = {
                 dismissedUpdatePromptVersion = null
                 updateViewModel.startDownload()
@@ -552,11 +549,11 @@ fun AppNavHost(
             title = "Atualização pronta",
             message = updateState.message
                 ?: "O download foi validado. O Android pedirá a confirmação da instalação.",
-            icon = Icons.Filled.SystemUpdate,
+            icon = NbrIcons.Download,
             confirmLabel = "Instalar",
-            confirmIcon = Icons.Filled.SystemUpdate,
+            confirmIcon = NbrIcons.Download,
             cancelLabel = "Depois",
-            cancelIcon = Icons.Filled.Close,
+            cancelIcon = NbrIcons.X,
             onConfirm = updateViewModel::install,
             onDismiss = {
                 if (!updateState.mandatory) {

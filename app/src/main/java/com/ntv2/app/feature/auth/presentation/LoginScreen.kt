@@ -41,9 +41,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -82,6 +79,7 @@ import com.ntv2.app.feature.auth.domain.model.AuthStep
 import com.ntv2.app.feature.auth.domain.model.LoginMode
 import com.ntv2.app.feature.auth.presentation.state.LoginAction
 import com.ntv2.app.feature.auth.presentation.viewmodel.LoginViewModel
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 private const val CARD_WIDTH_DP = 560
@@ -216,7 +214,7 @@ private fun SessionEndedBanner(compact: Boolean) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = Icons.Filled.Info,
+            imageVector = NbrIcons.Info,
             contentDescription = null,
             tint = com.ntv2.app.core.ui.BrandColors.Warning,
             modifier = Modifier.size(if (compact) 20.dp else 22.dp)
@@ -536,7 +534,7 @@ private fun SuccessStep() {
         modifier = Modifier.size(72.dp).clip(CircleShape).background(BRAND),
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.Filled.Check, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(44.dp))
+        Icon(NbrIcons.Check, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(44.dp))
     }
     Text("Login realizado", style = MaterialTheme.typography.headlineSmall, color = Color.White)
     Text("Preparando seu conteúdo…", style = MaterialTheme.typography.bodyMedium, color = com.ntv2.app.core.ui.BrandColors.TextSecondary)

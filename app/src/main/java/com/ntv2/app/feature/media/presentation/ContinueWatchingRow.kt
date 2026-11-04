@@ -18,8 +18,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +38,7 @@ import androidx.tv.material3.Text
 import com.ntv2.app.core.ui.glideActive
 import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /**
  * Trilha horizontal "Continuar assistindo" exibida acima da grade da biblioteca. Cada card é o
@@ -125,7 +124,7 @@ private fun ContinueCard(
                         .background(Color(0x80000000)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                    Icon(NbrIcons.PlayFilled, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
                 }
             }
             // Barra de progresso.

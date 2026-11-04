@@ -24,12 +24,6 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +43,7 @@ import androidx.tv.material3.Text
 import com.ntv2.app.core.ui.ConfirmDialog
 import com.ntv2.app.feature.media.presentation.state.HistoryEntryUi
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 private enum class MyStuffTab { Continue, MyList, History }
 
@@ -84,9 +79,9 @@ internal fun MyStuffOverlay(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Meu", style = MaterialTheme.typography.headlineMedium, color = Color.White, modifier = Modifier.weight(1f))
                 if (tab == MyStuffTab.History && history.isNotEmpty()) {
-                    TextPill(icon = Icons.Filled.DeleteSweep, label = "Limpar", destructive = true, onClick = { confirmClear = true })
+                    TextPill(icon = NbrIcons.Trash2, label = "Limpar", destructive = true, onClick = { confirmClear = true })
                 }
-                CircleIconButton(icon = Icons.Filled.Close, description = "Fechar", onClick = onClose)
+                CircleIconButton(icon = NbrIcons.X, description = "Fechar", onClick = onClose)
             }
 
             SegmentedControl(
@@ -123,11 +118,11 @@ internal fun MyStuffOverlay(
             ConfirmDialog(
                 title = "Limpar histórico?",
                 message = "Isto remove todos os títulos do seu histórico neste aparelho. Sua Minha lista não é afetada.",
-                icon = Icons.Filled.DeleteSweep,
+                icon = NbrIcons.Trash2,
                 confirmLabel = "Limpar",
-                confirmIcon = Icons.Filled.DeleteSweep,
+                confirmIcon = NbrIcons.Trash2,
                 cancelLabel = "Cancelar",
-                cancelIcon = Icons.Filled.Close,
+                cancelIcon = NbrIcons.X,
                 destructive = true,
                 onConfirm = { confirmClear = false; onClearHistory() },
                 onDismiss = { confirmClear = false }
@@ -224,12 +219,12 @@ private fun HistoryList(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             if (entry.completed) {
                                 Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(0x2466D9FF)), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.Check, contentDescription = "Assistido", tint = BRAND_ACCENT, modifier = Modifier.size(16.dp))
+                                    Icon(NbrIcons.Check, contentDescription = "Assistido", tint = BRAND_ACCENT, modifier = Modifier.size(16.dp))
                                 }
                             } else {
                                 PlayPill(onClick = { onContinue(entry.card) })
                             }
-                            CircleIconButton(icon = Icons.Filled.Remove, description = "Remover do histórico", onClick = { onRemove(entry.card.mediaId) })
+                            CircleIconButton(icon = NbrIcons.Minus, description = "Remover do histórico", onClick = { onRemove(entry.card.mediaId) })
                         }
                     }
                 )
@@ -334,7 +329,7 @@ private fun PlayPill(onClick: () -> Unit) {
         modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).background(BRAND_ACCENT),
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.Filled.PlayArrow, contentDescription = "Continuar", tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(18.dp))
+        Icon(NbrIcons.PlayFilled, contentDescription = "Continuar", tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(18.dp))
     }
 }
 

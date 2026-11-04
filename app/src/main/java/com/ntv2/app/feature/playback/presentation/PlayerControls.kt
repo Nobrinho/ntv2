@@ -33,22 +33,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.material.icons.filled.Brightness6
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PictureInPictureAlt
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -109,6 +95,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Controles do player: sobreposições (paisagem/retrato), barra de progresso, título, configurações e faixas.
 
@@ -122,8 +109,8 @@ internal fun GestureAdjustmentOverlay(
         PlayerGestureTarget.Brightness -> Alignment.CenterEnd
     }
     val icon = when (adjustment.target) {
-        PlayerGestureTarget.Volume -> Icons.AutoMirrored.Filled.VolumeUp
-        PlayerGestureTarget.Brightness -> Icons.Filled.Brightness6
+        PlayerGestureTarget.Volume -> NbrIcons.Volume2
+        PlayerGestureTarget.Brightness -> NbrIcons.Sun
     }
     val fill = adjustment.percent / 100f
 
@@ -366,7 +353,7 @@ internal fun LandscapeControlsOverlay(
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     PortraitTopIcon(
-                        Icons.Filled.Close,
+                        NbrIcons.X,
                         "Fechar",
                         onBack,
                         modifier = Modifier
@@ -375,7 +362,7 @@ internal fun LandscapeControlsOverlay(
                     )
                     // PiP não se aplica à TV.
                     if (!isTv) {
-                        if (onPip != null) PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onPip)
+                        if (onPip != null) PortraitTopIcon(NbrIcons.PictureInPicture2, "Picture-in-picture", onPip)
                     }
                 }
                 ScrollingTitle(
@@ -390,11 +377,11 @@ internal fun LandscapeControlsOverlay(
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Espelhamento/transmissão não se aplica à TV.
                     if (!isTv) {
-                        if (onCast != null) PortraitTopIcon(Icons.Filled.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
+                        if (onCast != null) PortraitTopIcon(NbrIcons.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
                     }
                     if (onOpenNetwork != null) {
                         PortraitTopIcon(
-                            Icons.Filled.Public,
+                            NbrIcons.Globe,
                             "Estado da rede",
                             { onOpenNetwork(); onInteract() },
                             active = connectionReady,
@@ -404,7 +391,7 @@ internal fun LandscapeControlsOverlay(
                         )
                     }
                     PortraitTopIcon(
-                        Icons.Filled.ClosedCaption,
+                        NbrIcons.Captions,
                         "Ligar ou desligar legenda",
                         { onToggleSubtitle(); onInteract() },
                         enabled = ccEnabled,
@@ -415,7 +402,7 @@ internal fun LandscapeControlsOverlay(
                     )
                     // Velocidade (1x) removida temporariamente: função ainda não implementada.
                     PortraitTopIcon(
-                        Icons.Filled.Settings,
+                        NbrIcons.Settings,
                         "Opções",
                         { onOpenSettings(); onInteract() },
                         enabled = settingsEnabled,
@@ -429,7 +416,7 @@ internal fun LandscapeControlsOverlay(
 
         // Sem botões -10/+10: na TV o dpad ←/→ avança/volta; no celular, toque duplo nas laterais.
         OverlayRoundButton(
-            icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            icon = if (isPlaying) NbrIcons.PauseFilled else NbrIcons.PlayFilled,
             contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
             size = CENTER_PLAY_SIZE,
             iconSize = CENTER_PLAY_ICON,
@@ -553,17 +540,17 @@ internal fun PortraitControlsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                PortraitTopIcon(Icons.Filled.Close, "Fechar", onBack)
-                if (onPip != null) PortraitTopIcon(Icons.Filled.PictureInPictureAlt, "Picture-in-picture", onPip)
-                if (onCast != null) PortraitTopIcon(Icons.Filled.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
+                PortraitTopIcon(NbrIcons.X, "Fechar", onBack)
+                if (onPip != null) PortraitTopIcon(NbrIcons.PictureInPicture2, "Picture-in-picture", onPip)
+                if (onCast != null) PortraitTopIcon(NbrIcons.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
                 if (onOpenNetwork != null) PortraitTopIcon(
-                    Icons.Filled.Public,
+                    NbrIcons.Globe,
                     "Estado da rede",
                     { onOpenNetwork(); onInteract() },
                     active = connectionReady
                 )
                     PortraitTopIcon(
-                        Icons.Filled.ClosedCaption,
+                        NbrIcons.Captions,
                         "Legenda",
                         { onToggleSubtitle(); onInteract() },
                         enabled = tracks.subtitles.isNotEmpty(),
@@ -571,7 +558,7 @@ internal fun PortraitControlsOverlay(
                     )
                 // Velocidade (1x) removida temporariamente: função ainda não implementada.
                 PortraitTopIcon(
-                    Icons.Filled.Settings,
+                    NbrIcons.Settings,
                     "Opções",
                     { onOpenSettings(); onInteract() },
                     enabled = tracks.audios.size > 1 || tracks.subtitles.isNotEmpty()
@@ -636,7 +623,7 @@ internal fun PortraitControlsOverlay(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OverlayRoundButton(
-                    icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    icon = if (isPlaying) NbrIcons.PauseFilled else NbrIcons.PlayFilled,
                     contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
                     size = CENTER_PLAY_SIZE,
                     iconSize = CENTER_PLAY_ICON,
@@ -652,7 +639,7 @@ internal fun PortraitControlsOverlay(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OverlayChip(
-                        icon = Icons.Filled.Audiotrack,
+                        icon = NbrIcons.AudioLines,
                         label = "Áudio",
                         showLabel = false
                     ) { onOpenAudio(); onInteract() }
@@ -725,7 +712,7 @@ internal fun FullscreenControlButton(onClick: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            Icons.Filled.Fullscreen,
+            NbrIcons.Maximize,
             contentDescription = "Tela cheia",
             tint = Color.White,
             modifier = Modifier.size(28.dp)
@@ -969,7 +956,7 @@ internal fun PlayerSettingsOverlay(
                     .focusGroup()
             ) {
                 PlayerSettingsRow(
-                    icon = Icons.Filled.ClosedCaption,
+                    icon = NbrIcons.Captions,
                     label = "Legendas",
                     value = selectedSubtitle,
                     enabled = tracks.subtitles.isNotEmpty(),
@@ -978,7 +965,7 @@ internal fun PlayerSettingsOverlay(
                     onClick = onOpenSubtitle
                 )
                 PlayerSettingsRow(
-                    icon = Icons.Filled.Audiotrack,
+                    icon = NbrIcons.AudioLines,
                     label = "Áudio",
                     value = selectedAudio,
                     enabled = tracks.audios.size > 1,
@@ -1072,7 +1059,7 @@ internal fun PlayerSettingsRow(
         )
         if (enabled) {
             Spacer(Modifier.width(12.dp))
-            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.White, modifier = Modifier.size(34.dp))
+            Icon(NbrIcons.ChevronRight, contentDescription = null, tint = Color.White, modifier = Modifier.size(34.dp))
         }
     }
 }

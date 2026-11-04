@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +33,7 @@ import com.ntv2.app.core.multipart.PartStatus
 import com.ntv2.app.core.multipart.PartsSnapshot
 import com.ntv2.app.core.player.MediaTracksInfo
 import com.ntv2.app.core.player.PlaybackState
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /**
  * Painel "Estado da rede" (aberto pelo ícone da barra de controles). Como o app faz streaming via
@@ -100,7 +99,7 @@ internal fun NetworkStatusOverlay(
             // Cabeçalho: ícone pequeno + título, inline (sem o círculo grande).
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(
-                    Icons.Filled.Public,
+                    NbrIcons.Globe,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(18.dp)

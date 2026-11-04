@@ -26,12 +26,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +52,7 @@ import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.feature.media.presentation.state.HistoryEntryUi
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import java.util.Calendar
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /** Abas da tela "Minha lista" da TV. */
 internal enum class ShelfTab(val label: String) { MyList("Minha lista"), History("Histórico") }
@@ -136,13 +131,13 @@ internal fun MyListHistoryOverlay(
                 Box(modifier = Modifier.weight(1f))
                 if (tab == ShelfTab.History && entries.isNotEmpty()) {
                     HistoryTextButton(
-                        icon = Icons.Filled.DeleteSweep,
+                        icon = NbrIcons.Trash2,
                         label = "Limpar tudo",
                         destructive = true,
                         onClick = { confirmClear = true }
                     )
                 }
-                HistoryIconButton(icon = Icons.Filled.Close, description = "Fechar", onClick = onClose)
+                HistoryIconButton(icon = NbrIcons.X, description = "Fechar", onClick = onClose)
             }
 
             if (tab == ShelfTab.MyList) {
@@ -193,11 +188,11 @@ internal fun MyListHistoryOverlay(
             ConfirmDialog(
                 title = "Limpar histórico?",
                 message = "Isto remove todos os títulos do seu histórico neste aparelho. Sua Minha lista não é afetada.",
-                icon = Icons.Filled.DeleteSweep,
+                icon = NbrIcons.Trash2,
                 confirmLabel = "Limpar",
-                confirmIcon = Icons.Filled.DeleteSweep,
+                confirmIcon = NbrIcons.Trash2,
                 cancelLabel = "Cancelar",
-                cancelIcon = Icons.Filled.Close,
+                cancelIcon = NbrIcons.X,
                 destructive = true,
                 onConfirm = { confirmClear = false; onClear() },
                 onDismiss = { confirmClear = false }
@@ -323,13 +318,13 @@ private fun HistoryRow(
         }
         if (entry.completed) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Success, modifier = Modifier.size(18.dp))
+                Icon(NbrIcons.Check, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Success, modifier = Modifier.size(18.dp))
                 Text("Assistido", color = com.ntv2.app.core.ui.BrandColors.Success, style = MaterialTheme.typography.labelMedium)
             }
         } else {
-            HistoryTextButton(icon = Icons.Filled.PlayArrow, label = "Continuar", destructive = false, onClick = onContinue)
+            HistoryTextButton(icon = NbrIcons.PlayFilled, label = "Continuar", destructive = false, onClick = onContinue)
         }
-        HistoryIconButton(icon = Icons.Filled.Remove, description = "Remover do histórico", onClick = onRemove)
+        HistoryIconButton(icon = NbrIcons.Minus, description = "Remover do histórico", onClick = onRemove)
     }
 }
 

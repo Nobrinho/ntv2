@@ -8,9 +8,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /** Quanto tempo o indicador do toque duplo fica na tela após o último toque. */
 internal const val TAP_SEEK_FEEDBACK_MS = 800L
@@ -51,7 +49,7 @@ internal fun TapSeekIndicator(feedback: TapSeekFeedback, modifier: Modifier = Mo
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Icon(
-                    if (feedback.forward) Icons.Filled.FastForward else Icons.Filled.FastRewind,
+                    if (feedback.forward) NbrIcons.FastForwardFilled else NbrIcons.RewindFilled,
                     contentDescription = if (feedback.forward) "Avançou" else "Voltou",
                     tint = Color.White,
                     modifier = Modifier.size(36.dp)

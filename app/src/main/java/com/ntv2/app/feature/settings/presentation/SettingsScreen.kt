@@ -32,20 +32,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.WorkspacePremium
-import androidx.compose.material.icons.filled.BlurOn
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -87,10 +73,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.material.icons.filled.Animation
-import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.NetworkCheck
-import androidx.compose.material.icons.filled.CloudDownload
 import com.ntv2.app.feature.media.data.index.SearchIndexStatus
 import com.ntv2.app.core.ui.CardLoadingPlaceholder
 import com.ntv2.app.core.ui.CardLoadingStyle
@@ -98,6 +80,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import com.ntv2.app.BuildConfig
 import com.ntv2.app.feature.update.presentation.UpdateStage
 import com.ntv2.app.feature.update.presentation.UpdateUiState
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 
@@ -197,7 +180,7 @@ fun SettingsScreen(
                 ) {
                     SettingsSectionLabel("Interface")
                     ToggleCard(
-                        icon = Icons.Filled.Image,
+                        icon = NbrIcons.Image,
                         title = "Capas",
                         subtitle = "Exibir capas dos conteúdos na interface",
                         value = showCovers,
@@ -205,7 +188,7 @@ fun SettingsScreen(
                         onToggle = { onToggleCovers(!showCovers) }
                     )
                     ToggleCard(
-                        icon = Icons.Filled.AutoAwesome,
+                        icon = NbrIcons.Sparkles,
                         title = "Animações",
                         subtitle = "Animações e transições (luz pulsante ao carregar, controles do player e rolagem do título)",
                         value = animationsEnabled,
@@ -213,7 +196,7 @@ fun SettingsScreen(
                         onToggle = { onToggleAnimations(!animationsEnabled) }
                     )
                     ToggleCard(
-                        icon = Icons.Filled.BlurOn,
+                        icon = NbrIcons.Sun,
                         title = "Iluminação da capa: desfoque nativo",
                         subtitle = if (android.os.Build.VERSION.SDK_INT >= 31) {
                             "ON = desfoque do Android 12+ · OFF = versão compatível"
@@ -225,7 +208,7 @@ fun SettingsScreen(
                         onToggle = { onToggleNativeBlurGlow(!nativeBlurGlow) }
                     )
                     ToggleCard(
-                        icon = Icons.Filled.Group,
+                        icon = NbrIcons.Users,
                         title = "Fotos do elenco",
                         subtitle = "Mostrar rostos do elenco nos detalhes (senão, só nomes)",
                         value = castPhotos,
@@ -233,7 +216,7 @@ fun SettingsScreen(
                         onToggle = { onToggleCastPhotos(!castPhotos) }
                     )
                     NavCard(
-                        icon = Icons.Filled.Animation,
+                        icon = NbrIcons.SquareDashed,
                         title = "Animação dos cards",
                         subtitle = "Enquanto a capa carrega: ${cardLoadingStyle.label}",
                         destructive = false,
@@ -247,7 +230,7 @@ fun SettingsScreen(
                         onChange = onChangeMinDuration
                     )
                     NavCard(
-                        icon = Icons.Filled.Tv,
+                        icon = NbrIcons.Tv,
                         title = "Seleção de canais",
                         subtitle = "Gerenciar os canais disponíveis",
                         destructive = false,
@@ -256,7 +239,7 @@ fun SettingsScreen(
                     )
                     if (indexStatus != null) {
                         NavCard(
-                            icon = Icons.Filled.CloudDownload,
+                            icon = NbrIcons.Database,
                             title = "Índice de filmes e séries",
                             subtitle = indexSubtitle(indexStatus),
                             destructive = false,
@@ -268,7 +251,7 @@ fun SettingsScreen(
                     // Só com o Premium ligado no servidor (ou para quem já é Premium).
                     if (premium != null && (premiumStatus?.enforced == true || premiumStatus?.premium == true)) {
                         NavCard(
-                            icon = Icons.Filled.WorkspacePremium,
+                            icon = NbrIcons.Crown,
                             title = "NBR Play Premium",
                             subtitle = when {
                                 premiumStatus?.premium == true ->
@@ -282,7 +265,7 @@ fun SettingsScreen(
                     }
                     if (deviceLink != null) {
                         NavCard(
-                            icon = Icons.Filled.Devices,
+                            icon = NbrIcons.Link,
                             title = "Conectar aparelhos",
                             subtitle = "Compartilhar Minha lista e o progresso entre TV e celular",
                             destructive = false,
@@ -292,7 +275,7 @@ fun SettingsScreen(
                     }
                     if (runConnectionTest != null) {
                         NavCard(
-                            icon = Icons.Filled.NetworkCheck,
+                            icon = NbrIcons.Activity,
                             title = "Teste de conexão",
                             subtitle = "Medir internet, Telegram e velocidade neste aparelho",
                             destructive = false,
@@ -301,7 +284,7 @@ fun SettingsScreen(
                         )
                     }
                     NavCard(
-                        icon = Icons.Filled.SystemUpdate,
+                        icon = NbrIcons.Download,
                         title = "Atualizações",
                         subtitle = updateSubtitle(updateState),
                         destructive = false,
@@ -318,7 +301,7 @@ fun SettingsScreen(
                         }
                     )
                     NavCard(
-                        icon = Icons.Filled.Shield,
+                        icon = NbrIcons.ShieldCheck,
                         title = "Política de privacidade",
                         subtitle = "Como o app trata seus dados",
                         destructive = false,
@@ -326,7 +309,7 @@ fun SettingsScreen(
                         onClick = { showPrivacy = true }
                     )
                     NavCard(
-                        icon = Icons.Filled.School,
+                        icon = NbrIcons.RotateCcw,
                         title = "Ver introdução novamente",
                         subtitle = "Rever a apresentação do app",
                         destructive = false,
@@ -335,7 +318,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.size(8.dp))
                     NavCard(
-                        icon = Icons.AutoMirrored.Filled.Logout,
+                        icon = NbrIcons.LogOut,
                         title = "Sair da conta",
                         subtitle = "Encerrar a sessão neste dispositivo",
                         destructive = true,
@@ -391,11 +374,11 @@ fun SettingsScreen(
             ConfirmDialog(
                 title = "Sair da conta?",
                 message = "Você será desconectado deste dispositivo.",
-                icon = Icons.AutoMirrored.Filled.Logout,
+                icon = NbrIcons.LogOut,
                 confirmLabel = "Sair",
-                confirmIcon = Icons.AutoMirrored.Filled.Logout,
+                confirmIcon = NbrIcons.LogOut,
                 cancelLabel = "Cancelar",
-                cancelIcon = Icons.Filled.Close,
+                cancelIcon = NbrIcons.X,
                 destructive = true,
                 onConfirm = { confirmLogout = false; onLogout() },
                 onDismiss = { confirmLogout = false }
@@ -478,7 +461,7 @@ private fun DurationCard(
     val idx = DURATION_STEPS.indexOfFirst { it >= value }.let { if (it < 0) DURATION_STEPS.lastIndex else it }
     StepperSettingCard(
         modifier = modifier,
-        icon = Icons.Filled.Timer,
+        icon = NbrIcons.Timer,
         title = "Duração mínima",
         subtitle = "Oculta vídeos mais curtos que o tempo escolhido.",
         valueText = if (value <= 0) "Off" else "$value min",
@@ -652,7 +635,7 @@ private fun NavCard(
         onClick = onClick
     ) {
         Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            NbrIcons.ChevronRight,
             contentDescription = null,
             tint = com.ntv2.app.core.ui.BrandColors.TextSecondary,
             modifier = Modifier.size(28.dp)
@@ -786,7 +769,7 @@ private fun PrivacyCloseButton(onClose: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            Icons.Filled.Close,
+            NbrIcons.X,
             contentDescription = "Fechar",
             tint = if (focused) Color.Black else com.ntv2.app.core.ui.BrandColors.TextSecondary,
             modifier = Modifier.size(22.dp)

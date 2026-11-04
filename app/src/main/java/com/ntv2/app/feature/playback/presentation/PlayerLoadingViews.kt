@@ -20,10 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.text.style.TextAlign
 import com.ntv2.app.core.ui.trapFocus
@@ -69,6 +65,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import com.ntv2.app.core.player.PlaybackState
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Telas de espera do player: status de carregamento, capa iluminada e erro.
 
@@ -283,7 +280,7 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Icon(Icons.Filled.Warning, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Warning, modifier = Modifier.size(40.dp))
+            Icon(NbrIcons.TriangleAlert, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Warning, modifier = Modifier.size(40.dp))
             Text(
                 error.title,
                 color = Color.White,
@@ -316,13 +313,13 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         ErrorActionButton(
-                            icon = Icons.Filled.Refresh,
+                            icon = NbrIcons.RefreshCw,
                             label = "Tentar novamente",
                             modifier = Modifier.fillMaxWidth().focusRequester(retryFocus),
                             onClick = onRetry
                         )
                         ErrorActionButton(
-                            icon = Icons.AutoMirrored.Filled.ArrowBack,
+                            icon = NbrIcons.ChevronLeft,
                             label = "Voltar",
                             modifier = Modifier.fillMaxWidth(),
                             onClick = onBack
@@ -331,12 +328,12 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         ErrorActionButton(
-                            icon = Icons.Filled.Refresh,
+                            icon = NbrIcons.RefreshCw,
                             label = "Tentar novamente",
                             modifier = Modifier.focusRequester(retryFocus),
                             onClick = onRetry
                         )
-                        ErrorActionButton(icon = Icons.AutoMirrored.Filled.ArrowBack, label = "Voltar", onClick = onBack)
+                        ErrorActionButton(icon = NbrIcons.ChevronLeft, label = "Voltar", onClick = onBack)
                     }
                 }
             }

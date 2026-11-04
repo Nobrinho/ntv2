@@ -8,20 +8,23 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -39,11 +42,11 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -52,30 +55,40 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.ntv2.app.core.ui.BrandButton
+import com.ntv2.app.core.ui.BrandButtonLabel
+import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.FocusGlideScope
-import com.ntv2.app.core.ui.trapFocus
+import com.ntv2.app.core.ui.NbrType
 import com.ntv2.app.core.ui.glideActive
 import com.ntv2.app.core.ui.glideTarget
+import com.ntv2.app.core.ui.icons.NbrIcons
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
+import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.feature.media.domain.MediaItemSummary
 import com.ntv2.app.feature.media.domain.SeasonSummary
 import com.ntv2.app.feature.media.domain.SeriesSummary
 import com.ntv2.app.feature.media.presentation.state.SearchFilter
 import com.ntv2.app.feature.media.presentation.state.SearchFilterKind
-import com.ntv2.app.core.ui.icons.NbrIcons
 
 /**
- * Detalhes de uma série: arte + seletor de temporada + lista de episódios em ordem. Cada linha
- * reproduz seu próprio vídeo. O botão principal toca o próximo episódio ainda não iniciado.
- * Layout adaptativo: celular = coluna única rolável; TV = duas colunas (info à esquerda, lista de
- * episódios focável à direita) com foco inicial no botão Assistir.
+ * Detalhes de uma série, no visual do protótipo (celular 16/17/18, TV 10): capa atrás da barra de
+ * status, botão "Assistir T_ · E_", seletor de temporada, lista de episódios com miniatura, progresso
+ * e estado assistido. Cada linha reproduz seu próprio vídeo; o botão principal toca o próximo
+ * episódio ainda não iniciado.
+ * Celular = coluna única rolável (temporada no sheet; toque longo no episódio abre as opções).
+ * TV = info à esquerda e episódios à direita, foco inicial no botão Assistir.
+ *
+ * [onRestartEpisode] e [episodeReportSender] são opcionais: quando a tela que abre a série os
+ * passar, as opções do episódio ganham "Recomeçar episódio" e "Reportar problema".
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -86,7 +99,9 @@ internal fun SeriesDetailsOverlay(
     // (episódio, seguintes da série em ordem) — alimentam o autoplay encadeado no player.
     onPlayEpisode: (MediaItemSummary, List<MediaItemSummary>) -> Unit,
     onClose: () -> Unit,
-    onFilterClick: (SearchFilter) -> Unit = {}
+    onFilterClick: (SearchFilter) -> Unit = {},
+    onRestartEpisode: ((MediaItemSummary, List<MediaItemSummary>) -> Unit)? = null,
+    episodeReportSender: ((MediaItemSummary) -> ReportSender)? = null
 ) {
     BackHandler(enabled = true) { onClose() }
     val isTv = rememberAdaptiveLayoutInfo().useTvLayout
@@ -103,6 +118,8 @@ internal fun SeriesDetailsOverlay(
         val i = ordered.indexOfFirst { it.mediaId == ep.mediaId }
         return if (i >= 0) ordered.drop(i + 1) else emptyList()
     }
+    fun watchedIn(season: SeasonSummary?): Int =
+        season?.episodes?.count { (episodeProgress[it.mediaId] ?: 0f) >= SERIES_WATCHED_FRACTION } ?: 0
 
     val playFocus = remember { FocusRequester() }
     val seasonsFocus = remember { FocusRequester() }
@@ -115,214 +132,409 @@ internal fun SeriesDetailsOverlay(
         }
     }
 
+    // Sheets do celular (17 = temporadas, 18 = opções do episódio) e o diálogo de reporte.
+    var seasonSheet by remember { mutableStateOf(false) }
+    var optionsFor by remember { mutableStateOf<MediaItemSummary?>(null) }
+    var reportFor by remember { mutableStateOf<MediaItemSummary?>(null) }
+
     FocusGlideScope(Modifier.fillMaxSize()) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(com.ntv2.app.core.ui.BrandColors.Background)
+            .background(BrandColors.Background)
             // A biblioteca continua composta por trás: o foco não pode escapar para ela.
             .trapFocus()
     ) {
         if (isTv) {
-            // Fundo igual ao dos detalhes do filme: banner em tela cheia escurecido à esquerda e embaixo.
+            // Fundo: capa em tela cheia com degradê horizontal bg@98% → bg@85% (45%) → bg@60%.
             SeriesBackdrop(series, showCovers, Modifier.fillMaxSize())
             // ── TV: duas colunas com handshake de foco entre painéis (→ entra na lista, ← volta) ──
             val listFocus = remember { FocusRequester() }
+            val backFocus = remember { FocusRequester() }
             val episodes = current?.episodes.orEmpty()
-            val adaptive = rememberAdaptiveLayoutInfo()
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = adaptive.tvSafeHorizontal, vertical = adaptive.tvSafeVertical),
-                horizontalArrangement = Arrangement.spacedBy(40.dp)
+                    .padding(horizontal = 40.dp, vertical = 32.dp),
+                horizontalArrangement = Arrangement.spacedBy(36.dp)
             ) {
                 Column(
                     modifier = Modifier
-                        .weight(0.42f)
+                        .width(350.dp)
                         .fillMaxHeight()
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.Bottom)
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
                 ) {
+                    TvBackLink(
+                        onClose,
+                        Modifier
+                            .focusRequester(backFocus)
+                            .focusProperties { down = playFocus }
+                    )
                     Text(
                         series.title,
-                        color = Color.White,
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.Bold,
+                        color = SeriesText,
+                        style = NbrType.Hero.copy(fontSize = 36.sp, lineHeight = 37.8.sp, fontWeight = FontWeight.ExtraBold),
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
-                    SeriesFilterChips(series, onFilterClick)
+                    SeriesMeta(series, tv = true, onFilterClick = onFilterClick)
                     nextEpisode?.let { ep ->
-                        PlayButton(
-                            label = "Assistir ${ep.episodeCode()}",
-                            focusRequester = playFocus,
-                            // ↓ cai nos chips de temporada (quando há); → entra na lista de episódios.
-                            modifier = Modifier.focusProperties {
-                                if (hasSeasonRow) down = seasonsFocus
-                                if (episodes.isNotEmpty()) right = listFocus
-                            },
-                            onClick = { onPlayEpisode(ep, followingOf(ep)) }
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            BrandButton(
+                                onClick = { onPlayEpisode(ep, followingOf(ep)) },
+                                // ↑ volta ao Voltar; → entra na lista (ou nos chips de temporada).
+                                modifier = Modifier
+                                    .width(260.dp)
+                                    .focusRequester(playFocus)
+                                    .focusProperties {
+                                        up = backFocus
+                                        if (episodes.isNotEmpty()) right = listFocus
+                                        else if (hasSeasonRow) right = seasonsFocus
+                                    }
+                            ) {
+                                Icon(NbrIcons.PlayFilled, contentDescription = null, tint = BrandColors.OnCta, modifier = Modifier.size(15.dp))
+                                BrandButtonLabel(playLabel(ep))
+                            }
+                            Text(
+                                ctaHint(ep, episodeProgress[ep.mediaId] ?: 0f, seasons),
+                                style = NbrType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp),
+                                color = BrandColors.Accent
+                            )
+                        }
                     }
-                    SeasonSelector(
-                        seasons = seasons,
-                        selected = current?.number,
-                        firstChipFocus = seasonsFocus,
-                        upTarget = playFocus,
-                        // → no último chip entra na lista; entre chips, ←/→ alterna as temporadas.
-                        rightTargetOnLast = if (episodes.isNotEmpty()) listFocus else null,
-                        onSelect = { selectedSeason = it }
-                    )
                 }
-                LazyColumn(
+                Column(
                     modifier = Modifier
-                        .weight(0.58f)
+                        .weight(1f)
                         .fillMaxHeight()
-                        .padding(top = 56.dp)
-                        // Painel translúcido da marca atrás da lista: separa os episódios do banner.
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xE00D1015))
-                        .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(8.dp))
-                        // Qualquer ← na lista volta ao botão Assistir (painel esquerdo).
+                        // Qualquer ← nos episódios volta ao botão Assistir (coluna da esquerda).
                         .onPreviewKeyEvent { e ->
                             if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionLeft) {
                                 runCatching { playFocus.requestFocus() }; true
                             } else false
                         },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
                 ) {
-                    itemsIndexed(episodes, key = { _, ep -> ep.mediaId }) { index, ep ->
-                        EpisodeRow(
-                            episode = ep,
-                            progress = episodeProgress[ep.mediaId] ?: 0f,
-                            showCovers = showCovers,
-                            // O 1º item ganha o alvo de foco para o → do painel esquerdo cair aqui.
-                            modifier = if (index == 0) Modifier.focusRequester(listFocus) else Modifier,
-                            onClick = { onPlayEpisode(ep, followingOf(ep)) }
+                    if (hasSeasonRow) {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            seasons.forEachIndexed { index, s ->
+                                SeriesTvSeasonChip(
+                                    label = "Temporada ${s.number}",
+                                    selected = s.number == current?.number,
+                                    modifier = Modifier
+                                        .then(if (index == 0) Modifier.focusRequester(seasonsFocus) else Modifier)
+                                        .focusProperties { if (episodes.isNotEmpty()) down = listFocus },
+                                    onClick = { selectedSeason = s.number }
+                                )
+                            }
+                        }
+                    }
+                    SeriesSeasonProgress(watchedIn(current), episodes.size, tv = true)
+                    LazyColumn(
+                        modifier = Modifier.weight(1f, fill = false),
+                        contentPadding = PaddingValues(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        itemsIndexed(episodes, key = { _, ep -> ep.mediaId }) { index, ep ->
+                            SeriesEpisodeCard(
+                                episode = ep,
+                                progress = episodeProgress[ep.mediaId] ?: 0f,
+                                showCovers = showCovers,
+                                tv = true,
+                                // O 1º item ganha o alvo de foco para o → da coluna esquerda cair aqui.
+                                modifier = if (index == 0) {
+                                    Modifier
+                                        .focusRequester(listFocus)
+                                        .focusProperties { if (hasSeasonRow) up = seasonsFocus }
+                                } else Modifier,
+                                onClick = { onPlayEpisode(ep, followingOf(ep)) }
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            // ── Celular: coluna única rolável (16) ──
+            val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = navBottom + 24.dp)
+            ) {
+                item(key = "hero") {
+                    SeriesHero(series, showCovers, onClose, onFilterClick)
+                }
+                item(key = "content") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 24.dp, top = 14.dp, end = 24.dp, bottom = 18.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        SeriesCountChips(series, tv = false)
+                        nextEpisode?.let { ep ->
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                BrandButton(
+                                    onClick = { onPlayEpisode(ep, followingOf(ep)) },
+                                    modifier = Modifier.fillMaxWidth().focusRequester(playFocus)
+                                ) {
+                                    Icon(NbrIcons.PlayFilled, contentDescription = null, tint = BrandColors.OnCta, modifier = Modifier.size(20.dp))
+                                    BrandButtonLabel(playLabel(ep))
+                                }
+                                Text(
+                                    ctaHint(ep, episodeProgress[ep.mediaId] ?: 0f, seasons),
+                                    style = NbrType.Caption,
+                                    color = BrandColors.Accent,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Episódios",
+                                    style = NbrType.SheetTitle.copy(fontSize = 20.sp, lineHeight = 24.sp),
+                                    color = SeriesText
+                                )
+                                if (hasSeasonRow && current != null) {
+                                    SeriesSeasonSelectorChip("Temporada ${current.number}") { seasonSheet = true }
+                                }
+                            }
+                            SeriesSeasonProgress(watchedIn(current), current?.episodes?.size ?: 0, tv = false)
+                        }
+                    }
+                }
+                items(current?.episodes.orEmpty(), key = { it.mediaId }) { ep ->
+                    SeriesEpisodeCard(
+                        episode = ep,
+                        progress = episodeProgress[ep.mediaId] ?: 0f,
+                        showCovers = showCovers,
+                        tv = false,
+                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 10.dp),
+                        onLongClick = { optionsFor = ep },
+                        onClick = { onPlayEpisode(ep, followingOf(ep)) }
+                    )
+                }
+            }
+
+            // 17 — escolher temporada.
+            SeriesSheet(visible = seasonSheet, title = "Temporadas", onDismiss = { seasonSheet = false }) {
+                SeriesSeasonOptions {
+                    seasons.forEach { s ->
+                        val total = s.episodes.size
+                        SeriesSeasonOption(
+                            label = "Temporada ${s.number}",
+                            subtitle = "${if (total == 1) "1 episódio" else "$total episódios"} · ${watchedIn(s)} assistidos",
+                            selected = s.number == current?.number,
+                            onClick = { selectedSeason = s.number; seasonSheet = false }
                         )
                     }
                 }
             }
-            // Voltar (canto): focável, mas o foco inicial fica no Assistir.
-            BackChip(
-                onClose,
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 24.dp, end = 24.dp)
-                    // ↓ vai à lista de episódios (ou ao Assistir) e ← ao Assistir, sem depender da busca de foco.
-                    .focusProperties {
-                        down = if (episodes.isNotEmpty()) listFocus else playFocus
-                        left = playFocus
-                    }
-            )
-        } else {
-            // ── Celular: coluna única rolável ──
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().navigationBarsPadding(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
+
+            // 18 — opções do episódio (toque longo no cartão).
+            val opt = optionsFor
+            SeriesSheet(
+                visible = opt != null,
+                title = opt?.seriesEpisodeTitle().orEmpty(),
+                onDismiss = { optionsFor = null }
             ) {
-                item(key = "header") {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // Banner com degradê até o fundo; o título fica abaixo, em destaque (não na barra).
-                        Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 10f)) {
-                            SeriesBackdrop(series, showCovers, Modifier.fillMaxSize(), portrait = true)
-                            Box(
-                                modifier = Modifier
-                                    .statusBarsPadding()
-                                    .padding(12.dp)
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0x99090B0F))
-                                    .clickable(onClick = onClose),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(NbrIcons.ChevronLeft, "Voltar", tint = Color.White, modifier = Modifier.size(26.dp))
+                if (opt != null) {
+                    Column {
+                        SeriesSheetAction(NbrIcons.PlayFilled, "Assistir episódio") {
+                            optionsFor = null
+                            onPlayEpisode(opt, followingOf(opt))
+                        }
+                        if (onRestartEpisode != null && (episodeProgress[opt.mediaId] ?: 0f) > 0f) {
+                            SeriesSheetAction(NbrIcons.RotateCcw, "Recomeçar episódio") {
+                                optionsFor = null
+                                onRestartEpisode(opt, followingOf(opt))
                             }
                         }
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                series.title,
-                                color = Color.White,
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            SeriesFilterChips(series, onFilterClick)
-                            nextEpisode?.let { ep ->
-                                PlayButton(
-                                    label = "Assistir ${ep.episodeCode()}",
-                                    focusRequester = playFocus,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = { onPlayEpisode(ep, followingOf(ep)) }
-                                )
+                        if (episodeReportSender != null) {
+                            SeriesSheetAction(NbrIcons.Flag, "Reportar problema", color = BrandColors.Warning) {
+                                optionsFor = null
+                                reportFor = opt
                             }
                         }
-                        SeasonSelector(seasons, current?.number) { selectedSeason = it }
-                        Box(Modifier.height(8.dp))
-                    }
-                }
-                items(current?.episodes.orEmpty(), key = { it.mediaId }) { ep ->
-                    EpisodeRow(
-                        ep, episodeProgress[ep.mediaId] ?: 0f, showCovers,
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    ) {
-                        onPlayEpisode(ep, followingOf(ep))
                     }
                 }
             }
         }
     }
     }
+
+    val rep = reportFor
+    if (rep != null && episodeReportSender != null) {
+        ReportMediaDialog(
+            title = rep.seriesEpisodeTitle(),
+            onReport = episodeReportSender(rep),
+            onDismiss = { reportFor = null }
+        )
+    }
+}
+
+/** Hero 2.16 do celular (300): capa atrás da barra de status, voltar e o bloco do título no fundo. */
+@Composable
+private fun SeriesHero(
+    series: SeriesSummary,
+    showCovers: Boolean,
+    onClose: () -> Unit,
+    onFilterClick: (SearchFilter) -> Unit
+) {
+    Box(modifier = Modifier.fillMaxWidth().heightIn(min = 300.dp)) {
+        SeriesBackdrop(series, showCovers, Modifier.matchParentSize(), portrait = true)
+        // Ações no topo e título no fundo; título longo empurra o hero para baixo em vez de subir.
+        Column(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 300.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x1AFFFFFF))
+                        .border(1.dp, BrandColors.Border, CircleShape)
+                        .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(NbrIcons.ChevronLeft, "Voltar", tint = SeriesText, modifier = Modifier.size(20.dp))
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, top = 40.dp, end = 24.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    series.title,
+                    color = SeriesText,
+                    style = NbrType.Hero,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                SeriesMetaLine(series, tv = false, onFilterClick = onFilterClick)
+            }
+        }
+    }
 }
 
 /**
- * Chips da série: linha de cima com os informativos (temporadas, episódios, qualidade; não
- * clicáveis) e, numa linha exclusiva logo abaixo, ano e gêneros (clicáveis: listam as mídias do canal).
+ * Meta "2022 · Drama · Fantasia" (13/400 text-2). Ano e gêneros continuam clicáveis (listam as
+ * mídias do canal com aquele filtro); na TV cada parte é focável com o anel da tela.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SeriesFilterChips(
-    series: SeriesSummary,
-    onFilterClick: (SearchFilter) -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun SeriesMetaLine(series: SeriesSummary, tv: Boolean, onFilterClick: (SearchFilter) -> Unit) {
+    val parts = buildList {
+        series.year?.let { y -> add(y.toString() to SearchFilter(SearchFilterKind.YEAR, y.toString())) }
+        series.genres.map { it.trim() }.filter { it.isNotEmpty() }.forEach { g -> add(g to SearchFilter(SearchFilterKind.GENRE, g)) }
+    }
+    if (parts.isEmpty()) return
+    val style = if (tv) NbrType.Caption else NbrType.Secondary
+    FlowRow(verticalArrangement = Arrangement.Center, itemVerticalAlignment = Alignment.CenterVertically) {
+        parts.forEachIndexed { i, (label, filter) ->
+            if (i > 0) Text(" · ", style = style, color = BrandColors.TextSecondary)
+            MetaLink(label, style, tv) { onFilterClick(filter) }
+        }
+    }
+}
+
+@Composable
+private fun MetaLink(label: String, style: androidx.compose.ui.text.TextStyle, tv: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
+    Text(
+        label,
+        style = style,
+        color = if (tv && focused) SeriesText else BrandColors.TextSecondary,
+        maxLines = 1,
+        modifier = Modifier
+            .then(if (tv) Modifier.glideTarget(4.dp) else Modifier)
+            .clip(RoundedCornerShape(4.dp))
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick)
+            .then(if (tv && focused && !gliding) Modifier.border(2.dp, BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
+            .padding(vertical = 2.dp)
+    )
+}
+
+/** TV: meta (ano · gêneros) + chips de temporadas/episódios/qualidade numa só faixa. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SeriesMeta(series: SeriesSummary, tv: Boolean, onFilterClick: (SearchFilter) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SeriesMetaLine(series, tv, onFilterClick)
+        SeriesCountChips(series, tv)
+    }
+}
+
+/** Chips informativos (não clicáveis): temporadas, episódios e qualidade. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SeriesCountChips(series: SeriesSummary, tv: Boolean) {
     val seasons = series.seasons.count { it.episodes.isNotEmpty() }
     val episodes = series.seasons.sumOf { it.episodes.size }
     val quality = series.seasons.asSequence().flatMap { it.episodes.asSequence() }
         .firstNotNullOfOrNull { it.quality?.takeIf { q -> q.isNotBlank() } }
         ?.trim()?.replace(RX_COMMA_SEP, " • ")
-    val genres = series.genres.map { it.trim() }.filter { it.isNotEmpty() }
-    if (seasons == 0 && quality == null && series.year == null && genres.isEmpty()) return
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (seasons > 0 || quality != null) {
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (seasons > 0) MetaChip(if (seasons == 1) "1 temporada" else "$seasons temporadas")
-                if (episodes > 0) MetaChip(if (episodes == 1) "1 episódio" else "$episodes episódios")
-                quality?.let { MetaChip(it) }
-            }
-        }
-        if (series.year != null || genres.isNotEmpty()) {
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                series.year?.let { y -> MetaChip(y.toString()) { onFilterClick(SearchFilter(SearchFilterKind.YEAR, y.toString())) } }
-                genres.forEach { g -> MetaChip(g) { onFilterClick(SearchFilter(SearchFilterKind.GENRE, g)) } }
-            }
-        }
+    if (seasons == 0 && episodes == 0 && quality == null) return
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(if (tv) 6.dp else 8.dp),
+        verticalArrangement = Arrangement.spacedBy(if (tv) 6.dp else 8.dp)
+    ) {
+        if (seasons > 0) SeriesChip(if (seasons == 1) "1 temporada" else "$seasons temporadas", tv)
+        if (episodes > 0) SeriesChip(if (episodes == 1) "1 episódio" else "$episodes episódios", tv)
+        quality?.let { SeriesChip(it, tv) }
     }
 }
 
-/** Banner da série escurecido para o texto ler por cima (TV: esquerda e base; celular: base). */
+/** "‹ Voltar" no topo da coluna de info da TV (12/400), focável com o anel da tela. */
+@Composable
+private fun TvBackLink(onClose: () -> Unit, modifier: Modifier) {
+    var focused by remember { mutableStateOf(false) }
+    val gliding = glideActive()
+    val shape = RoundedCornerShape(13.dp)
+    Row(
+        modifier = modifier
+            .height(26.dp)
+            .glideTarget(13.dp)
+            .clip(shape)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClose)
+            .background(if (focused) BrandColors.Fill else Color.Transparent)
+            .then(if (focused && !gliding) Modifier.border(2.dp, BrandColors.Accent, shape) else Modifier)
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(NbrIcons.ChevronLeft, contentDescription = null, tint = BrandColors.TextSecondary, modifier = Modifier.size(14.dp))
+        Text("Voltar", style = NbrType.Caption, color = if (focused) SeriesText else BrandColors.TextSecondary)
+    }
+}
+
+/**
+ * Capa da série. TV: degradê horizontal bg@98% → bg@85% (45%) → bg@60%. Celular (hero 2.16):
+ * degradê vertical bg@33% → bg@13% (40%) → bg@93%, e o bloco do título escurece até o fundo.
+ */
 @Composable
 private fun SeriesBackdrop(series: SeriesSummary, showCovers: Boolean, modifier: Modifier, portrait: Boolean = false) {
     val hero = (series.backdropUrl ?: series.posterUrl)?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, if (portrait) "w780" else "w1280") }
@@ -336,194 +548,46 @@ private fun SeriesBackdrop(series: SeriesSummary, showCovers: Boolean, modifier:
             )
         }
         Box(modifier = Modifier.fillMaxSize().drawWithCache {
-            val v = Brush.verticalGradient(0f to Color(0x00090B0F), 0.6f to Color(0x80090B0F), 1f to com.ntv2.app.core.ui.BrandColors.Background)
-            val h = Brush.horizontalGradient(0f to Color(0xF2090B0F), 0.45f to Color(0xB3090B0F), 1f to Color(0x66090B0F))
-            onDrawBehind {
-                if (!portrait) drawRect(h)
-                drawRect(v)
-            }
+            val bg = BrandColors.Background
+            val v = Brush.verticalGradient(
+                0f to bg.copy(alpha = 0.33f),
+                0.4f to bg.copy(alpha = 0.13f),
+                0.75f to bg.copy(alpha = 0.6f),
+                1f to bg.copy(alpha = 0.93f)
+            )
+            val h = Brush.horizontalGradient(
+                0f to bg.copy(alpha = 0.98f),
+                0.45f to bg.copy(alpha = 0.85f),
+                1f to bg.copy(alpha = 0.6f)
+            )
+            onDrawBehind { drawRect(if (portrait) v else h) }
         })
     }
 }
 
-@Composable
-private fun PlayButton(
-    label: String,
-    focusRequester: FocusRequester,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val gliding = glideActive()
-    Row(
-        modifier = modifier
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .focusRequester(focusRequester)
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(BRAND_ACCENT)
-            .then(if (focused && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(6.dp)) else Modifier)
-            .padding(horizontal = 26.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(NbrIcons.PlayFilled, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(24.dp))
-        Text(label, color = com.ntv2.app.core.ui.BrandColors.OnCta, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-    }
+/** "Assistir T1 · E3" (sem números: "Assistir"). */
+private fun playLabel(ep: MediaItemSummary): String {
+    val s = ep.seasonNumber
+    val e = ep.episodeNumber
+    return if (s != null && e != null) "Assistir T$s · E$e" else "Assistir"
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SeasonSelector(
-    seasons: List<SeasonSummary>,
-    selected: Int?,
-    firstChipFocus: FocusRequester? = null,
-    upTarget: FocusRequester? = null,
-    rightTargetOnLast: FocusRequester? = null,
-    onSelect: (Int) -> Unit
-) {
-    if (seasons.size <= 1) return
-    FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        seasons.forEachIndexed { index, s ->
-            val isSel = s.number == selected
-            var focused by remember { mutableStateOf(false) }
-            val gliding = glideActive()
-            val isLast = index == seasons.lastIndex
-            // 1º chip: alvo do ↓ do Assistir + ↑ volta ao Assistir. Último chip: → entra na lista.
-            val chipMod = Modifier
-                .then(if (index == 0 && firstChipFocus != null) Modifier.focusRequester(firstChipFocus) else Modifier)
-                .focusProperties {
-                    if (index == 0 && upTarget != null) up = upTarget
-                    if (isLast && rightTargetOnLast != null) right = rightTargetOnLast
-                }
-            Text(
-                "Temporada ${s.number}",
-                color = if (isSel) com.ntv2.app.core.ui.BrandColors.OnCta else com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                style = MaterialTheme.typography.labelLarge,
-                modifier = chipMod
-                    .glideTarget(4.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .onFocusChanged { focused = it.isFocused }
-                    .clickable { onSelect(s.number) }
-                    .background(if (isSel) BRAND_ACCENT else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-                    .then(if (focused && !isSel && !gliding) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
-            )
+/** "Faltam 22min · Episódio 3 de 10" (o "Faltam" só quando já começou e a duração é conhecida). */
+private fun ctaHint(ep: MediaItemSummary, progress: Float, seasons: List<SeasonSummary>): String {
+    val season = seasons.firstOrNull { s -> s.episodes.any { it.mediaId == ep.mediaId } }
+    val total = season?.episodes?.size ?: 0
+    val pos = season?.episodes?.sortedBy { it.episodeNumber }?.indexOfFirst { it.mediaId == ep.mediaId }?.plus(1) ?: 0
+    val parts = buildList {
+        if (progress > 0f && ep.durationSeconds > 0) {
+            val left = (ep.durationSeconds * (1f - progress)).toInt().coerceAtLeast(60)
+            add("Faltam ${durationLabel(left)}")
         }
+        if (pos > 0 && total > 0) add("Episódio ${ep.episodeNumber ?: pos} de $total")
     }
+    return parts.joinToString(" · ")
 }
 
-@Composable
-private fun EpisodeRow(
-    episode: MediaItemSummary,
-    progress: Float,
-    showCovers: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val gliding = glideActive()
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            // Cartão da marca: superfície + contorno sutil; no foco, anel azul de 3dp.
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.SurfaceAlt else com.ntv2.app.core.ui.BrandColors.Surface)
-            .border(
-                if (focused && !gliding) 3.dp else 1.dp,
-                if (focused && !gliding) BRAND_ACCENT else com.ntv2.app.core.ui.BrandColors.BorderSubtle,
-                RoundedCornerShape(6.dp)
-            )
-            .padding(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Miniatura de 132 dp: w300 em vez do banner w1280 (decodificação e upload menores no Fire TV).
-        val thumb = (episode.backdropPath ?: episode.posterPath)?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, "w300") }
-        if (showCovers && thumb != null) {
-            // Largura fixa: o overlay de progresso usa fillMaxWidth e, sem isso, esticava a caixa até a
-            // linha toda, empurrando o texto do episódio para fora (linhas com progresso ficavam sem título).
-            Box(modifier = Modifier.width(132.dp)) {
-                AsyncImage(
-                    model = thumb,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .width(132.dp)
-                        .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
-                )
-                if (progress > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .align(Alignment.BottomStart)
-                            .background(Color(0x55000000))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(progress.coerceIn(0.02f, 1f))
-                                .height(3.dp)
-                                .background(BRAND_ACCENT)
-                        )
-                    }
-                }
-            }
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    episode.episodeCode(),
-                    color = BRAND_ACCENT,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                if (episode.durationSeconds > 0) {
-                    Text(
-                        durationLabel(episode.durationSeconds),
-                        color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-                if (progress >= WATCHED_FRACTION) {
-                    Icon(NbrIcons.CircleCheck, contentDescription = "Assistido", tint = com.ntv2.app.core.ui.BrandColors.Success, modifier = Modifier.size(16.dp))
-                }
-            }
-            episode.title?.takeIf { it.isNotBlank() }?.let {
-                Text(
-                    it,
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            episode.synopsis?.takeIf { it.isNotBlank() }?.let {
-                Text(
-                    it,
-                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-/** Voltar da TV (detalhes de série e de filme): só o ícone, no canto superior direito. */
+/** Voltar da TV (detalhes do filme): só o ícone, no canto superior direito. */
 @Composable
 internal fun BackChip(onClose: () -> Unit, modifier: Modifier) {
     var focused by remember { mutableStateOf(false) }
@@ -535,7 +599,7 @@ internal fun BackChip(onClose: () -> Unit, modifier: Modifier) {
             .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClose)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else Color(0x1AFFFFFF))
+            .background(if (focused) BrandColors.Border else Color(0x1AFFFFFF))
             .then(if (focused && !gliding) Modifier.border(2.dp, Color.White, CircleShape) else Modifier),
         contentAlignment = Alignment.Center
     ) {
@@ -543,16 +607,5 @@ internal fun BackChip(onClose: () -> Unit, modifier: Modifier) {
     }
 }
 
-/** "S01E02" a partir dos números; cai para o título quando faltam. */
-private fun MediaItemSummary.episodeCode(): String {
-    val s = seasonNumber
-    val e = episodeNumber
-    return if (s != null && e != null) "S%02dE%02d".format(s, e) else (title.ifBlank { "Episódio" })
-}
-
-
-// Regex compilados uma vez (criar a cada chamada custava CPU no Fire TV, em caminhos por item/página).
-/** A partir daqui o episódio conta como assistido (créditos finais não são vistos). */
-private const val WATCHED_FRACTION = 0.92f
-
+// Regex compilado uma vez (criar a cada chamada custava CPU no Fire TV, em caminhos por item/página).
 private val RX_COMMA_SEP = Regex("\\s*,\\s*")

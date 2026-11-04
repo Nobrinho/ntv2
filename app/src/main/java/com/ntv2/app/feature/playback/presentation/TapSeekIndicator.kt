@@ -41,7 +41,7 @@ internal fun TapSeekIndicator(feedback: TapSeekFeedback, modifier: Modifier = Mo
                 .fillMaxWidth(0.38f)
                 .fillMaxHeight()
                 .clip(shape)
-                .background(com.ntv2.app.core.ui.BrandColors.Border),
+                .background(PlayerGlass),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -51,13 +51,13 @@ internal fun TapSeekIndicator(feedback: TapSeekFeedback, modifier: Modifier = Mo
                 Icon(
                     if (feedback.forward) NbrIcons.FastForwardFilled else NbrIcons.RewindFilled,
                     contentDescription = if (feedback.forward) "Avançou" else "Voltou",
-                    tint = Color.White,
+                    tint = Color(0xFFF5F5F7),
                     modifier = Modifier.size(36.dp)
                 )
                 Text(
                     "${feedback.totalMs / 1000} s",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium
+                    color = Color(0xFFF5F5F7),
+                    style = com.ntv2.app.core.ui.NbrType.Chip
                 )
             }
         }

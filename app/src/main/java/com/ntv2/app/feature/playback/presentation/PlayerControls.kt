@@ -9,6 +9,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -241,6 +244,8 @@ internal fun StreamingControlsOverlay(
         onToggleSubtitle = onToggleSubtitle,
         onOpenSettings = onOpenSettings,
         onFullscreen = onFullscreen,
+        onOpenAudio = onOpenAudio,
+        onOpenSubtitle = onOpenSubtitle,
         onPip = onPip,
         onCast = onCast,
         castActive = castActive,
@@ -274,202 +279,286 @@ internal fun LandscapeControlsOverlay(
     onToggleSubtitle: () -> Unit,
     onOpenSettings: () -> Unit,
     onFullscreen: () -> Unit,
+    onOpenAudio: () -> Unit = {},
+    onOpenSubtitle: () -> Unit = {},
     onPip: (() -> Unit)? = null,
     onCast: (() -> Unit)? = null,
     castActive: Boolean = false,
     onOpenNetwork: (() -> Unit)? = null,
     connectionReady: Boolean = true
 ) {
-    // Amarração de foco para o dpad da TV: barra superior <-> controles centrais <-> scrubber,
-    // e a linha da barra superior (Fechar -> Rede -> Legenda -> Opções).
+    // Protótipo: celular 21 (Py3N1, paisagem 844×390) e TV 11 (IwV7b).
+    // Amarração de foco para o dpad da TV: barra superior <-> linha do tempo <-> botões de baixo,
+    // e a linha da barra superior (Voltar -> Rede -> Legenda -> Opções).
     val topBarFocus = settingsFocus
-    val centerFocus = remember { FocusRequester() }
     val closeFocus = remember { FocusRequester() }
     val netFocus = remember { FocusRequester() }
     val ccFocus = remember { FocusRequester() }
+    val playFocus = remember { FocusRequester() }
     val ccEnabled = tracks.subtitles.isNotEmpty()
-    val settingsEnabled = tracks.audios.size > 1 || tracks.subtitles.isNotEmpty()
+    val audioEnabled = tracks.audios.size > 1
+    val settingsEnabled = audioEnabled || ccEnabled
+    val meta = playerMetaLine(tracks)
     // Link horizontal explícito só na TV (dpad); no celular deixa a navegação espacial/toque.
     fun Modifier.hLink(left: FocusRequester? = null, right: FocusRequester? = null): Modifier =
         if (!isTv) this else this.focusProperties {
-            down = centerFocus
+            down = scrubberFocus
             left?.let { this.left = it }
             right?.let { this.right = it }
         }
-    // Margem lateral: TV respeita a área segura de overscan (5% da largura); celular usa quase toda a
-    // largura, somando o recorte da câmera quando ele fica na lateral.
+    // Margem lateral: TV respeita a área segura de overscan (5% da largura = 48 dp no Fire TV); celular 28 dp
+    // como no protótipo, somando o recorte da câmera quando ele fica na lateral.
     val tvSafeSide = com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo().tvSafeHorizontal
-    val sidePadding = if (isTv) tvSafeSide else 24.dp
+    val sidePadding = if (isTv) tvSafeSide else 28.dp
+    // Os ícones têm área de toque maior que o desenho; a sobra sai da margem para o desenho cair no lugar do protótipo.
+    val iconTouch = if (isTv) 40.dp else 38.dp
+    val iconSlack = (iconTouch - 22.dp) / 2
+    val textColor = Color(0xFFF5F5F7)
+    val timeStyle = com.ntv2.app.core.ui.NbrType.Caption.copy(fontWeight = FontWeight.SemiBold)
+    val totalStyle = com.ntv2.app.core.ui.NbrType.Caption
     Box(
         modifier = modifier
-            .background(Color(0x26000000))
             .then(
                 if (isTv) Modifier.clickable(onClick = onDismiss)
                 else Modifier.tapToSeek(onTap = onDismiss, onSeek = { onTapSeek(it); onInteract() })
             )
     ) {
-        Box(
+        // Barra superior: altura 72 (TV 90), degradê preto → transparente.
+        Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(0.30f)
                 .background(
                     Brush.verticalGradient(
-                        0f to Color(0xD9000000),
-                        0.72f to Color(0x99000000),
+                        0f to Color(if (isTv) 0xB3000000 else 0xAA000000),
                         1f to Color.Transparent
                     )
                 )
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(0.32f)
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.28f to Color(0x99000000),
-                        1f to Color(0xF2000000)
-                    )
-                )
-        )
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
                 .statusBarsPadding()
                 .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
-                .padding(horizontal = sidePadding, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+                .height(if (isTv) 90.dp else 72.dp)
+                .padding(start = sidePadding - if (isTv) iconSlack else 7.dp, end = sidePadding - iconSlack)
+                .focusProperties { down = scrubberFocus },
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Uma linha só: ícones da esquerda · título (ano) · ícones da direita.
-            Row(
+            PlayerIconButton(
+                icon = NbrIcons.ChevronLeft,
+                contentDescription = "Voltar",
+                onClick = onBack,
+                iconSize = if (isTv) 22.dp else 26.dp,
+                touchSize = 40.dp,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .focusProperties { down = centerFocus },
-                verticalAlignment = Alignment.CenterVertically
+                    .focusRequester(closeFocus)
+                    .hLink(right = if (onOpenNetwork != null) netFocus else if (ccEnabled) ccFocus else if (settingsEnabled) topBarFocus else null)
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = if (isTv) 3.dp else 9.dp, end = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(if (isTv) 3.dp else 2.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PortraitTopIcon(
-                        NbrIcons.X,
-                        "Fechar",
-                        onBack,
-                        modifier = Modifier
-                            .focusRequester(closeFocus)
-                            .hLink(right = if (onOpenNetwork != null) netFocus else if (ccEnabled) ccFocus else if (settingsEnabled) topBarFocus else null)
-                    )
-                    // PiP não se aplica à TV.
-                    if (!isTv) {
-                        if (onPip != null) PortraitTopIcon(NbrIcons.PictureInPicture2, "Picture-in-picture", onPip)
-                    }
-                }
                 ScrollingTitle(
                     title = title,
                     year = year,
-                    fontSize = if (isTv) 22.sp else 20.sp,
-                    animate = animationsEnabled,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 20.dp)
+                    fontSize = if (isTv) 20.sp else 17.sp,
+                    animate = animationsEnabled
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // Espelhamento/transmissão não se aplica à TV.
-                    if (!isTv) {
-                        if (onCast != null) PortraitTopIcon(NbrIcons.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
-                    }
-                    if (onOpenNetwork != null) {
-                        PortraitTopIcon(
-                            NbrIcons.Globe,
-                            "Estado da rede",
-                            { onOpenNetwork(); onInteract() },
-                            active = connectionReady,
-                            modifier = Modifier
-                                .focusRequester(netFocus)
-                                .hLink(left = closeFocus, right = if (ccEnabled) ccFocus else if (settingsEnabled) topBarFocus else null)
-                        )
-                    }
-                    PortraitTopIcon(
-                        NbrIcons.Captions,
-                        "Ligar ou desligar legenda",
-                        { onToggleSubtitle(); onInteract() },
-                        enabled = ccEnabled,
-                        active = tracks.subtitles.any { it.isSelected },
-                        modifier = Modifier
-                            .focusRequester(ccFocus)
-                            .hLink(left = if (onOpenNetwork != null) netFocus else closeFocus, right = if (settingsEnabled) topBarFocus else null)
-                    )
-                    // Velocidade (1x) removida temporariamente: função ainda não implementada.
-                    PortraitTopIcon(
-                        NbrIcons.Settings,
-                        "Opções",
-                        { onOpenSettings(); onInteract() },
-                        enabled = settingsEnabled,
-                        modifier = Modifier
-                            .focusRequester(topBarFocus)
-                            .hLink(left = if (ccEnabled) ccFocus else if (onOpenNetwork != null) netFocus else closeFocus)
+                if (meta != null) {
+                    Text(
+                        meta,
+                        color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
+                        style = com.ntv2.app.core.ui.NbrType.Caption.copy(fontSize = 11.sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(if (isTv) 4.dp else 0.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // PiP e transmissão não se aplicam à TV.
+                if (!isTv) {
+                    if (onPip != null) PlayerIconButton(NbrIcons.PictureInPicture2, "Picture-in-picture", onPip, touchSize = iconTouch)
+                    if (onCast != null) PlayerIconButton(NbrIcons.Cast, "Transmitir", { onCast(); onInteract() }, touchSize = iconTouch, active = !castActive)
+                }
+                // "Info" do protótipo = painel de estado da rede e formato do vídeo.
+                if (onOpenNetwork != null) {
+                    PlayerIconButton(
+                        NbrIcons.Info,
+                        "Estado da rede",
+                        { onOpenNetwork(); onInteract() },
+                        touchSize = iconTouch,
+                        active = connectionReady,
+                        modifier = Modifier
+                            .focusRequester(netFocus)
+                            .hLink(left = closeFocus, right = if (ccEnabled) ccFocus else if (settingsEnabled) topBarFocus else null)
+                    )
+                }
+                // Fora do protótipo, mantidos: ligar/desligar legenda e Opções.
+                PlayerIconButton(
+                    NbrIcons.Captions,
+                    "Ligar ou desligar legenda",
+                    { onToggleSubtitle(); onInteract() },
+                    touchSize = iconTouch,
+                    enabled = ccEnabled,
+                    active = tracks.subtitles.any { it.isSelected },
+                    modifier = Modifier
+                        .focusRequester(ccFocus)
+                        .hLink(left = if (onOpenNetwork != null) netFocus else closeFocus, right = if (settingsEnabled) topBarFocus else null)
+                )
+                // Velocidade (1x) removida temporariamente: função ainda não implementada.
+                PlayerIconButton(
+                    NbrIcons.Settings,
+                    "Opções",
+                    { onOpenSettings(); onInteract() },
+                    touchSize = iconTouch,
+                    enabled = settingsEnabled,
+                    modifier = Modifier
+                        .focusRequester(topBarFocus)
+                        .hLink(left = if (ccEnabled) ccFocus else if (onOpenNetwork != null) netFocus else closeFocus)
+                )
+            }
         }
 
-        // Sem botões -10/+10: na TV o dpad ←/→ avança/volta; no celular, toque duplo nas laterais.
-        OverlayRoundButton(
-            icon = if (isPlaying) NbrIcons.PauseFilled else NbrIcons.PlayFilled,
-            contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
-            size = CENTER_PLAY_SIZE,
-            iconSize = CENTER_PLAY_ICON,
-            strong = false,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .focusProperties { up = if (settingsEnabled) topBarFocus else closeFocus }
-                .focusRequester(centerFocus)
-                .onPreviewKeyEvent { event ->
-                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    when (event.key) {
-                        Key.DirectionLeft -> { onSeek(-dpadSeekStep(event)); onInteract(); true }
-                        Key.DirectionRight -> { onSeek(dpadSeekStep(event)); onInteract(); true }
-                        else -> false
-                    }
-                },
-            onClick = { onToggle(); onInteract() }
-        )
+        // Centro (celular): voltar 10 s · play/pausa 84 · avançar 10 s, espaço 44 entre os desenhos.
+        if (!isTv) {
+            Row(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalArrangement = Arrangement.spacedBy(34.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PlayerIconButton(
+                    NbrIcons.RotateCcw,
+                    "Voltar 10 segundos",
+                    { onSeek(-DPAD_SEEK_MS); onInteract() },
+                    iconSize = 36.dp,
+                    touchSize = 56.dp
+                )
+                OverlayRoundButton(
+                    icon = if (isPlaying) NbrIcons.PauseFilled else NbrIcons.PlayFilled,
+                    contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
+                    size = 84.dp,
+                    iconSize = 38.dp,
+                    onClick = { onToggle(); onInteract() }
+                )
+                PlayerIconButton(
+                    NbrIcons.RotateCw,
+                    "Avançar 10 segundos",
+                    { onSeek(DPAD_SEEK_MS); onInteract() },
+                    iconSize = 36.dp,
+                    touchSize = 56.dp
+                )
+            }
+        }
 
+        // Barra inferior: altura 152 (TV 160), conteúdo no fundo, degradê transparente → preto.
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        1f to Color(if (isTv) 0xD9000000 else 0xCC000000)
+                    )
+                )
                 .navigationBarsPadding()
                 .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
-                .padding(start = sidePadding, end = sidePadding, bottom = 34.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(
+                    start = sidePadding,
+                    end = sidePadding,
+                    top = if (isTv) 52.dp else 78.dp,
+                    bottom = if (isTv) 32.dp else 18.dp
+                ),
+            verticalArrangement = Arrangement.spacedBy(if (isTv) 14.dp else 12.dp)
         ) {
-            Scrubber(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(28.dp)
-                    .focusRequester(scrubberFocus)
-                    .focusProperties { up = centerFocus },
-                positionMs = positionMs,
-                bufferedMs = bufferedMs,
-                durationMs = durationMs,
-                showTimeBubble = isTv,
-                onToggle = { onToggle(); onInteract() },
-                onSeek = { delta -> onSeek(delta); onInteract() },
-                onSeekTo = { position -> onSeekTo(position); onInteract() }
-            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(formatTime(positionMs), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val remaining = (durationMs - positionMs).coerceAtLeast(0L)
-                    Text("-${formatTime(remaining)}", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(formatTime(positionMs), color = textColor, style = timeStyle, maxLines = 1)
+                Scrubber(
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(scrubberFocus)
+                        .focusProperties {
+                            up = if (settingsEnabled) topBarFocus else closeFocus
+                            if (isTv) down = playFocus
+                        },
+                    positionMs = positionMs,
+                    bufferedMs = bufferedMs,
+                    durationMs = durationMs,
+                    trackHeight = if (isTv) 5.dp else 4.dp,
+                    showTimeBubble = isTv,
+                    onToggle = { onToggle(); onInteract() },
+                    onSeek = { delta -> onSeek(delta); onInteract() },
+                    onSeekTo = { position -> onSeekTo(position); onInteract() }
+                )
+                // Mantido o tempo restante (o protótipo mostra a duração total).
+                val remaining = (durationMs - positionMs).coerceAtLeast(0L)
+                Text("-${formatTime(remaining)}", color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = totalStyle, maxLines = 1)
+            }
+            if (isTv) {
+                val upToScrubber = Modifier.focusProperties { up = scrubberFocus }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    PlayerPillButton(
+                        NbrIcons.RotateCcw, "-10s", "Voltar 10 segundos",
+                        { onSeek(-DPAD_SEEK_MS); onInteract() },
+                        modifier = upToScrubber
+                    )
+                    PlayerPillButton(
+                        if (isPlaying) NbrIcons.PauseFilled else NbrIcons.PlayFilled,
+                        label = null,
+                        contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
+                        onClick = { onToggle(); onInteract() },
+                        primary = true,
+                        modifier = Modifier.focusRequester(playFocus).then(upToScrubber)
+                    )
+                    PlayerPillButton(
+                        NbrIcons.RotateCw, "+10s", "Avançar 10 segundos",
+                        { onSeek(DPAD_SEEK_MS); onInteract() },
+                        modifier = upToScrubber
+                    )
+                    PlayerPillButton(
+                        NbrIcons.AudioLines, "Áudio", "Áudio",
+                        { onOpenAudio(); onInteract() },
+                        enabled = audioEnabled,
+                        modifier = upToScrubber
+                    )
+                    PlayerPillButton(
+                        NbrIcons.Captions, "Legendas", "Legendas",
+                        { onOpenSubtitle(); onInteract() },
+                        enabled = ccEnabled,
+                        modifier = upToScrubber
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.offset(x = (-6).dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PlayerLabeledAction(NbrIcons.AudioLines, "Áudio", { onOpenAudio(); onInteract() }, enabled = audioEnabled)
+                        PlayerLabeledAction(NbrIcons.Captions, "Legendas", { onOpenSubtitle(); onInteract() }, enabled = ccEnabled)
+                    }
                     if (showFullscreen) {
-                        FullscreenControlButton { onFullscreen(); onInteract() }
+                        PlayerIconButton(
+                            NbrIcons.Maximize,
+                            "Tela cheia",
+                            { onFullscreen(); onInteract() },
+                            touchSize = 38.dp,
+                            modifier = Modifier.offset(x = 8.dp)
+                        )
                     }
                 }
             }
@@ -517,14 +606,14 @@ internal fun PortraitControlsOverlay(
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.36f)
-                .background(Color(0xF2050A12))
+                .background(Brush.verticalGradient(0f to Color(0xCC000000), 1f to Color(0x66000000)))
         )
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.34f)
-                .background(Color(0xF2050A12))
+                .background(Brush.verticalGradient(0f to Color(0x66000000), 1f to Color(0xCC000000)))
         )
 
         Column(
@@ -540,7 +629,7 @@ internal fun PortraitControlsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                PortraitTopIcon(NbrIcons.X, "Fechar", onBack)
+                PortraitTopIcon(NbrIcons.ChevronLeft, "Voltar", onBack)
                 if (onPip != null) PortraitTopIcon(NbrIcons.PictureInPicture2, "Picture-in-picture", onPip)
                 if (onCast != null) PortraitTopIcon(NbrIcons.Cast, "Transmitir", { onCast(); onInteract() }, active = !castActive)
                 if (onOpenNetwork != null) PortraitTopIcon(
@@ -567,10 +656,9 @@ internal fun PortraitControlsOverlay(
 
             Text(
                 text = title,
-                color = Color.White,
-                // headlineSmall: em displaySmall o título tomava metade da área de cima em 2–3 linhas.
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
+                color = Color(0xFFF5F5F7),
+                // Mesmo peso do título do player no protótipo (17/700), um pouco maior em pé.
+                style = com.ntv2.app.core.ui.NbrType.SheetTitle,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -612,9 +700,9 @@ internal fun PortraitControlsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(formatTime(positionMs), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(formatTime(positionMs), color = Color(0xFFF5F5F7), style = com.ntv2.app.core.ui.NbrType.Caption.copy(fontWeight = FontWeight.SemiBold))
                 val remaining = (durationMs - positionMs).coerceAtLeast(0L)
-                Text("-${formatTime(remaining)}", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("-${formatTime(remaining)}", color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = com.ntv2.app.core.ui.NbrType.Caption)
             }
 
             Row(
@@ -678,26 +766,26 @@ internal fun PortraitTopIcon(
 ) {
     var focused by remember { mutableStateOf(false) }
     val tint = when {
-        focused -> Color.Black
+        focused -> com.ntv2.app.core.ui.BrandColors.OnCta
         !enabled -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
-        active -> Color.White
+        active -> Color(0xFFF5F5F7)
         else -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
     }
 
     Box(
         modifier = modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .size(44.dp)
+            .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
-            .background(if (focused) Color.White else Color.Transparent),
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Accent else Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             icon,
             contentDescription = contentDescription,
             tint = tint,
-            modifier = Modifier.size(30.dp)
+            modifier = Modifier.size(24.dp)
         )
     }
 }
@@ -737,16 +825,17 @@ internal fun OverlayRoundButton(
             .clip(CircleShape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
+            // Protótipo (tela 21): círculo branco@15% com contorno border; em foco, accent.
             .background(
                 when {
                     strong -> Color(0xE6FFFFFF)
-                    focused -> Color.White
-                    else -> Color(0x66000000)
+                    focused -> com.ntv2.app.core.ui.BrandColors.Accent
+                    else -> PlayerGlass
                 }
             )
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
+                width = 1.dp,
+                color = if (focused) com.ntv2.app.core.ui.BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.Border,
                 shape = CircleShape
             ),
         contentAlignment = Alignment.Center
@@ -754,7 +843,7 @@ internal fun OverlayRoundButton(
         Icon(
             icon,
             contentDescription = contentDescription,
-            tint = if (strong || focused) Color.Black else Color.White,
+            tint = if (strong || focused) com.ntv2.app.core.ui.BrandColors.OnCta else Color(0xFFF5F5F7),
             modifier = Modifier.size(iconSize)
         )
     }
@@ -818,7 +907,9 @@ internal fun Scrubber(
     onSeek: (Long) -> Unit,
     onSeekTo: ((Long) -> Unit)? = null,
     onToggle: (() -> Unit)? = null,
-    showTimeBubble: Boolean = false
+    showTimeBubble: Boolean = false,
+    /** Espessura do trilho (protótipo: 4 no celular, 5 na TV). */
+    trackHeight: androidx.compose.ui.unit.Dp = 4.dp
 ) {
     var focused by remember { mutableStateOf(false) }
     val played = if (durationMs > 0L) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
@@ -862,11 +953,11 @@ internal fun Scrubber(
             val w = size.width
             val cy = size.height / 2f
             // Com foco (dpad), trilho mais grosso para ser legível à distância.
-            val trackH = if (focused) 10.dp.toPx() else 6.dp.toPx()
+            val trackH = if (focused) (trackHeight * 2).toPx() else trackHeight.toPx()
             val radius = CornerRadius(trackH / 2f, trackH / 2f)
-            // Trilho
+            // Trilho: branco@20%; buffer branco@33%; assistido accent (protótipo 21 / TV 11).
             drawRoundRect(
-                color = Color(0x40FFFFFF),
+                color = Color(0x33FFFFFF),
                 topLeft = Offset(0f, cy - trackH / 2f),
                 size = Size(w, trackH),
                 cornerRadius = radius
@@ -874,7 +965,7 @@ internal fun Scrubber(
             // Buffer
             if (buffered > 0f) {
                 drawRoundRect(
-                    color = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
+                    color = Color(0x54FFFFFF),
                     topLeft = Offset(0f, cy - trackH / 2f),
                     size = Size(w * buffered, trackH),
                     cornerRadius = radius
@@ -889,7 +980,8 @@ internal fun Scrubber(
                 cornerRadius = radius
             )
             // Knob
-            val knobR = if (focused) 13.dp.toPx() else 7.dp.toPx()
+            // O protótipo não desenha marcador; fica um pequeno (6 dp) para a área de arrastar continuar visível.
+            val knobR = if (focused) 10.dp.toPx() else 6.dp.toPx()
             if (focused) {
                 drawCircle(color = com.ntv2.app.core.ui.BrandColors.Accent.copy(alpha = 0.33f), radius = knobR + 6.dp.toPx(), center = Offset(w * played, cy))
             }
@@ -901,14 +993,13 @@ internal fun Scrubber(
             val x = (maxWidth * played - bubbleW / 2).coerceIn(0.dp, (maxWidth - bubbleW).coerceAtLeast(0.dp))
             Text(
                 text = formatTime(positionMs),
-                color = Color.Black,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                color = com.ntv2.app.core.ui.BrandColors.OnCta,
+                style = com.ntv2.app.core.ui.NbrType.Chip,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 modifier = Modifier
-                    .offset(x = x, y = (-44).dp)
+                    .offset(x = x, y = (-40).dp)
                     .width(bubbleW)
-                    .background(Color.White, RoundedCornerShape(8.dp))
+                    .background(com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(50))
                     .padding(vertical = 4.dp)
             )
         }
@@ -928,63 +1019,44 @@ internal fun PlayerSettingsOverlay(
 
     BackHandler(enabled = true) { onDismiss() }
 
-    BottomSheetScrim(onDismiss = onDismiss, focusTarget = firstFocus) {
+    PlayerSidePanel(onDismiss = onDismiss, focusTarget = firstFocus) {
+        PanelGroupTitle("Opções")
         Column(
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .widthIn(max = 580.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF1B1E22))
-                .clickable(onClick = {})
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.focusGroup(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(56.dp)
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(Color(0x88FFFFFF))
+            PlayerSettingsRow(
+                icon = NbrIcons.Captions,
+                label = "Legendas",
+                value = selectedSubtitle,
+                enabled = tracks.subtitles.isNotEmpty(),
+                // Foco inicial na primeira linha habilitada (desabilitada não recebe foco).
+                modifier = if (tracks.subtitles.isNotEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
+                onClick = onOpenSubtitle
             )
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF343434))
-                    .padding(vertical = 12.dp)
-                    .focusGroup()
-            ) {
-                PlayerSettingsRow(
-                    icon = NbrIcons.Captions,
-                    label = "Legendas",
-                    value = selectedSubtitle,
-                    enabled = tracks.subtitles.isNotEmpty(),
-                    // Foco inicial na primeira linha habilitada (desabilitada não recebe foco).
-                    modifier = if (tracks.subtitles.isNotEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
-                    onClick = onOpenSubtitle
-                )
-                PlayerSettingsRow(
-                    icon = NbrIcons.AudioLines,
-                    label = "Áudio",
-                    value = selectedAudio,
-                    enabled = tracks.audios.size > 1,
-                    modifier = if (tracks.subtitles.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
-                    onClick = onOpenAudio
-                )
-            }
+            PlayerSettingsRow(
+                icon = NbrIcons.AudioLines,
+                label = "Áudio",
+                value = selectedAudio,
+                enabled = tracks.audios.size > 1,
+                modifier = if (tracks.subtitles.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
+                onClick = onOpenAudio
+            )
         }
     }
 }
 
-// Scrim + folha que desliza de baixo para cima. O conteúdo é ancorado embaixo.
-// focusTarget: alvo focado após a folha entrar (dpad/TV). Precisa ser pedido só depois
-// que o conteúdo do AnimatedVisibility é composto/anexado, com retry em alguns frames.
+/**
+ * Painel do player no estilo do protótipo (tela 22): em paisagem, coluna à direita com 340 de largura, altura
+ * cheia, fundo surface@95%, contorno border-subtle, padding 24 e espaço 10. Em pé não cabe ao lado, então vira
+ * a sheet padrão (2.13). focusTarget: alvo focado depois que o painel entra (dpad/TV), pedido com retry porque
+ * o conteúdo do AnimatedVisibility só existe depois de composto.
+ */
 @Composable
-internal fun BottomSheetScrim(
+internal fun PlayerSidePanel(
     onDismiss: () -> Unit,
     focusTarget: FocusRequester? = null,
-    content: @Composable () -> Unit
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
@@ -998,23 +1070,77 @@ internal fun BottomSheetScrim(
             }
         }
     }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x99000000))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        AnimatedVisibility(
-            visible = shown,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val side = maxWidth > maxHeight
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (side) Color(0x59000000) else Color(0xB3000000))
+                .clickable(onClick = onDismiss),
+            contentAlignment = if (side) Alignment.CenterEnd else Alignment.BottomCenter
         ) {
-            Box(modifier = Modifier.padding(bottom = 28.dp)) {
-                content()
+            AnimatedVisibility(
+                visible = shown,
+                enter = if (side) slideInHorizontally(tween(220)) { it } + fadeIn(tween(220))
+                else slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
+                exit = if (side) slideOutHorizontally { it } + fadeOut() else slideOutVertically { it } + fadeOut()
+            ) {
+                if (side) {
+                    Column(
+                        modifier = Modifier
+                            .width(340.dp)
+                            .fillMaxHeight()
+                            .background(PlayerPanelBg)
+                            .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+                            .clickable(onClick = {})
+                            .windowInsetsPadding(
+                                WindowInsets.displayCutout.only(WindowInsetsSides.End)
+                            )
+                            .navigationBarsPadding()
+                            .verticalScroll(rememberScrollState())
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        content = content
+                    )
+                } else {
+                    val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(shape)
+                            .background(com.ntv2.app.core.ui.BrandColors.Surface)
+                            .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, shape)
+                            .clickable(onClick = {})
+                            .navigationBarsPadding()
+                            .padding(start = 24.dp, end = 24.dp, top = 10.dp, bottom = 28.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .padding(bottom = 4.dp)
+                                .width(40.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(com.ntv2.app.core.ui.BrandColors.Border)
+                        )
+                        content()
+                    }
+                }
             }
         }
     }
+}
+
+/** Título de grupo do painel ("Áudio", "Legendas"): 16/700 text. */
+@Composable
+internal fun PanelGroupTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        color = Color(0xFFF5F5F7),
+        style = com.ntv2.app.core.ui.NbrType.Section.copy(fontSize = 16.sp),
+        modifier = modifier.padding(top = 2.dp, bottom = 2.dp)
+    )
 }
 
 @Composable
@@ -1027,39 +1153,42 @@ internal fun PlayerSettingsRow(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val contentColor = if (enabled) Color.White else com.ntv2.app.core.ui.BrandColors.TextMuted
+    val contentColor = if (enabled) Color(0xFFF5F5F7) else com.ntv2.app.core.ui.BrandColors.TextMuted
+    val shape = RoundedCornerShape(10.dp)
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .height(48.dp)
+            .clip(shape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(enabled = enabled, onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else Color.Transparent)
-            .padding(horizontal = 26.dp),
+            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Fill else Color.Transparent)
+            .border(if (focused) 2.dp else 0.dp, if (focused) com.ntv2.app.core.ui.BrandColors.Accent else Color.Transparent, shape)
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(30.dp))
-        Spacer(Modifier.width(18.dp))
+        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
         Text(
             text = label,
             color = contentColor,
-            style = MaterialTheme.typography.titleLarge,
+            style = com.ntv2.app.core.ui.NbrType.Chip,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
         Text(
             text = value,
-            color = if (enabled) com.ntv2.app.core.ui.BrandColors.TextSecondary else Color(0xFF8C8C8C),
-            style = MaterialTheme.typography.titleMedium,
+            color = if (enabled) com.ntv2.app.core.ui.BrandColors.TextSecondary else com.ntv2.app.core.ui.BrandColors.TextMuted,
+            style = com.ntv2.app.core.ui.NbrType.Secondary,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 150.dp)
         )
         if (enabled) {
-            Spacer(Modifier.width(12.dp))
-            Icon(NbrIcons.ChevronRight, contentDescription = null, tint = Color.White, modifier = Modifier.size(34.dp))
+            Spacer(Modifier.width(6.dp))
+            Icon(NbrIcons.ChevronRight, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -1075,69 +1204,52 @@ internal fun TrackPickerOverlay(
     val firstFocus = remember { FocusRequester() }
     BackHandler(enabled = true) { onDismiss() }
 
-    BottomSheetScrim(onDismiss = onDismiss, focusTarget = firstFocus) {
+    PlayerSidePanel(onDismiss = onDismiss, focusTarget = firstFocus) {
+        PanelGroupTitle(title)
         Column(
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .widthIn(max = 460.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(com.ntv2.app.core.ui.BrandColors.Surface)
-                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
-                .clickable(onClick = {})
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.focusGroup(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(title, style = MaterialTheme.typography.titleLarge, color = Color.White)
-            Column(
-                modifier = Modifier.focusGroup(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (allowOff) {
-                    val noneSelected = options.none { it.isSelected }
-                    TrackRow(
-                        label = "Desativadas",
-                        selected = noneSelected,
-                        modifier = Modifier.focusRequester(firstFocus),
-                        onClick = { onSelect(null) }
-                    )
-                }
-                options.forEachIndexed { index, option ->
-                    val mod = if (!allowOff && index == 0) Modifier.focusRequester(firstFocus) else Modifier
-                    TrackRow(
-                        label = option.label,
-                        selected = option.isSelected,
-                        modifier = mod,
-                        onClick = { onSelect(option.id) }
-                    )
-                }
+            if (allowOff) {
+                val noneSelected = options.none { it.isSelected }
+                TrackRow(
+                    label = "Desativadas",
+                    selected = noneSelected,
+                    modifier = Modifier.focusRequester(firstFocus),
+                    onClick = { onSelect(null) }
+                )
             }
-            CloseTrackPickerButton(onClick = onDismiss)
+            options.forEachIndexed { index, option ->
+                val mod = if (!allowOff && index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                TrackRow(
+                    label = option.label,
+                    selected = option.isSelected,
+                    modifier = mod,
+                    onClick = { onSelect(option.id) }
+                )
+            }
         }
+        CloseTrackPickerButton(onClick = onDismiss)
     }
 }
 
+/** "Fechar" (fora do protótipo, mantido): botão secundário em pílula. */
 @Composable
 internal fun CloseTrackPickerButton(onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
+    PlayerSecondaryButton(
+        label = "Fechar",
+        onClick = onClick,
+        height = 44.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(8.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "Fechar",
-            color = if (focused) Color.Black else Color.White,
-            style = MaterialTheme.typography.titleSmall
-        )
-    }
+            .padding(top = 6.dp)
+    )
 }
 
+/**
+ * Opção do painel (tela 22): altura 40, padding 0/12, raio 10. Selecionada: fundo accent@12%, texto 13/700
+ * accent e check 16. Demais: transparente, 13/500 text. Em foco (D-pad): contorno accent.
+ */
 @Composable
 internal fun TrackRow(
     label: String,
@@ -1146,26 +1258,38 @@ internal fun TrackRow(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    Box(
+    val accent = com.ntv2.app.core.ui.BrandColors.Accent
+    val shape = RoundedCornerShape(10.dp)
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .height(40.dp)
+            .clip(shape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.Border else com.ntv2.app.core.ui.BrandColors.Fill)
-            .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
-                shape = RoundedCornerShape(8.dp)
+            .background(
+                when {
+                    selected -> accent.copy(alpha = 0.12f)
+                    focused -> com.ntv2.app.core.ui.BrandColors.Fill
+                    else -> Color.Transparent
+                }
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .border(if (focused) 2.dp else 0.dp, if (focused) accent else Color.Transparent, shape)
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = if (selected) "● $label" else label,
-            color = if (selected) Color.White else com.ntv2.app.core.ui.BrandColors.TextSecondary,
+            text = label,
+            color = if (selected) accent else Color(0xFFF5F5F7),
+            style = com.ntv2.app.core.ui.NbrType.Chip.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
+        if (selected) {
+            Icon(NbrIcons.Check, contentDescription = "Selecionado", tint = accent, modifier = Modifier.size(16.dp))
+        }
     }
 }
 
@@ -1198,12 +1322,9 @@ internal fun ScrollingTitle(
     val density = LocalDensity.current
     val text = remember(title, year) {
         buildAnnotatedString {
+            // Protótipo: "Resident Evil (2026)" inteiro no mesmo peso e cor.
             append(title)
-            if (year != null) {
-                withStyle(SpanStyle(color = Color(0xB3FFFFFF), fontWeight = FontWeight.Normal)) {
-                    append(" ($year)")
-                }
-            }
+            if (year != null) append(" ($year)")
         }
     }
     LaunchedEffect(text, animate, scroll.maxValue) {
@@ -1224,9 +1345,10 @@ internal fun ScrollingTitle(
     val fadeWidthPx = with(density) { 28.dp.toPx() }
     Text(
         text = text,
-        color = Color.White,
+        color = Color(0xFFF5F5F7),
+        style = com.ntv2.app.core.ui.NbrType.Section,
         fontSize = fontSize,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Bold,
         maxLines = 1,
         softWrap = false,
         modifier = modifier

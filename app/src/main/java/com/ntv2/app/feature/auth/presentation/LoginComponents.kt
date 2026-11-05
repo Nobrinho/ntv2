@@ -53,7 +53,7 @@ import com.ntv2.app.core.ui.icons.NbrIcons
  * Celular 1 px = 1 dp; TV com os valores do protótipo divididos por 2.
  */
 
-internal val LoginText = Color(0xFFF5F5F7)
+internal val LoginText = com.ntv2.app.core.ui.BrandColors.TextPrimary
 
 private val LoginTitle = NbrType.ScreenTitle // 28/700
 private val LoginTitleTv = NbrType.ScreenTitle.copy(fontSize = 32.sp, lineHeight = (32 * 1.21f).sp)

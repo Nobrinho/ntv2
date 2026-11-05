@@ -108,7 +108,7 @@ internal fun NetworkStatusOverlay(
                 )
                 Text(
                     "Estado da rede",
-                    color = Color(0xFFF5F5F7),
+                    color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
                     style = com.ntv2.app.core.ui.NbrType.Section
                 )
             }
@@ -154,7 +154,7 @@ internal fun NetworkStatusOverlay(
 private fun InfoBlock(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
         Text(label, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = com.ntv2.app.core.ui.NbrType.Caption.copy(fontSize = 11.sp))
-        Text(value, color = Color(0xFFF5F5F7), style = com.ntv2.app.core.ui.NbrType.Caption, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(value, color = com.ntv2.app.core.ui.BrandColors.TextPrimary, style = com.ntv2.app.core.ui.NbrType.Caption, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -168,7 +168,7 @@ private fun InfoLine(label: String, value: String) {
         Text(label, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = com.ntv2.app.core.ui.NbrType.Caption)
         Text(
             value,
-            color = Color(0xFFF5F5F7),
+            color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
             style = com.ntv2.app.core.ui.NbrType.Caption,
             fontWeight = FontWeight.SemiBold
         )

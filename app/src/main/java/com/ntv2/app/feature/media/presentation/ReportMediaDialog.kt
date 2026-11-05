@@ -202,7 +202,7 @@ internal fun ReportMediaDialog(
     }
 }
 
-private val TextPrimary = Color(0xFFF5F5F7)
+private val TextPrimary = com.ntv2.app.core.ui.BrandColors.TextPrimary
 private val SheetStroke = Color(0x1FFFFFFF)
 
 @Composable

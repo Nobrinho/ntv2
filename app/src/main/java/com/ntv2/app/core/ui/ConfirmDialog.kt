@@ -47,7 +47,7 @@ import androidx.tv.material3.Text
 
 private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
 private val DESTRUCTIVE = com.ntv2.app.core.ui.BrandColors.Error
-private val TEXT = Color(0xFFF5F5F7) // token "text" do protótipo
+private val TEXT = com.ntv2.app.core.ui.BrandColors.TextPrimary // token "text" do protótipo
 
 /**
  * Diálogo de confirmação padronizado do app.

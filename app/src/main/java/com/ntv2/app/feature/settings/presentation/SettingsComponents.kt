@@ -54,7 +54,7 @@ import com.ntv2.app.core.ui.trapFocus
  */
 
 /** Branco do texto do protótipo (#F5F5F7). */
-internal val SettingsText = Color(0xFFF5F5F7)
+internal val SettingsText = com.ntv2.app.core.ui.BrandColors.TextPrimary
 
 /** Rótulo de grupo (CONTA E APP): 11/700, espaçamento 1, maiúsculas, muted. */
 @Composable

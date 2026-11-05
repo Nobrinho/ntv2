@@ -71,7 +71,7 @@ import kotlin.math.roundToInt
  */
 
 /** "text" do protótipo (#F5F5F7). */
-internal val SeriesText = Color(0xFFF5F5F7)
+internal val SeriesText = com.ntv2.app.core.ui.BrandColors.TextPrimary
 
 /** A partir daqui o episódio conta como assistido (créditos finais não são vistos). */
 internal const val SERIES_WATCHED_FRACTION = 0.92f

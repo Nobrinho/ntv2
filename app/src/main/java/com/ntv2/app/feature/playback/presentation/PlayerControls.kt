@@ -313,7 +313,7 @@ internal fun LandscapeControlsOverlay(
     // Os ícones têm área de toque maior que o desenho; a sobra sai da margem para o desenho cair no lugar do protótipo.
     val iconTouch = if (isTv) 40.dp else 38.dp
     val iconSlack = (iconTouch - 22.dp) / 2
-    val textColor = Color(0xFFF5F5F7)
+    val textColor = com.ntv2.app.core.ui.BrandColors.TextPrimary
     val timeStyle = com.ntv2.app.core.ui.NbrType.Caption.copy(fontWeight = FontWeight.SemiBold)
     val totalStyle = com.ntv2.app.core.ui.NbrType.Caption
     Box(
@@ -656,7 +656,7 @@ internal fun PortraitControlsOverlay(
 
             Text(
                 text = title,
-                color = Color(0xFFF5F5F7),
+                color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
                 // Mesmo peso do título do player no protótipo (17/700), um pouco maior em pé.
                 style = com.ntv2.app.core.ui.NbrType.SheetTitle,
                 maxLines = 2,
@@ -700,7 +700,7 @@ internal fun PortraitControlsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(formatTime(positionMs), color = Color(0xFFF5F5F7), style = com.ntv2.app.core.ui.NbrType.Caption.copy(fontWeight = FontWeight.SemiBold))
+                Text(formatTime(positionMs), color = com.ntv2.app.core.ui.BrandColors.TextPrimary, style = com.ntv2.app.core.ui.NbrType.Caption.copy(fontWeight = FontWeight.SemiBold))
                 val remaining = (durationMs - positionMs).coerceAtLeast(0L)
                 Text("-${formatTime(remaining)}", color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = com.ntv2.app.core.ui.NbrType.Caption)
             }
@@ -768,7 +768,7 @@ internal fun PortraitTopIcon(
     val tint = when {
         focused -> com.ntv2.app.core.ui.BrandColors.OnCta
         !enabled -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
-        active -> Color(0xFFF5F5F7)
+        active -> com.ntv2.app.core.ui.BrandColors.TextPrimary
         else -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
     }
 
@@ -843,7 +843,7 @@ internal fun OverlayRoundButton(
         Icon(
             icon,
             contentDescription = contentDescription,
-            tint = if (strong || focused) com.ntv2.app.core.ui.BrandColors.OnCta else Color(0xFFF5F5F7),
+            tint = if (strong || focused) com.ntv2.app.core.ui.BrandColors.OnCta else com.ntv2.app.core.ui.BrandColors.TextPrimary,
             modifier = Modifier.size(iconSize)
         )
     }
@@ -1137,7 +1137,7 @@ internal fun PlayerSidePanel(
 internal fun PanelGroupTitle(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
-        color = Color(0xFFF5F5F7),
+        color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
         style = com.ntv2.app.core.ui.NbrType.Section.copy(fontSize = 16.sp),
         modifier = modifier.padding(top = 2.dp, bottom = 2.dp)
     )
@@ -1153,7 +1153,7 @@ internal fun PlayerSettingsRow(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val contentColor = if (enabled) Color(0xFFF5F5F7) else com.ntv2.app.core.ui.BrandColors.TextMuted
+    val contentColor = if (enabled) com.ntv2.app.core.ui.BrandColors.TextPrimary else com.ntv2.app.core.ui.BrandColors.TextMuted
     val shape = RoundedCornerShape(10.dp)
 
     Row(
@@ -1281,7 +1281,7 @@ internal fun TrackRow(
     ) {
         Text(
             text = label,
-            color = if (selected) accent else Color(0xFFF5F5F7),
+            color = if (selected) accent else com.ntv2.app.core.ui.BrandColors.TextPrimary,
             style = com.ntv2.app.core.ui.NbrType.Chip.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1345,7 +1345,7 @@ internal fun ScrollingTitle(
     val fadeWidthPx = with(density) { 28.dp.toPx() }
     Text(
         text = text,
-        color = Color(0xFFF5F5F7),
+        color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
         style = com.ntv2.app.core.ui.NbrType.Section,
         fontSize = fontSize,
         fontWeight = FontWeight.Bold,

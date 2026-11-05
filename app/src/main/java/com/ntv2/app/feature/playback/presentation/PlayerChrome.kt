@@ -108,7 +108,7 @@ internal fun PlayerIconButton(
     val tint = when {
         focused -> BrandColors.OnCta
         !enabled || !active -> BrandColors.ContentDisabled
-        else -> Color(0xFFF5F5F7)
+        else -> com.ntv2.app.core.ui.BrandColors.TextPrimary
     }
     Box(
         modifier = modifier
@@ -135,7 +135,7 @@ internal fun PlayerLabeledAction(
     var focused by remember { mutableStateOf(false) }
     val content = when {
         focused -> BrandColors.OnCta
-        enabled -> Color(0xFFF5F5F7)
+        enabled -> com.ntv2.app.core.ui.BrandColors.TextPrimary
         else -> BrandColors.ContentDisabled
     }
     Row(
@@ -177,7 +177,7 @@ internal fun PlayerPillButton(
     }
     val content = when {
         primary || focused -> BrandColors.OnCta
-        enabled -> Color(0xFFF5F5F7)
+        enabled -> com.ntv2.app.core.ui.BrandColors.TextPrimary
         else -> BrandColors.ContentDisabled
     }
     Row(
@@ -211,7 +211,7 @@ internal fun PlayerSecondaryButton(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
-    val content = if (focused) BrandColors.OnCta else Color(0xFFF5F5F7)
+    val content = if (focused) BrandColors.OnCta else com.ntv2.app.core.ui.BrandColors.TextPrimary
     Row(
         modifier = modifier
             .height(height)

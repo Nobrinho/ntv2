@@ -105,7 +105,7 @@ internal fun BoxScope.LoadingStatus(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(label, color = Color(0xFFF5F5F7), style = com.ntv2.app.core.ui.NbrType.BodyStrong)
+                Text(label, color = com.ntv2.app.core.ui.BrandColors.TextPrimary, style = com.ntv2.app.core.ui.NbrType.BodyStrong)
                 LoadingProgress(progress, hint, TextAlign.End)
             }
         }
@@ -117,7 +117,7 @@ internal fun BoxScope.LoadingStatus(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             PlayerSpinner()
-            Text(label, color = Color(0xFFF5F5F7), style = com.ntv2.app.core.ui.NbrType.Section.copy(fontSize = 16.sp))
+            Text(label, color = com.ntv2.app.core.ui.BrandColors.TextPrimary, style = com.ntv2.app.core.ui.NbrType.Section.copy(fontSize = 16.sp))
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -228,7 +228,7 @@ internal fun LoadingProgress(progress: DownloadProgress?, hint: String?, hintAli
         if (parts != null) {
             Text(
                 PartsTexts.currentPartLine(parts),
-                color = Color(0xFFF5F5F7),
+                color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
                 style = com.ntv2.app.core.ui.NbrType.Caption
             )
         }
@@ -295,7 +295,7 @@ internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBac
             Icon(NbrIcons.TriangleAlert, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Warning, modifier = Modifier.size(32.dp))
             Text(
                 error.title,
-                color = Color(0xFFF5F5F7),
+                color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
                 style = com.ntv2.app.core.ui.NbrType.Section,
                 textAlign = TextAlign.Center
             )

@@ -51,7 +51,7 @@ import com.ntv2.app.core.ui.glideTarget
  */
 
 /** Branco do texto do protótipo (#F5F5F7). */
-internal val ChannelText = Color(0xFFF5F5F7)
+internal val ChannelText = com.ntv2.app.core.ui.BrandColors.TextPrimary
 
 /** Fundo do canal selecionado: accent@8% (#66D9FF14). */
 private val SelectedFill = BrandColors.Accent.copy(alpha = 0x14 / 255f)

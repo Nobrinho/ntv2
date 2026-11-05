@@ -33,7 +33,7 @@ import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.LocalAnimationsEnabled
 
 /** Cor `text` do protótipo (títulos da introdução). */
-internal val OnboardingTextColor = Color(0xFFF5F5F7)
+internal val OnboardingTextColor = com.ntv2.app.core.ui.BrandColors.TextPrimary
 
 /** Logo do NBR Play no topo da introdução (celular 56×44, TV 60×48). */
 @Composable

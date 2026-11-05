@@ -51,12 +51,12 @@ internal fun TapSeekIndicator(feedback: TapSeekFeedback, modifier: Modifier = Mo
                 Icon(
                     if (feedback.forward) NbrIcons.FastForwardFilled else NbrIcons.RewindFilled,
                     contentDescription = if (feedback.forward) "Avançou" else "Voltou",
-                    tint = Color(0xFFF5F5F7),
+                    tint = com.ntv2.app.core.ui.BrandColors.TextPrimary,
                     modifier = Modifier.size(36.dp)
                 )
                 Text(
                     "${feedback.totalMs / 1000} s",
-                    color = Color(0xFFF5F5F7),
+                    color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
                     style = com.ntv2.app.core.ui.NbrType.Chip
                 )
             }

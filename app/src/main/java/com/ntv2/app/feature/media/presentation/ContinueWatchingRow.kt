@@ -353,7 +353,7 @@ internal fun PosterBadge(text: String, modifier: Modifier = Modifier) {
 }
 
 /** Texto principal do protótipo (#F5F5F7). */
-internal val TEXT_PRIMARY = Color(0xFFF5F5F7)
+internal val TEXT_PRIMARY = com.ntv2.app.core.ui.BrandColors.TextPrimary
 
 /** "faltam X" a partir da fração assistida e da duração; null se não dá para estimar. */
 private fun remainingLabel(media: MediaCardUi): String? {

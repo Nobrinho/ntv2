@@ -15,6 +15,8 @@ object BrandColors {
     val Background = Color(0xFF090B0F)
     val Surface = Color(0xFF151A22)
     val SurfaceAlt = Color(0xFF1C222C)
+    /** Texto principal sobre o fundo escuro. */
+    val TextPrimary = Color(0xFFF5F5F7)
     val TextSecondary = Color(0xFFB6BFCC)
     /** Texto de apoio mais discreto: dicas, campos vazios, legendas de baixo contraste. */
     val TextMuted = Color(0xFF8E98A8)

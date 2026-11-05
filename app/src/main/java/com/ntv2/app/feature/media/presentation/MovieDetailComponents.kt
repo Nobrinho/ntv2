@@ -43,7 +43,7 @@ import com.ntv2.app.core.ui.icons.NbrIcons
 // Medidas do celular em dp = px do protótipo; as da TV são os px de 1920x1080 divididos por 2.
 
 /** Texto principal do protótipo (#F5F5F7). */
-internal val MovieDetailTextPrimary = Color(0xFFF5F5F7)
+internal val MovieDetailTextPrimary = com.ntv2.app.core.ui.BrandColors.TextPrimary
 private val RoundFill = Color(0x1AFFFFFF)
 private val RoundStroke = Color(0x33FFFFFF)
 private val ChipFill = Color(0x14FFFFFF)

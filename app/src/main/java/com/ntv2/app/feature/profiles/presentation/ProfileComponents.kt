@@ -39,16 +39,16 @@ import com.ntv2.app.core.ui.BrandShapes
 import com.ntv2.app.core.ui.NbrType
 import com.ntv2.app.core.ui.icons.NbrIcons
 
-internal val ProfileText = Color(0xFFF5F5F7)
+internal val ProfileText = com.ntv2.app.core.ui.BrandColors.TextPrimary
 
 /** Cores do avatar (protótipo 62): pares do degradê 135°. */
 internal val ProfilePalette = listOf(
-    Color(0xFF66D9FF) to Color(0xFF31F2E0),
-    Color(0xFFFF6FAE) to Color(0xFFFFBE55),
-    Color(0xFF9B7CFF) to Color(0xFF66D9FF),
-    Color(0xFF4EDB9A) to Color(0xFF31F2E0),
-    Color(0xFFFFBE55) to Color(0xFFFF626D),
-    Color(0xFFF5F5F7) to Color(0xFF8E98A8)
+    com.ntv2.app.core.ui.BrandColors.Accent to com.ntv2.app.core.ui.BrandColors.Cyan,
+    com.ntv2.app.core.ui.BrandColors.Rose to com.ntv2.app.core.ui.BrandColors.Warning,
+    com.ntv2.app.core.ui.BrandColors.Violet to com.ntv2.app.core.ui.BrandColors.Accent,
+    com.ntv2.app.core.ui.BrandColors.Success to com.ntv2.app.core.ui.BrandColors.Cyan,
+    com.ntv2.app.core.ui.BrandColors.Warning to com.ntv2.app.core.ui.BrandColors.Error,
+    com.ntv2.app.core.ui.BrandColors.TextPrimary to com.ntv2.app.core.ui.BrandColors.TextMuted
 )
 
 /** Símbolos do avatar (protótipo 62). "type" = inicial do nome. */
@@ -84,11 +84,11 @@ internal fun ProfileAvatar(profile: Profile, size: Dp, modifier: Modifier = Modi
         contentAlignment = Alignment.Center
     ) {
         if (symbol != null) {
-            Icon(symbol, contentDescription = null, tint = Color(0xFF090B0F), modifier = Modifier.size(size * 0.46f))
+            Icon(symbol, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(size * 0.46f))
         } else {
             Text(
                 profile.initial,
-                color = Color(0xFF090B0F),
+                color = com.ntv2.app.core.ui.BrandColors.OnCta,
                 fontSize = (size.value * 0.42f).sp,
                 fontWeight = FontWeight.ExtraBold,
                 style = NbrType.Body
@@ -265,7 +265,7 @@ internal fun ProfileSwitch(checked: Boolean) {
             .padding(3.dp),
         contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
     ) {
-        Box(Modifier.size(22.dp).clip(CircleShape).background(if (checked) Color(0xFF090B0F) else ProfileText))
+        Box(Modifier.size(22.dp).clip(CircleShape).background(if (checked) com.ntv2.app.core.ui.BrandColors.OnCta else ProfileText))
     }
 }
 

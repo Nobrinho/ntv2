@@ -345,7 +345,7 @@ private fun ProfileCell(p: Profile, size: androidx.compose.ui.unit.Dp, editing: 
             if (editing) {
                 Box(Modifier.size(size).clip(RoundedCornerShape(size * 0.28f)).background(Color(0x8C090B0F)))
                 Box(Modifier.size(40.dp).clip(CircleShape).background(ProfileText), contentAlignment = Alignment.Center) {
-                    Icon(NbrIcons.Pencil, contentDescription = "Editar", tint = Color(0xFF090B0F), modifier = Modifier.size(18.dp))
+                    Icon(NbrIcons.Pencil, contentDescription = "Editar", tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -530,7 +530,7 @@ private fun AvatarPicker(draft: Profile, tv: Boolean, onBack: () -> Unit, onUse:
                             .border(if (sel || focused) 3.dp else 1.dp, if (focused) BrandColors.Accent else if (sel) ProfileText else BrandColors.BorderSubtle, shape),
                         contentAlignment = Alignment.Center
                     ) {
-                        val tint = if (sel) Color(0xFF090B0F) else BrandColors.TextSecondary
+                        val tint = if (sel) com.ntv2.app.core.ui.BrandColors.OnCta else BrandColors.TextSecondary
                         if (icon == null) Text("Aa", style = NbrType.PageTitle, color = tint) else Icon(icon, contentDescription = key, tint = tint, modifier = Modifier.size(28.dp))
                     }
                 }

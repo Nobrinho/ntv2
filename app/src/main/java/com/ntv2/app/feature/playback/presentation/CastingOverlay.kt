@@ -68,7 +68,7 @@ internal fun CastingOverlay(
             }
             Text(
                 if (connecting) "Conectando a $deviceName…" else "Transmitindo para $deviceName",
-                color = Color(0xFFF5F5F7),
+                color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
                 style = com.ntv2.app.core.ui.NbrType.Section,
                 textAlign = TextAlign.Center
             )

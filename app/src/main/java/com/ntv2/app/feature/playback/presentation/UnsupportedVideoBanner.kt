@@ -53,7 +53,7 @@ internal fun BoxScope.UnsupportedVideoBanner(formatLabel: String?) {
         Icon(NbrIcons.MonitorX, contentDescription = null, tint = BrandColors.Warning, modifier = Modifier.size(32.dp))
         Text(
             text = unsupportedVideoMessage(formatLabel),
-            color = Color(0xFFF5F5F7),
+            color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
             style = NbrType.Secondary,
             textAlign = TextAlign.Center
         )

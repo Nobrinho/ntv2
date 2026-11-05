@@ -9,7 +9,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.aspectRatio
@@ -22,7 +26,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -38,10 +44,13 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
 import com.ntv2.app.R
 import com.ntv2.app.core.ui.BrandBackdropKind
 import com.ntv2.app.core.ui.BrandColors
+import com.ntv2.app.core.ui.NbrType
+import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.ui.brandBackdrop
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -81,6 +90,8 @@ private fun easeInOutSine(x: Float): Float = (-(cos(PI * x) - 1.0) / 2.0).toFloa
 
 /**
  * Intro de marca (cold start) com a logo oficial do NBR Play (brand kit). Pulável (tecla/clique/Voltar).
+ * Rodapé do protótipo (01 Splash / TV 01 Splash): "Preparando seu conteúdo…" + barra de carga que
+ * acompanha a intro.
  */
 @Composable
 fun SplashScreen(onFinished: () -> Unit) {
@@ -114,6 +125,8 @@ fun SplashScreen(onFinished: () -> Unit) {
     val lineP = { easeOutCubic(seg(t.value, LINE_START, LINE_END)) }
     val breatheP = { easeInOutSine(seg(t.value, WIPE_END, TOTAL)) }
     val outP = { easeOutCubic(seg(t.value, TOTAL - FADE_OUT, TOTAL)) }
+    val loadP = { easeInOutSine(seg(t.value, 0f, TOTAL - FADE_OUT)) }
+    val tv = rememberAdaptiveLayoutInfo().useTvLayout
 
     Box(
         modifier = Modifier
@@ -218,5 +231,36 @@ fun SplashScreen(onFinished: () -> Unit) {
                     }
                 }
         )
+        // Rodapé: celular padding inferior 72, gap 16, texto 13 e barra 140×4; TV (÷2) 48, gap 10, 12 e 180×3.
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = if (tv) 48.dp else 72.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(if (tv) 10.dp else 16.dp)
+        ) {
+            Text(
+                "Preparando seu conteúdo…",
+                style = if (tv) NbrType.Caption else NbrType.Secondary,
+                color = BrandColors.TextSecondary
+            )
+            Box(
+                Modifier
+                    .size(if (tv) 180.dp else 140.dp, if (tv) 3.dp else 4.dp)
+                    .drawBehind {
+                        val r = CornerRadius(size.height / 2f)
+                        drawRoundRect(BrandColors.Fill, cornerRadius = r)
+                        val p = loadP()
+                        if (p > 0f) {
+                            drawRoundRect(
+                                BrandColors.Accent,
+                                size = size.copy(width = size.width * p),
+                                cornerRadius = r
+                            )
+                        }
+                    }
+            )
+        }
     }
 }

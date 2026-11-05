@@ -1,59 +1,45 @@
 package com.ntv2.app.feature.settings.presentation
 
-import com.ntv2.app.core.ui.reserveMainBottomNav
-import com.ntv2.app.core.ui.BrandBackdrop
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.ui.focus.focusProperties
-import com.ntv2.app.core.ui.trapFocus
-
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.WorkspacePremium
-import androidx.compose.material.icons.filled.BlurOn
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,58 +48,56 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.BuildConfig
+import com.ntv2.app.core.ui.BrandBackdrop
+import com.ntv2.app.core.ui.BrandButton
+import com.ntv2.app.core.ui.BrandButtonLabel
+import com.ntv2.app.core.ui.BrandColors
+import com.ntv2.app.core.ui.BrandShapes
+import com.ntv2.app.core.ui.CardLoadingPlaceholder
+import com.ntv2.app.core.ui.CardLoadingStyle
 import com.ntv2.app.core.ui.ConfirmDialog
 import com.ntv2.app.core.ui.FocusGlideScope
-import com.ntv2.app.core.ui.glideActive
-import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.core.ui.MainBottomNav
 import com.ntv2.app.core.ui.MainTab
 import com.ntv2.app.core.ui.NavRail
+import com.ntv2.app.core.ui.NbrType
+import com.ntv2.app.core.ui.glideActive
+import com.ntv2.app.core.ui.glideTarget
+import com.ntv2.app.core.ui.icons.NbrIcons
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
-import kotlinx.coroutines.launch
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.material.icons.filled.Animation
-import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.NetworkCheck
-import androidx.compose.material.icons.filled.CloudDownload
+import com.ntv2.app.core.ui.reserveMainBottomNav
+import com.ntv2.app.core.ui.trapFocus
 import com.ntv2.app.feature.media.data.index.SearchIndexStatus
-import com.ntv2.app.core.ui.CardLoadingPlaceholder
-import com.ntv2.app.core.ui.CardLoadingStyle
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import com.ntv2.app.BuildConfig
 import com.ntv2.app.feature.update.presentation.UpdateStage
 import com.ntv2.app.feature.update.presentation.UpdateUiState
-
-private val BRAND = com.ntv2.app.core.ui.BrandColors.Accent
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
     showCovers: Boolean,
     animationsEnabled: Boolean,
     castPhotos: Boolean,
-    trailerPreview: Boolean = true,
     nativeBlurGlow: Boolean = true,
     minDurationMinutes: Int,
     cardLoadingStyle: CardLoadingStyle = CardLoadingStyle.DEFAULT,
     onToggleCovers: (Boolean) -> Unit,
     onToggleAnimations: (Boolean) -> Unit,
     onToggleCastPhotos: (Boolean) -> Unit,
+    trailerPreview: Boolean = true,
     onToggleTrailerPreview: (Boolean) -> Unit = {},
     onToggleNativeBlurGlow: (Boolean) -> Unit = {},
     onChangeMinDuration: (Int) -> Unit,
@@ -148,6 +132,9 @@ fun SettingsScreen(
     var confirmLogout by remember { mutableStateOf(false) }
     var showPrivacy by remember { mutableStateOf(false) }
     var showCardLoadingPicker by remember { mutableStateOf(false) }
+    var showDurationPicker by remember { mutableStateOf(false) }
+    // Celular (protótipo 28): Interface e Sobre ficam atrás do botão "Interface e sobre".
+    var moreExpanded by rememberSaveable { mutableStateOf(false) }
     val adaptive = rememberAdaptiveLayoutInfo()
     // Um FocusRequester por item; o último focado é lembrado (inclusive ao voltar de outra tela
     // ou fechar um modal), em vez de sempre voltar ao primeiro.
@@ -156,16 +143,148 @@ fun SettingsScreen(
     fun itemMod(index: Int) = Modifier
         .focusRequester(itemFocus[index])
         .onFocusChanged { if (it.isFocused) lastFocusIndex = index }
-    LaunchedEffect(showPrivacy, confirmLogout, showCardLoadingPicker, showConnectionTest, showDeviceLink, showPremium) {
-        if (adaptive.useTvLayout && !showPrivacy && !confirmLogout && !showCardLoadingPicker && !showConnectionTest && !showDeviceLink && !showPremium) {
+    val anyModal = showPrivacy || confirmLogout || showCardLoadingPicker || showConnectionTest ||
+        showDeviceLink || showPremium || showDurationPicker
+    LaunchedEffect(anyModal) {
+        if (adaptive.useTvLayout && !anyModal) {
             runCatching { itemFocus[lastFocusIndex].requestFocus() }
         }
     }
 
     FocusGlideScope(Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(com.ntv2.app.core.ui.BrandColors.Background)) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(BrandColors.Background)) {
         BrandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Minimal)
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
+        val tv = useTvLayout
+
+        // ---- Itens (os mesmos no celular e na TV; muda só a arrumação) ----
+        val premiumActive = premiumStatus?.premium == true
+        // Perfis de acesso (MOCK local): abre a troca rápida, de onde se gerencia.
+        val profileActions = com.ntv2.app.core.profiles.LocalProfileActions.current
+        val itProfiles: @Composable () -> Unit = {
+            SettingsItem(
+                tv, NbrIcons.Users, "Perfis",
+                profileActions.current?.let { "Atual: ${it.name}" + if (it.kids) " · infantil" else "" } ?: "Trocar ou gerenciar perfis",
+                onClick = profileActions.openSwitcher
+            )
+        }
+        val itConnect: (@Composable () -> Unit)? = if (deviceLink != null) { {
+            SettingsItem(tv, NbrIcons.Link, "Conectar aparelhos",
+                "Compartilhar Minha lista e o progresso entre TV e celular",
+                modifier = itemMod(13), onClick = { showDeviceLink = true })
+        } } else null
+        // Só com o Premium ligado no servidor (ou para quem já é Premium).
+        val itPremium: (@Composable () -> Unit)? =
+            if (premium != null && (premiumStatus?.enforced == true || premiumActive)) { {
+                SettingsItem(
+                    tv, NbrIcons.Crown, "NBR Play Premium",
+                    subtitle = if (premiumActive) {
+                        "Ativo" + (premiumStatus?.premiumUntilMs?.let { " até ${formatDate(it)}" } ?: "") + " · renovar"
+                    } else "Conectar TV e celular com a mesma Minha lista · Pix",
+                    tone = SettingsTone.Violet,
+                    modifier = itemMod(14),
+                    onClick = { showPremium = true },
+                    trailing = { if (premiumActive) SettingsValue(tv, "Ativo", BrandColors.Success) else SettingsChevron(tv) }
+                )
+            } } else null
+        val itChannels: @Composable () -> Unit = {
+            SettingsItem(tv, NbrIcons.Library, "Seleção de canais", "Gerenciar os canais disponíveis",
+                modifier = itemMod(5), onClick = onManageChannels)
+        }
+        val itConnection: (@Composable () -> Unit)? = if (runConnectionTest != null) { {
+            SettingsItem(tv, NbrIcons.Activity, "Teste de conexão", "Medir internet, Telegram e velocidade neste aparelho",
+                modifier = itemMod(10), onClick = { showConnectionTest = true })
+        } } else null
+        val itDuration: @Composable () -> Unit = {
+            DurationItem(tv, minDurationMinutes, onChangeMinDuration, itemMod(3), onOpenPicker = { showDurationPicker = true })
+        }
+        val itIndex: (@Composable () -> Unit)? = indexStatus?.let { status -> {
+            SettingsItem(
+                tv, NbrIcons.Database, "Índice de filmes e séries", indexSubtitle(status),
+                modifier = itemMod(11),
+                onClick = { if (!status.refreshing) onRefreshIndex() },
+                trailing = {
+                    when {
+                        status.refreshing -> CircularProgressIndicator(
+                            color = BrandColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(if (tv) 14.dp else 16.dp)
+                        )
+                        status.failed -> SettingsValue(tv, "Falha", BrandColors.Error)
+                        status.downloadedAtMillis != 0L -> SettingsValue(tv, "Ativo", BrandColors.Success)
+                        else -> SettingsChevron(tv)
+                    }
+                }
+            )
+        } }
+        val itCovers: @Composable () -> Unit = {
+            SettingsItem(tv, NbrIcons.Image, "Capas", "Exibir capas dos conteúdos na interface",
+                modifier = itemMod(0), onClick = { onToggleCovers(!showCovers) },
+                trailing = { SettingsSwitch(tv, showCovers) })
+        }
+        val itCast: @Composable () -> Unit = {
+            SettingsItem(tv, NbrIcons.Users, "Fotos do elenco", "Mostrar rostos do elenco nos detalhes (senão, só nomes)",
+                modifier = itemMod(2), onClick = { onToggleCastPhotos(!castPhotos) },
+                trailing = { SettingsSwitch(tv, castPhotos) })
+        }
+        val itTrailer: @Composable () -> Unit = {
+            SettingsItem(tv, NbrIcons.Clapperboard, "Prévia de trailer", "Toca o trailer sem som no fundo dos detalhes",
+                modifier = itemMod(15), onClick = { onToggleTrailerPreview(!trailerPreview) },
+                trailing = { SettingsSwitch(tv, trailerPreview) })
+        }
+        val itAnimations: @Composable () -> Unit = {
+            SettingsItem(tv, NbrIcons.Sparkles, "Animações",
+                "Animações e transições (luz pulsante ao carregar, controles do player e rolagem do título)",
+                modifier = itemMod(1), onClick = { onToggleAnimations(!animationsEnabled) },
+                trailing = { SettingsSwitch(tv, animationsEnabled) })
+        }
+        val itGlow: @Composable () -> Unit = {
+            SettingsItem(
+                tv, NbrIcons.Sun, "Iluminação da capa: desfoque nativo",
+                if (android.os.Build.VERSION.SDK_INT >= 31) "ON = desfoque do Android 12+ · OFF = versão compatível"
+                else "Este aparelho (Android ${android.os.Build.VERSION.RELEASE}) usa sempre a versão compatível",
+                modifier = itemMod(8), onClick = { onToggleNativeBlurGlow(!nativeBlurGlow) },
+                trailing = { SettingsSwitch(tv, nativeBlurGlow) }
+            )
+        }
+        val itCardPreview: @Composable () -> Unit = {
+            SettingsItem(tv, NbrIcons.SquareDashed, "Prévia do card", "Enquanto a capa carrega: ${cardLoadingStyle.label}",
+                modifier = itemMod(4), onClick = { showCardLoadingPicker = true })
+        }
+        val itUpdates: @Composable () -> Unit = {
+            SettingsItem(
+                tv, NbrIcons.Download, "Atualizações", updateSubtitle(updateState),
+                modifier = itemMod(9),
+                onClick = {
+                    when (updateState.stage) {
+                        UpdateStage.AVAILABLE -> onStartUpdateDownload()
+                        UpdateStage.READY_TO_INSTALL, UpdateStage.PERMISSION_REQUIRED -> onInstallUpdate()
+                        UpdateStage.DOWNLOADING, UpdateStage.WAITING_FOR_DOWNLOAD -> onCancelUpdateDownload()
+                        UpdateStage.SIGNATURE_MISMATCH -> onReplaceInstalledApp()
+                        UpdateStage.VERIFYING, UpdateStage.CHECKING -> Unit
+                        else -> onCheckForUpdates()
+                    }
+                },
+                trailing = {
+                    val newVersion = updateState.update?.versionName
+                    if ((updateState.stage == UpdateStage.AVAILABLE || updateState.stage == UpdateStage.READY_TO_INSTALL) &&
+                        !newVersion.isNullOrEmpty()
+                    ) SettingsValue(tv, newVersion, BrandColors.Accent) else SettingsChevron(tv)
+                }
+            )
+        }
+        val itIntro: @Composable () -> Unit = {
+            SettingsItem(tv, NbrIcons.RotateCcw, "Ver introdução novamente", "Rever a apresentação do app",
+                modifier = itemMod(12), onClick = onShowIntro)
+        }
+        val itPrivacy: @Composable () -> Unit = {
+            SettingsItem(tv, NbrIcons.ShieldCheck, "Política de privacidade", "Como o app trata seus dados",
+                modifier = itemMod(6), onClick = { showPrivacy = true })
+        }
+        val itLogout: @Composable () -> Unit = {
+            SettingsItem(tv, NbrIcons.LogOut, "Sair da conta", "Encerrar a sessão neste dispositivo",
+                modifier = itemMod(7), tone = SettingsTone.Error, titleColor = BrandColors.Error,
+                onClick = { confirmLogout = true })
+        }
+
         Row(modifier = Modifier.fillMaxSize()) {
             // Rail (Busca/Canais/Atualizar voltam à Biblioteca; Config = atual).
             if (useTvLayout) {
@@ -179,180 +298,63 @@ fun SettingsScreen(
                 )
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    // Celular: respeita a barra de status (o título "Configurações" ficava por baixo da hora).
-                    .then(if (useTvLayout) Modifier else Modifier.statusBarsPadding().reserveMainBottomNav())
-                    .padding(
-                        horizontal = if (useTvLayout) adaptive.tvSafeHorizontal else 16.dp,
-                        vertical = if (useTvLayout) adaptive.tvSafeVertical else 14.dp
-                    )
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text("Configurações", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-                Spacer(Modifier.size(8.dp))
-
+            if (useTvLayout) {
+                // TV 13/13b: título 32/800 e duas colunas iguais (gap 24), cartões soltos com gap 7.
                 Column(
-                    modifier = Modifier.focusGroup(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = adaptive.tvSafeHorizontal, vertical = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    SettingsSectionLabel("Interface")
-                    ToggleCard(
-                        icon = Icons.Filled.Image,
-                        title = "Capas",
-                        subtitle = "Exibir capas dos conteúdos na interface",
-                        value = showCovers,
-                        modifier = itemMod(0),
-                        onToggle = { onToggleCovers(!showCovers) }
-                    )
-                    ToggleCard(
-                        icon = Icons.Filled.AutoAwesome,
-                        title = "Animações",
-                        subtitle = "Animações e transições (luz pulsante ao carregar, controles do player e rolagem do título)",
-                        value = animationsEnabled,
-                        modifier = itemMod(1),
-                        onToggle = { onToggleAnimations(!animationsEnabled) }
-                    )
-                    ToggleCard(
-                        icon = Icons.Filled.BlurOn,
-                        title = "Iluminação da capa: desfoque nativo",
-                        subtitle = if (android.os.Build.VERSION.SDK_INT >= 31) {
-                            "ON = desfoque do Android 12+ · OFF = versão compatível"
-                        } else {
-                            "Este aparelho (Android ${android.os.Build.VERSION.RELEASE}) usa sempre a versão compatível"
-                        },
-                        value = nativeBlurGlow,
-                        modifier = itemMod(8),
-                        onToggle = { onToggleNativeBlurGlow(!nativeBlurGlow) }
-                    )
-                    ToggleCard(
-                        icon = Icons.Filled.Group,
-                        title = "Fotos do elenco",
-                        subtitle = "Mostrar rostos do elenco nos detalhes (senão, só nomes)",
-                        value = castPhotos,
-                        modifier = itemMod(2),
-                        onToggle = { onToggleCastPhotos(!castPhotos) }
-                    )
-                    ToggleCard(
-                        icon = Icons.Filled.PlayCircle,
-                        title = "Prévia de trailer",
-                        subtitle = "Toca o trailer sem som no fundo dos detalhes",
-                        value = trailerPreview,
-                        modifier = itemMod(15),
-                        onToggle = { onToggleTrailerPreview(!trailerPreview) }
-                    )
-                    NavCard(
-                        icon = Icons.Filled.Animation,
-                        title = "Animação dos cards",
-                        subtitle = "Enquanto a capa carrega: ${cardLoadingStyle.label}",
-                        destructive = false,
-                        modifier = itemMod(4),
-                        onClick = { showCardLoadingPicker = true }
-                    )
-                    SettingsSectionLabel("Conteúdo", topGap = true)
-                    DurationCard(
-                        modifier = itemMod(3),
-                        value = minDurationMinutes,
-                        onChange = onChangeMinDuration
-                    )
-                    NavCard(
-                        icon = Icons.Filled.Tv,
-                        title = "Seleção de canais",
-                        subtitle = "Gerenciar os canais disponíveis",
-                        destructive = false,
-                        modifier = itemMod(5),
-                        onClick = onManageChannels
-                    )
-                    if (indexStatus != null) {
-                        NavCard(
-                            icon = Icons.Filled.CloudDownload,
-                            title = "Índice de filmes e séries",
-                            subtitle = indexSubtitle(indexStatus),
-                            destructive = false,
-                            modifier = itemMod(11),
-                            onClick = { if (!indexStatus.refreshing) onRefreshIndex() }
-                        )
-                    }
-                    SettingsSectionLabel("Conta e app", topGap = true)
-                    // Só com o Premium ligado no servidor (ou para quem já é Premium).
-                    if (premium != null && (premiumStatus?.enforced == true || premiumStatus?.premium == true)) {
-                        NavCard(
-                            icon = Icons.Filled.WorkspacePremium,
-                            title = "NBR Play Premium",
-                            subtitle = when {
-                                premiumStatus?.premium == true ->
-                                    "Ativo" + (premiumStatus.premiumUntilMs?.let { " até ${formatDate(it)}" } ?: "") + " · renovar"
-                                else -> "Conectar TV e celular com a mesma Minha lista · Pix"
-                            },
-                            destructive = false,
-                            modifier = itemMod(14),
-                            onClick = { showPremium = true }
-                        )
-                    }
-                    if (deviceLink != null) {
-                        NavCard(
-                            icon = Icons.Filled.Devices,
-                            title = "Conectar aparelhos",
-                            subtitle = "Compartilhar Minha lista e o progresso entre TV e celular",
-                            destructive = false,
-                            modifier = itemMod(13),
-                            onClick = { showDeviceLink = true }
-                        )
-                    }
-                    if (runConnectionTest != null) {
-                        NavCard(
-                            icon = Icons.Filled.NetworkCheck,
-                            title = "Teste de conexão",
-                            subtitle = "Medir internet, Telegram e velocidade neste aparelho",
-                            destructive = false,
-                            modifier = itemMod(10),
-                            onClick = { showConnectionTest = true }
-                        )
-                    }
-                    NavCard(
-                        icon = Icons.Filled.SystemUpdate,
-                        title = "Atualizações",
-                        subtitle = updateSubtitle(updateState),
-                        destructive = false,
-                        modifier = itemMod(9),
-                        onClick = {
-                            when (updateState.stage) {
-                                UpdateStage.AVAILABLE -> onStartUpdateDownload()
-                                UpdateStage.READY_TO_INSTALL, UpdateStage.PERMISSION_REQUIRED -> onInstallUpdate()
-                                UpdateStage.DOWNLOADING, UpdateStage.WAITING_FOR_DOWNLOAD -> onCancelUpdateDownload()
-                                UpdateStage.SIGNATURE_MISMATCH -> onReplaceInstalledApp()
-                                UpdateStage.VERIFYING, UpdateStage.CHECKING -> Unit
-                                else -> onCheckForUpdates()
-                            }
+                    Text("Configurações", style = NbrType.ScreenTitle, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = SettingsText)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().focusGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp)
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            SettingsSectionLabel("Conta e app")
+                            SettingsGroup(true, listOfNotNull(itProfiles, itConnect, itPremium, itChannels, itPrivacy, itLogout))
+                            SettingsSectionLabel("Conteúdo", Modifier.padding(top = 10.dp))
+                            SettingsGroup(true, listOfNotNull(itDuration, itIndex, itConnection))
                         }
-                    )
-                    NavCard(
-                        icon = Icons.Filled.Shield,
-                        title = "Política de privacidade",
-                        subtitle = "Como o app trata seus dados",
-                        destructive = false,
-                        modifier = itemMod(6),
-                        onClick = { showPrivacy = true }
-                    )
-                    NavCard(
-                        icon = Icons.Filled.School,
-                        title = "Ver introdução novamente",
-                        subtitle = "Rever a apresentação do app",
-                        destructive = false,
-                        modifier = itemMod(12),
-                        onClick = onShowIntro
-                    )
-                    Spacer(Modifier.size(8.dp))
-                    NavCard(
-                        icon = Icons.AutoMirrored.Filled.Logout,
-                        title = "Sair da conta",
-                        subtitle = "Encerrar a sessão neste dispositivo",
-                        destructive = true,
-                        modifier = itemMod(7),
-                        onClick = { confirmLogout = true }
-                    )
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            SettingsSectionLabel("Interface")
+                            SettingsGroup(true, listOf(itCovers, itAnimations, itCast, itTrailer, itGlow, itCardPreview))
+                            SettingsSectionLabel("Sobre", Modifier.padding(top = 10.dp))
+                            SettingsGroup(true, listOf(itUpdates, itIntro))
+                        }
+                    }
+                }
+            } else {
+                // Celular 28/28b: padding 20, gap 12, grupos em cartão.
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // Respeita a barra de status (o título ficava por baixo da hora) e a tab bar.
+                        .statusBarsPadding()
+                        .reserveMainBottomNav()
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Configurações", style = NbrType.ScreenTitle, color = SettingsText)
+                    SettingsSectionLabel("Conta e app")
+                    SettingsGroup(false, listOfNotNull(itProfiles, itConnect, itPremium, itChannels, itConnection))
+                    SettingsSectionLabel("Conteúdo")
+                    SettingsGroup(false, listOfNotNull(itDuration, itIndex))
+                    SettingsMoreButton("Interface e sobre", expanded = moreExpanded) { moreExpanded = !moreExpanded }
+                    if (moreExpanded) {
+                        SettingsSectionLabel("Interface")
+                        SettingsGroup(false, listOf(itCovers, itCast, itTrailer, itAnimations, itGlow, itCardPreview))
+                        SettingsSectionLabel("Sobre")
+                        SettingsGroup(false, listOf(itUpdates, itIntro, itPrivacy, itLogout))
+                        Text(
+                            "NBR Play ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                            style = NbrType.Caption, fontSize = 11.sp, color = BrandColors.TextMuted,
+                            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
         }
@@ -368,16 +370,26 @@ fun SettingsScreen(
             )
         }
 
-        if (showCardLoadingPicker) {
-        CardLoadingPickerOverlay(
-            current = cardLoadingStyle,
-            animationsEnabled = animationsEnabled,
-            onSelect = onChangeCardLoadingStyle,
-            onDismiss = { showCardLoadingPicker = false }
-        )
-    }
+        if (showDurationPicker) {
+            DurationPickerOverlay(
+                tv = useTvLayout,
+                current = minDurationMinutes,
+                onApply = { onChangeMinDuration(it); showDurationPicker = false },
+                onDismiss = { showDurationPicker = false }
+            )
+        }
 
-    if (showPrivacy) {
+        if (showCardLoadingPicker) {
+            CardLoadingPickerOverlay(
+                tv = useTvLayout,
+                current = cardLoadingStyle,
+                animationsEnabled = animationsEnabled,
+                onSelect = onChangeCardLoadingStyle,
+                onDismiss = { showCardLoadingPicker = false }
+            )
+        }
+
+        if (showPrivacy) {
             PrivacyPolicyOverlay(onClose = { showPrivacy = false })
         }
 
@@ -402,42 +414,17 @@ fun SettingsScreen(
             ConfirmDialog(
                 title = "Sair da conta?",
                 message = "Você será desconectado deste dispositivo.",
-                icon = Icons.AutoMirrored.Filled.Logout,
+                icon = NbrIcons.LogOut,
                 confirmLabel = "Sair",
-                confirmIcon = Icons.AutoMirrored.Filled.Logout,
+                confirmIcon = NbrIcons.LogOut,
                 cancelLabel = "Cancelar",
-                cancelIcon = Icons.Filled.Close,
+                cancelIcon = NbrIcons.X,
                 destructive = true,
                 onConfirm = { confirmLogout = false; onLogout() },
                 onDismiss = { confirmLogout = false }
             )
         }
     }
-    }
-}
-
-@Composable
-private fun ToggleCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    value: Boolean,
-    modifier: Modifier,
-    onToggle: () -> Unit
-) {
-    SettingCardShell(icon = icon, title = title, subtitle = subtitle, modifier = modifier, onClick = onToggle) {
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (value) BRAND else com.ntv2.app.core.ui.BrandColors.Border)
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-        ) {
-            Text(
-                if (value) "ON" else "OFF",
-                color = if (value) Color.Black else Color.White,
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
     }
 }
 
@@ -480,233 +467,174 @@ private fun formatIndexDate(millis: Long): String =
 
 private val DURATION_STEPS = listOf(0, 5, 10, 15, 20, 30, 45, 60, 90, 120)
 
+private fun durationLabel(minutes: Int): String = if (minutes <= 0) "Off" else "$minutes min"
+
+/**
+ * Duração mínima. Celular (28): valor "Off"/"10 min" + chevron, toque abre o sheet 38.
+ * TV (13b): "◀  10 min  ▶" em azul; ← / → ajustam direto (OK também abre o seletor).
+ */
 @Composable
-private fun DurationCard(
-    modifier: Modifier = Modifier,
+private fun DurationItem(
+    tv: Boolean,
     value: Int,
-    onChange: (Int) -> Unit
+    onChange: (Int) -> Unit,
+    modifier: Modifier,
+    onOpenPicker: () -> Unit
 ) {
     val idx = DURATION_STEPS.indexOfFirst { it >= value }.let { if (it < 0) DURATION_STEPS.lastIndex else it }
-    StepperSettingCard(
-        modifier = modifier,
-        icon = Icons.Filled.Timer,
+    val canDecrease = idx > 0
+    val canIncrease = idx < DURATION_STEPS.lastIndex
+    SettingsItem(
+        tv = tv,
+        icon = NbrIcons.Timer,
         title = "Duração mínima",
         subtitle = "Oculta vídeos mais curtos que o tempo escolhido.",
-        valueText = if (value <= 0) "Off" else "$value min",
-        canDecrease = idx > 0,
-        canIncrease = idx < DURATION_STEPS.lastIndex,
-        onDecrease = { if (idx > 0) onChange(DURATION_STEPS[idx - 1]) },
-        onIncrease = { if (idx < DURATION_STEPS.lastIndex) onChange(DURATION_STEPS[idx + 1]) }
+        modifier = modifier.onKeyEvent { e ->
+            if (!tv || e.type != KeyEventType.KeyDown) return@onKeyEvent false
+            when (e.key) {
+                // No mínimo, ← não é consumido: o foco pode sair para o rail.
+                Key.DirectionLeft -> if (canDecrease) { onChange(DURATION_STEPS[idx - 1]); true } else false
+                Key.DirectionRight -> { if (canIncrease) onChange(DURATION_STEPS[idx + 1]); true }
+                else -> false
+            }
+        },
+        onClick = onOpenPicker,
+        trailing = {
+            if (tv) SettingsValue(true, "◀  ${durationLabel(value)}  ▶", BrandColors.Accent)
+            else SettingsValue(false, durationLabel(value), if (value <= 0) BrandColors.TextSecondary else BrandColors.Accent)
+        }
     )
 }
 
+/**
+ * Seletor da duração mínima. Celular (38): sheet com opções de 62×48 (raio 14) e "Aplicar".
+ * TV: painel lateral à direita (como o TV 18), cada opção aplica ao ser escolhida.
+ */
 @Composable
-private fun StepperSettingCard(
-    modifier: Modifier = Modifier,
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    valueText: String,
-    canDecrease: Boolean,
-    canIncrease: Boolean,
-    onDecrease: () -> Unit,
-    onIncrease: () -> Unit
+private fun DurationPickerOverlay(
+    tv: Boolean,
+    current: Int,
+    onApply: (Int) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val gliding = glideActive()
-    BoxWithConstraints(
-        modifier = modifier
-            .fillMaxWidth()
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .onKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
-                when (e.key) {
-                    // No mínimo, ← não é consumido: o foco pode sair para o rail.
-                    Key.DirectionLeft -> if (canDecrease) { onDecrease(); true } else false
-                    Key.DirectionRight -> { if (canIncrease) onIncrease(); true }
-                    else -> false
+    BackHandler(enabled = true) { onDismiss() }
+    var selected by remember { mutableIntStateOf(DURATION_STEPS.firstOrNull { it >= current } ?: DURATION_STEPS.last()) }
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    if (tv) {
+        Box(
+            Modifier.fillMaxSize().background(Color(0xB3000000)).clickable(onClick = onDismiss),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            Column(
+                Modifier
+                    .fillMaxHeight()
+                    .width(320.dp)
+                    .background(BrandColors.Surface)
+                    .border(1.dp, BrandColors.BorderSubtle)
+                    .clickable(enabled = false) {}
+                    .trapFocus()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Duração mínima", style = NbrType.Section, color = SettingsText)
+                Text("Oculta vídeos mais curtos que o tempo escolhido.", style = NbrType.Caption, color = BrandColors.TextSecondary)
+                Spacer(Modifier.height(4.dp))
+                DURATION_STEPS.forEach { step ->
+                    TvOptionRow(
+                        label = durationLabel(step),
+                        selected = step == selected,
+                        modifier = if (step == selected) Modifier.focusRequester(firstFocus) else Modifier,
+                        onClick = { onApply(step) }
+                    )
                 }
             }
-            .focusable()
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else com.ntv2.app.core.ui.BrandColors.Fill)
-            .border(
-                width = if (focused && !gliding) 2.dp else 1.dp,
-                color = if (focused && !gliding) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
-                shape = RoundedCornerShape(6.dp)
-            )
-            .padding(horizontal = 18.dp, vertical = 16.dp)
-    ) {
-        val compact = maxWidth < 560.dp
-        if (compact) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                StepperSettingText(icon, title, subtitle, Modifier.fillMaxWidth())
-                StepperControl(
-                    valueText = valueText,
-                    focused = focused,
-                    canDecrease = canDecrease,
-                    canIncrease = canIncrease,
-                    onDecrease = onDecrease,
-                    onIncrease = onIncrease,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        } else {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-                verticalAlignment = Alignment.CenterVertically
+        }
+    } else {
+        Box(
+            Modifier.fillMaxSize().background(Color(0xB3000000)).clickable(onClick = onDismiss),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            val sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(sheetShape)
+                    .background(BrandColors.Surface)
+                    .border(1.dp, BrandColors.BorderSubtle, sheetShape)
+                    .clickable(enabled = false) {}
+                    .navigationBarsPadding()
+                    .padding(start = 24.dp, end = 24.dp, top = 10.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                StepperSettingText(icon, title, subtitle, Modifier.weight(1f))
-                StepperControl(
-                    valueText = valueText,
-                    focused = focused,
-                    canDecrease = canDecrease,
-                    canIncrease = canIncrease,
-                    onDecrease = onDecrease,
-                    onIncrease = onIncrease,
-                    modifier = Modifier.width(224.dp)
-                )
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(40.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(BrandColors.Border))
+                }
+                Text("Duração mínima", style = NbrType.SheetTitle, fontSize = 20.sp, color = SettingsText)
+                Text("Oculta vídeos mais curtos que o tempo escolhido.", style = NbrType.Secondary, color = BrandColors.TextSecondary)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(DURATION_STEPS) { step ->
+                        val on = step == selected
+                        Box(
+                            Modifier
+                                .size(62.dp, 48.dp)
+                                .clip(BrandShapes.Field)
+                                .clickable { selected = step }
+                                .background(if (on) BrandColors.Accent else BrandColors.SurfaceAlt)
+                                .then(if (on) Modifier else Modifier.border(1.dp, BrandColors.BorderSubtle, BrandShapes.Field))
+                                .then(if (on) Modifier.focusRequester(firstFocus) else Modifier),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                durationLabel(step), style = NbrType.Chip, fontWeight = FontWeight.Bold,
+                                color = if (on) BrandColors.OnCta else BrandColors.TextSecondary, maxLines = 1
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                BrandButton(onClick = { onApply(selected) }, modifier = Modifier.fillMaxWidth()) {
+                    BrandButtonLabel("Aplicar")
+                }
             }
         }
     }
 }
 
+/** Opção de lista da TV (TV 18): raio 10, padding 10/12; selecionada = fundo accent@12% + check. */
 @Composable
-private fun StepperSettingText(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    modifier: Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = BRAND, modifier = Modifier.size(28.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.weight(1f)) {
-            Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun StepperControl(
-    valueText: String,
-    focused: Boolean,
-    canDecrease: Boolean,
-    canIncrease: Boolean,
-    onDecrease: () -> Unit,
-    onIncrease: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0x16000000))
-            .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(8.dp))
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Com foco (D-pad): setas indicam que ← / → ajustam o valor.
-        StepTouchButton(if (focused) "◀" else "-", canDecrease, onDecrease)
-        Text(
-            valueText,
-            color = BRAND,
-            style = MaterialTheme.typography.titleMedium,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            modifier = Modifier.weight(1f)
-        )
-        StepTouchButton(if (focused) "▶" else "+", canIncrease, onIncrease)
-    }
-}
-
-@Composable
-private fun StepTouchButton(
+internal fun TvOptionRow(
     label: String,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(8.dp))
-            // Só toque: no D-pad quem ajusta é o card (← / →); o botão não recebe foco.
-            .focusProperties { canFocus = false }
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
-            .background(if (enabled) Color(0x2BFFFFFF) else Color.Transparent),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, color = if (enabled) Color.White else com.ntv2.app.core.ui.BrandColors.BorderStrong, style = MaterialTheme.typography.titleMedium)
-    }
-}
-
-@Composable
-private fun NavCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    destructive: Boolean,
+    selected: Boolean,
     modifier: Modifier = Modifier,
+    subtitle: String? = null,
     onClick: () -> Unit
-) {
-    SettingCardShell(
-        icon = icon,
-        title = title,
-        subtitle = subtitle,
-        modifier = modifier,
-        titleColor = if (destructive) com.ntv2.app.core.ui.BrandColors.Error else Color.White,
-        onClick = onClick
-    ) {
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-            modifier = Modifier.size(28.dp)
-        )
-    }
-}
-
-@Composable
-private fun SettingCardShell(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    modifier: Modifier = Modifier,
-    titleColor: Color = Color.White,
-    onClick: () -> Unit,
-    trailing: @Composable () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val gliding = glideActive()
+    val shape = RoundedCornerShape(10.dp)
     Row(
-        modifier = modifier
+        modifier
             .fillMaxWidth()
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(shape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else com.ntv2.app.core.ui.BrandColors.Fill)
+            .background(if (selected) BrandColors.Accent.copy(alpha = 0.12f) else BrandColors.SurfaceAlt)
             .border(
-                width = if (focused && !gliding) 2.dp else 1.dp,
-                color = if (focused && !gliding) Color.White else com.ntv2.app.core.ui.BrandColors.Border,
-                shape = RoundedCornerShape(6.dp)
+                if (focused) 2.dp else 1.dp,
+                if (focused) BrandColors.Accent else BrandColors.BorderSubtle,
+                shape
             )
-            .padding(horizontal = 20.dp, vertical = 18.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Ação destrutiva (Sair da conta): ícone na mesma cor vermelha do título.
-        Icon(icon, contentDescription = null, tint = if (titleColor == Color.White) BRAND else titleColor, modifier = Modifier.size(28.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, color = titleColor, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, style = NbrType.Body,
+                color = if (selected) BrandColors.Accent else SettingsText)
+            if (subtitle != null) Text(subtitle, fontSize = 10.sp, style = NbrType.Caption, color = BrandColors.TextMuted)
         }
-        trailing()
+        if (selected) Icon(NbrIcons.Check, contentDescription = null, tint = BrandColors.Accent, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -797,7 +725,7 @@ private fun PrivacyCloseButton(onClose: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            Icons.Filled.Close,
+            NbrIcons.X,
             contentDescription = "Fechar",
             tint = if (focused) Color.Black else com.ntv2.app.core.ui.BrandColors.TextSecondary,
             modifier = Modifier.size(22.dp)
@@ -890,12 +818,14 @@ private const val PRIVACY_POLICY_TEXT =
     "15. Contato\n" +
     "Dúvidas ou pedidos sobre esta política: nbrplay@outlook.com."
 
+
 /**
- * Escolha da animação que o card mostra enquanto a capa não chega. Cada opção traz uma prévia ao
- * vivo, no mesmo formato do card (2:3), para dar para comparar antes de escolher.
+ * Prévia do card (40): como o card aparece enquanto a capa não chega. Cada opção traz uma prévia ao
+ * vivo, no formato do card (2:3), para comparar antes de escolher. Celular = subtela; TV = painel central.
  */
 @Composable
 private fun CardLoadingPickerOverlay(
+    tv: Boolean,
     current: CardLoadingStyle,
     animationsEnabled: Boolean,
     onSelect: (CardLoadingStyle) -> Unit,
@@ -904,47 +834,45 @@ private fun CardLoadingPickerOverlay(
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
     BackHandler(enabled = true) { onDismiss() }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xF2090B0F))
-            .onPreviewKeyEvent { e ->
-                e.type == KeyEventType.KeyUp && (e.key == Key.Back || e.key == Key.Escape) &&
-                    run { onDismiss(); true }
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+    val options: @Composable () -> Unit = {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(if (tv) 12.dp else 14.dp),
+            contentPadding = PaddingValues(vertical = 4.dp)
         ) {
-            Text("Animação dos cards", color = Color.White, style = MaterialTheme.typography.titleLarge)
-            Text(
-                "Prévia de como o card aparece enquanto a capa carrega.",
-                color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                items(CardLoadingStyle.entries, key = { it.name }) { style ->
-                    CardLoadingOption(
-                        style = style,
-                        selected = style == current,
-                        animationsEnabled = animationsEnabled,
-                        modifier = if (style == current) Modifier.focusRequester(firstFocus) else Modifier,
-                        onClick = { onSelect(style); onDismiss() }
-                    )
-                }
+            items(CardLoadingStyle.entries, key = { it.name }) { style ->
+                CardLoadingOption(
+                    tv = tv,
+                    style = style,
+                    selected = style == current,
+                    animationsEnabled = animationsEnabled,
+                    modifier = if (style == current) Modifier.focusRequester(firstFocus) else Modifier,
+                    onClick = { onSelect(style); onDismiss() }
+                )
             }
+        }
+    }
+    if (tv) {
+        SettingsTvDialog(
+            width = 640.dp,
+            modifier = Modifier.onPreviewKeyEvent { e ->
+                e.type == KeyEventType.KeyUp && (e.key == Key.Back || e.key == Key.Escape) && run { onDismiss(); true }
+            }
+        ) {
+            Text("Prévia do card", style = NbrType.PageTitle, fontWeight = FontWeight.ExtraBold, color = SettingsText)
+            Text("Prévia de como o card aparece enquanto a capa carrega.", style = NbrType.Caption, color = BrandColors.TextSecondary)
+            options()
+        }
+    } else {
+        SettingsPhonePage(title = "Prévia do card", onBack = onDismiss, gap = 16.dp) {
+            Text("Prévia de como o card aparece enquanto a capa carrega.", style = NbrType.Body, color = BrandColors.TextSecondary)
+            options()
         }
     }
 }
 
 @Composable
 private fun CardLoadingOption(
+    tv: Boolean,
     style: CardLoadingStyle,
     selected: Boolean,
     animationsEnabled: Boolean,
@@ -953,60 +881,51 @@ private fun CardLoadingOption(
 ) {
     var focused by remember { mutableStateOf(false) }
     val gliding = glideActive()
+    val shape = BrandShapes.Md
     Column(
         modifier = modifier
-            .width(150.dp)
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .width(if (tv) 120.dp else 150.dp)
+            .glideTarget(12.dp)
+            .clip(shape)
             .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) com.ntv2.app.core.ui.BrandColors.BorderSubtle else com.ntv2.app.core.ui.BrandColors.Fill)
-            .border(
-                width = if ((focused && !gliding) || selected) 2.dp else 1.dp,
-                color = when {
-                    focused && !gliding -> Color.White
-                    selected -> BRAND
-                    else -> com.ntv2.app.core.ui.BrandColors.Border
-                },
-                shape = RoundedCornerShape(6.dp)
-            )
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .clickable(onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         CardLoadingPlaceholder(
             style = style,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
-                .clip(RoundedCornerShape(8.dp)),
+                .clip(shape)
+                .border(
+                    if ((focused && !gliding) || selected) 2.dp else 1.dp,
+                    when {
+                        focused && !gliding -> Color.White
+                        selected -> BrandColors.Accent
+                        else -> BrandColors.BorderSubtle
+                    },
+                    shape
+                ),
             animate = animationsEnabled,
             cover = null,
             preview = true
         )
         Text(
             if (selected) "${style.label} ·" else style.label,
-            color = if (selected) BRAND else Color.White,
-            style = MaterialTheme.typography.titleSmall,
+            color = if (selected) BrandColors.Accent else BrandColors.TextSecondary,
+            style = NbrType.Caption,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            textAlign = TextAlign.Center,
             maxLines = 1
         )
         Text(
             style.description,
-            color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-            style = MaterialTheme.typography.labelSmall,
+            color = BrandColors.TextMuted,
+            style = NbrType.Caption,
+            fontSize = if (tv) 10.sp else 11.sp,
+            textAlign = TextAlign.Center,
             maxLines = 3
         )
     }
-}
-
-/** Rótulo de grupo da lista de configurações (não recebe foco). */
-@Composable
-private fun SettingsSectionLabel(text: String, topGap: Boolean = false) {
-    Text(
-        text.uppercase(),
-        color = com.ntv2.app.core.ui.BrandColors.Accent,
-        fontSize = 12.sp,
-        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-        letterSpacing = 1.sp,
-        modifier = Modifier.padding(top = if (topGap) 10.dp else 0.dp)
-    )
 }

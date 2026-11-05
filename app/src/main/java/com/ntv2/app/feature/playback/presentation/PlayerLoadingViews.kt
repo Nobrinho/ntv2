@@ -20,10 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.text.style.TextAlign
 import com.ntv2.app.core.ui.trapFocus
@@ -47,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
@@ -69,6 +66,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import com.ntv2.app.core.player.PlaybackState
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Telas de espera do player: status de carregamento, capa iluminada e erro.
 
@@ -96,17 +94,18 @@ internal fun BoxScope.LoadingStatus(
                     scaleY = 0.8f
                     transformOrigin = TransformOrigin(1f, 0f)
                 }
-                .background(Color(0x99000000), RoundedCornerShape(6.dp))
+                .background(PlayerPanelBg, RoundedCornerShape(16.dp))
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(16.dp))
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(28.dp))
+            PlayerSpinner(size = 28.dp, stroke = 3.dp)
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                Text(label, color = Color(0xFFF5F5F7), style = com.ntv2.app.core.ui.NbrType.BodyStrong)
                 LoadingProgress(progress, hint, TextAlign.End)
             }
         }
@@ -114,11 +113,17 @@ internal fun BoxScope.LoadingStatus(
         Column(
             modifier = Modifier.align(Alignment.Center),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            // Protótipo 23 (f8SzG): anel accent 64, espaço 16, "Abrindo…" 16/700, apoio 12/400 text-2.
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            CircularProgressIndicator(color = Color.White)
-            Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium)
-            LoadingProgress(progress, hint)
+            PlayerSpinner()
+            Text(label, color = Color(0xFFF5F5F7), style = com.ntv2.app.core.ui.NbrType.Section.copy(fontSize = 16.sp))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                LoadingProgress(progress, hint)
+            }
         }
     }
 }
@@ -223,11 +228,11 @@ internal fun LoadingProgress(progress: DownloadProgress?, hint: String?, hintAli
         if (parts != null) {
             Text(
                 PartsTexts.currentPartLine(parts),
-                color = Color(0xFFE6E6E6),
-                style = MaterialTheme.typography.bodySmall
+                color = Color(0xFFF5F5F7),
+                style = com.ntv2.app.core.ui.NbrType.Caption
             )
         }
-        Text(text, color = Color(0xFFD0D0D0), style = MaterialTheme.typography.bodySmall)
+        Text(text, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = com.ntv2.app.core.ui.NbrType.Caption)
         if (progress.expectedBytes > 0L) {
             val fraction = (progress.downloadedBytes.toFloat() / progress.expectedBytes).coerceIn(0f, 1f)
             Box(
@@ -235,13 +240,13 @@ internal fun LoadingProgress(progress: DownloadProgress?, hint: String?, hintAli
                     .width(220.dp)
                     .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0x40FFFFFF))
+                    .background(Color(0x33FFFFFF))
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(fraction)
-                        .background(Color.White)
+                        .background(com.ntv2.app.core.ui.BrandColors.Accent)
                 )
             }
         }
@@ -249,8 +254,8 @@ internal fun LoadingProgress(progress: DownloadProgress?, hint: String?, hintAli
     if (hint != null) {
         Text(
             hint,
-            color = Color(0xFFFFD37A),
-            style = MaterialTheme.typography.bodySmall,
+            color = com.ntv2.app.core.ui.BrandColors.Warning,
+            style = com.ntv2.app.core.ui.NbrType.Caption,
             textAlign = hintAlign,
             modifier = Modifier.widthIn(max = 420.dp)
         )
@@ -265,80 +270,68 @@ internal fun LoadingProgress(progress: DownloadProgress?, hint: String?, hintAli
 internal fun LoadErrorOverlay(error: PlayerLoadError, onRetry: () -> Unit, onBack: () -> Unit) {
     val retryFocus = remember { FocusRequester() }
     LaunchedEffect(error) { runCatching { retryFocus.requestFocus() } }
+    // Protótipo 24 (YICW7): cartão 400 de largura, surface@95%, contorno warning, raio 20, padding 20, espaço 12;
+    // ícone 32 warning, título 17/700, texto 13/400 text-2 e botão secundário em pílula de 52.
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xB3000000)),
+            .background(Color(0x99000000)),
         contentAlignment = Alignment.Center
     ) {
+        val shape = RoundedCornerShape(20.dp)
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .widthIn(max = 560.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xF21B1E22))
-                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Border, RoundedCornerShape(6.dp))
-                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .padding(horizontal = 16.dp)
+                .widthIn(max = 400.dp)
+                .fillMaxWidth()
+                .clip(shape)
+                .background(PlayerPanelBg)
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.Warning, shape)
+                .padding(20.dp)
                 .trapFocus(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(Icons.Filled.Warning, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Warning, modifier = Modifier.size(40.dp))
+            Icon(NbrIcons.TriangleAlert, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Warning, modifier = Modifier.size(32.dp))
             Text(
                 error.title,
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
+                color = Color(0xFFF5F5F7),
+                style = com.ntv2.app.core.ui.NbrType.Section,
                 textAlign = TextAlign.Center
             )
             Text(
                 error.message,
                 color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium,
+                style = com.ntv2.app.core.ui.NbrType.Secondary,
                 textAlign = TextAlign.Center
             )
             error.detail?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     it,
                     color = com.ntv2.app.core.ui.BrandColors.TextMuted,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = com.ntv2.app.core.ui.NbrType.Caption.copy(fontSize = 11.sp),
                     textAlign = TextAlign.Center,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            // Celular em pé: os dois botões não cabem lado a lado ("Voltar" quebrava letra a letra);
-            // empilha com largura total. Telas largas mantêm a linha.
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                if (maxWidth < 400.dp) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        ErrorActionButton(
-                            icon = Icons.Filled.Refresh,
-                            label = "Tentar novamente",
-                            modifier = Modifier.fillMaxWidth().focusRequester(retryFocus),
-                            onClick = onRetry
-                        )
-                        ErrorActionButton(
-                            icon = Icons.AutoMirrored.Filled.ArrowBack,
-                            label = "Voltar",
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onBack
-                        )
-                    }
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        ErrorActionButton(
-                            icon = Icons.Filled.Refresh,
-                            label = "Tentar novamente",
-                            modifier = Modifier.focusRequester(retryFocus),
-                            onClick = onRetry
-                        )
-                        ErrorActionButton(icon = Icons.AutoMirrored.Filled.ArrowBack, label = "Voltar", onClick = onBack)
-                    }
-                }
+            // O protótipo só tem "Tentar de novo"; "Voltar" é do app e fica, no mesmo estilo, embaixo.
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ErrorActionButton(
+                    icon = NbrIcons.RefreshCw,
+                    label = "Tentar novamente",
+                    modifier = Modifier.fillMaxWidth().focusRequester(retryFocus),
+                    onClick = onRetry
+                )
+                ErrorActionButton(
+                    icon = NbrIcons.ChevronLeft,
+                    label = "Voltar",
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onBack
+                )
             }
         }
     }
@@ -351,22 +344,7 @@ internal fun ErrorActionButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    var focused by remember { mutableStateOf(false) }
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick)
-            .background(if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .border(1.dp, if (focused) Color.White else com.ntv2.app.core.ui.BrandColors.BorderStrong, RoundedCornerShape(6.dp))
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val content = if (focused) Color.Black else Color.White
-        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
-        Text(label, color = content, style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
-    }
+    PlayerSecondaryButton(label = label, onClick = onClick, icon = icon, modifier = modifier)
 }
 
 /** Rótulo do estado exibido junto do loading durante a reprodução (null = não mostrar). */

@@ -2,34 +2,21 @@ package com.ntv2.app.feature.media.presentation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,24 +24,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.ConfirmDialog
+import com.ntv2.app.core.ui.icons.NbrIcons
+import com.ntv2.app.core.ui.mainBottomNavReserve
 import com.ntv2.app.feature.media.presentation.state.HistoryEntryUi
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 
 private enum class MyStuffTab { Continue, MyList, History }
 
+private val MyStuffTabs = listOf(
+    MyStuffTab.Continue to "Continuar",
+    MyStuffTab.MyList to "Minha lista",
+    MyStuffTab.History to "Histórico"
+)
+
 /**
- * Aba "Meu" (mobile): controle segmentado com Continuar assistindo, Minha lista e Histórico —
- * reúne toda a personalização num só lugar no celular.
+ * Aba "Meu" (mobile), telas 25 e 26 do protótipo: título "Meu", segmentos Continuar / Minha lista /
+ * Histórico e o conteúdo da aba. Os atalhos do topo do protótipo (downloads, pedidos, notificações,
+ * perfil) são funções que o app não tem e ficam de fora; no lugar fica o fechar que o app já tinha.
  */
 @Composable
 internal fun MyStuffOverlay(
@@ -71,47 +60,57 @@ internal fun MyStuffOverlay(
     BackHandler(enabled = true) { onClose() }
     var tab by remember { mutableStateOf(MyStuffTab.Continue) }
     var confirmClear by remember { mutableStateOf(false) }
+    // Conteúdo rola por trás da tab bar flutuante, como na Biblioteca.
+    val bottomReserve = mainBottomNavReserve() + 12.dp
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(com.ntv2.app.core.ui.BrandColors.Background)
+            .background(BrandColors.Background)
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 16.dp)
     ) {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Meu", style = MaterialTheme.typography.headlineMedium, color = Color.White, modifier = Modifier.weight(1f))
+        Column(
+            modifier = Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                MyStuffTitle(useTvLayout = false, modifier = Modifier.weight(1f))
                 if (tab == MyStuffTab.History && history.isNotEmpty()) {
-                    TextPill(icon = Icons.Filled.DeleteSweep, label = "Limpar", destructive = true, onClick = { confirmClear = true })
+                    MyStuffTextAction(
+                        label = "Limpar tudo",
+                        useTvLayout = false,
+                        color = BrandColors.Error,
+                        onClick = { confirmClear = true }
+                    )
                 }
-                CircleIconButton(icon = Icons.Filled.Close, description = "Fechar", onClick = onClose)
+                MyStuffCircleButton(icon = NbrIcons.X, description = "Fechar", useTvLayout = false, onClick = onClose)
             }
 
-            SegmentedControl(
-                selected = tab,
-                onSelect = { tab = it }
-            )
+            MyStuffSegments(options = MyStuffTabs, selected = tab, onSelect = { tab = it })
 
+            val contentPadding = PaddingValues(bottom = bottomReserve)
             when (tab) {
-                MyStuffTab.Continue -> RowList(
+                MyStuffTab.Continue -> ContinueList(
                     items = continueWatching,
                     showCovers = showCovers,
-                    emptyMessage = "Nada em andamento. Comece a assistir algo e ele aparece aqui.",
-                    trailing = { media -> PlayPill(onClick = { onContinue(media) }) },
-                    subtitleFor = { media -> remainingSubtitle(media) },
+                    contentPadding = contentPadding,
+                    onContinue = onContinue,
                     onRowClick = onCardClick
                 )
                 MyStuffTab.MyList -> PosterGrid(
                     items = myList,
                     showCovers = showCovers,
-                    emptyMessage = "Sua lista está vazia. Toque no coração de um filme para salvá-lo.",
+                    contentPadding = contentPadding,
                     onCardClick = onCardClick
                 )
                 MyStuffTab.History -> HistoryList(
                     entries = history,
                     showCovers = showCovers,
+                    contentPadding = contentPadding,
                     onContinue = onContinue,
                     onRemove = onRemoveHistory,
                     onRowClick = onCardClick
@@ -123,11 +122,11 @@ internal fun MyStuffOverlay(
             ConfirmDialog(
                 title = "Limpar histórico?",
                 message = "Isto remove todos os títulos do seu histórico neste aparelho. Sua Minha lista não é afetada.",
-                icon = Icons.Filled.DeleteSweep,
+                icon = NbrIcons.Trash2,
                 confirmLabel = "Limpar",
-                confirmIcon = Icons.Filled.DeleteSweep,
+                confirmIcon = NbrIcons.Trash2,
                 cancelLabel = "Cancelar",
-                cancelIcon = Icons.Filled.Close,
+                cancelIcon = NbrIcons.X,
                 destructive = true,
                 onConfirm = { confirmClear = false; onClearHistory() },
                 onDismiss = { confirmClear = false }
@@ -136,228 +135,122 @@ internal fun MyStuffOverlay(
     }
 }
 
+/** Continuar: mesmas linhas do histórico, com "faltam X" em accent e o play à direita. */
 @Composable
-private fun SegmentedControl(selected: MyStuffTab, onSelect: (MyStuffTab) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(com.ntv2.app.core.ui.BrandColors.Surface)
-            .padding(5.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Segment("Continuar", selected == MyStuffTab.Continue, Modifier.weight(1f)) { onSelect(MyStuffTab.Continue) }
-        Segment("Minha lista", selected == MyStuffTab.MyList, Modifier.weight(1f)) { onSelect(MyStuffTab.MyList) }
-        Segment("Histórico", selected == MyStuffTab.History, Modifier.weight(1f)) { onSelect(MyStuffTab.History) }
-    }
-}
-
-@Composable
-private fun Segment(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-            .background(if (selected) BRAND_ACCENT else Color.Transparent)
-            .padding(vertical = 9.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            label,
-            color = if (selected) com.ntv2.app.core.ui.BrandColors.OnCta else com.ntv2.app.core.ui.BrandColors.TextMuted,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1
-        )
-    }
-}
-
-/** Lista vertical de linhas (thumb + título + subtítulo + ação). Usada por Continuar. */
-@Composable
-private fun RowList(
+private fun ContinueList(
     items: List<MediaCardUi>,
     showCovers: Boolean,
-    emptyMessage: String,
-    trailing: @Composable (MediaCardUi) -> Unit,
-    subtitleFor: (MediaCardUi) -> String?,
+    contentPadding: PaddingValues,
+    onContinue: (MediaCardUi) -> Unit,
     onRowClick: (MediaCardUi) -> Unit
 ) {
     if (items.isEmpty()) {
-        EmptyState(emptyMessage); return
+        MyStuffEmpty("Nada em andamento. Comece a assistir algo e ele aparece aqui."); return
     }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = contentPadding) {
         items(items, key = { it.mediaId }) { media ->
-            ThumbRow(
+            MyStuffMediaRow(
                 media = media,
                 showCovers = showCovers,
-                subtitle = subtitleFor(media),
-                onClick = { onRowClick(media) },
-                trailing = { trailing(media) }
-            )
+                subtitle = remainingSubtitle(media),
+                subtitleColor = myStuffSubtitleColor(completed = false, progress = media.progress),
+                useTvLayout = false,
+                onClick = { onRowClick(media) }
+            ) {
+                MyStuffRowAction(
+                    icon = NbrIcons.PlayFilled,
+                    description = "Continuar",
+                    useTvLayout = false,
+                    prominent = true,
+                    onClick = { onContinue(media) }
+                )
+            }
         }
     }
 }
 
+/** Histórico (tela 26): grupos por dia ("Hoje", "Ontem") com as linhas; gap 18 como no protótipo. */
 @Composable
 private fun HistoryList(
     entries: List<HistoryEntryUi>,
     showCovers: Boolean,
+    contentPadding: PaddingValues,
     onContinue: (MediaCardUi) -> Unit,
     onRemove: (String) -> Unit,
     onRowClick: (MediaCardUi) -> Unit
 ) {
     if (entries.isEmpty()) {
-        EmptyState("Nada por aqui ainda. Os títulos que você assistir aparecem no histórico."); return
+        MyStuffEmpty("Nada por aqui ainda. Os títulos que você assistir aparecem no histórico."); return
     }
     val grouped = remember(entries) { entries.groupBy { dayBucket(it.updatedAt) } }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(18.dp), contentPadding = contentPadding) {
         grouped.forEach { (label, rows) ->
-            item(key = "d_$label") {
-                Text(label.uppercase(), color = Color(0xFF6A6A6A), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp))
-            }
+            item(key = "d_$label") { MyStuffDayLabel(label, useTvLayout = false) }
             items(rows, key = { it.card.mediaId }) { entry ->
-                ThumbRow(
+                MyStuffMediaRow(
                     media = entry.card,
                     showCovers = showCovers,
                     subtitle = historySubtitle(entry),
-                    onClick = { onRowClick(entry.card) },
-                    trailing = {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (entry.completed) {
-                                Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(0x2466D9FF)), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.Check, contentDescription = "Assistido", tint = BRAND_ACCENT, modifier = Modifier.size(16.dp))
-                                }
-                            } else {
-                                PlayPill(onClick = { onContinue(entry.card) })
-                            }
-                            CircleIconButton(icon = Icons.Filled.Remove, description = "Remover do histórico", onClick = { onRemove(entry.card.mediaId) })
-                        }
+                    subtitleColor = myStuffSubtitleColor(entry.completed, entry.card.progress),
+                    useTvLayout = false,
+                    onClick = { onRowClick(entry.card) }
+                ) {
+                    if (entry.completed) {
+                        MyStuffWatchedMark(useTvLayout = false)
+                    } else {
+                        MyStuffRowAction(
+                            icon = NbrIcons.PlayFilled,
+                            description = "Continuar",
+                            useTvLayout = false,
+                            prominent = true,
+                            onClick = { onContinue(entry.card) }
+                        )
                     }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThumbRow(
-    media: MediaCardUi,
-    showCovers: Boolean,
-    subtitle: String?,
-    onClick: () -> Unit,
-    trailing: @Composable () -> Unit
-) {
-    val cover = media.posterPath ?: media.thumbnailPath
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-            .background(com.ntv2.app.core.ui.BrandColors.Surface)
-            .padding(9.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(modifier = Modifier.width(104.dp).height(59.dp).clip(RoundedCornerShape(6.dp)).background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)) {
-            if (showCovers && cover != null) {
-                AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            }
-            if (media.progress > 0f) {
-                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x38FFFFFF))) {
-                    Box(modifier = Modifier.fillMaxWidth(media.progress).fillMaxSize().background(BRAND_ACCENT))
+                    MyStuffRowAction(
+                        icon = NbrIcons.X,
+                        description = "Remover do histórico",
+                        useTvLayout = false,
+                        prominent = false,
+                        onClick = { onRemove(entry.card.mediaId) }
+                    )
                 }
             }
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(media.title, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            subtitle?.let { Text(it, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        }
-        trailing()
     }
 }
 
+/** Minha lista (tela 25): grade de 3 PosterCard com selo, gap 10 entre colunas e 14 entre linhas. */
 @Composable
 private fun PosterGrid(
     items: List<MediaCardUi>,
     showCovers: Boolean,
-    emptyMessage: String,
+    contentPadding: PaddingValues,
     onCardClick: (MediaCardUi) -> Unit
 ) {
     if (items.isEmpty()) {
-        EmptyState(emptyMessage); return
+        MyStuffEmpty("Sua lista está vazia. Toque no coração de um filme para salvá-lo."); return
     }
-    LazyVerticalGrid(
-        // 3 colunas com o título embaixo, como a grade da biblioteca (antes 2 capas sem título).
-        columns = GridCells.Fixed(3),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(bottom = 24.dp)
-    ) {
-        gridItems(items, key = { it.mediaId }) { media ->
-            val cover = media.posterPath ?: media.thumbnailPath
-            androidx.compose.foundation.layout.Column(
-                modifier = Modifier.clickable(onClick = { onCardClick(media) }),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(2f / 3f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
-                ) {
-                    if (showCovers && cover != null) {
-                        AsyncImage(model = cover, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val cellWidth = (maxWidth - 20.dp) / 3
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = contentPadding
+        ) {
+            gridItems(items, key = { it.mediaId }) { media ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PosterCard(
+                        media = media,
+                        showCovers = showCovers,
+                        width = cellWidth,
+                        showBadge = true,
+                        onClick = { onCardClick(media) }
+                    )
+                    MyStuffPosterTitle(media.title, useTvLayout = false)
                 }
-                Text(
-                    media.title,
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
         }
-    }
-}
-
-@Composable
-private fun EmptyState(message: String) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(message, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 24.dp))
-    }
-}
-
-@Composable
-private fun PlayPill(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).background(BRAND_ACCENT),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(Icons.Filled.PlayArrow, contentDescription = "Continuar", tint = com.ntv2.app.core.ui.BrandColors.OnCta, modifier = Modifier.size(18.dp))
-    }
-}
-
-@Composable
-private fun TextPill(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, destructive: Boolean, onClick: () -> Unit) {
-    val content = if (destructive) Color(0xFFFF7A7A) else Color.White
-    Row(
-        modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).background(com.ntv2.app.core.ui.BrandColors.BorderSubtle).padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(17.dp))
-        Text(label, color = content, style = MaterialTheme.typography.labelLarge)
-    }
-}
-
-@Composable
-private fun CircleIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClick).background(com.ntv2.app.core.ui.BrandColors.BorderSubtle),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, contentDescription = description, tint = com.ntv2.app.core.ui.BrandColors.TextSecondary, modifier = Modifier.size(20.dp))
     }
 }
 

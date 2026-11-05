@@ -34,9 +34,6 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.ntv2.app.feature.auth.domain.model.AuthState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -69,7 +66,7 @@ import com.ntv2.app.feature.splash.presentation.SplashScreen
 import com.ntv2.app.feature.update.presentation.UpdateStage
 import com.ntv2.app.feature.update.presentation.UpdateViewModel
 import com.ntv2.app.feature.update.presentation.UpdateViewModelFactory
-import androidx.compose.material.icons.filled.SystemUpdate
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 @Composable
 fun AppNavHost(
@@ -179,6 +176,29 @@ fun AppNavHost(
         }
     }
 
+  // Perfis de acesso (MOCK local, ver ProfileStore): "Quem está assistindo?" na primeira abertura da
+  // Biblioteca de cada execução quando há mais de um perfil; troca rápida pelo topo e Configurações.
+  val profileStore = remember(context) { com.ntv2.app.core.profiles.ProfileStore.get(context) }
+  var profileScreen by remember { mutableStateOf<com.ntv2.app.feature.profiles.presentation.ProfileScreen?>(null) }
+  var profilePickedThisRun by rememberSaveable { mutableStateOf(false) }
+  val activeProfileId by profileStore.activeId.collectAsState()
+  val profileList by profileStore.profiles.collectAsState()
+  LaunchedEffect(currentRoute, showSplash, showOnboarding) {
+      if (!profilePickedThisRun && currentRoute == RoutePath.MEDIA_LIBRARY && !showSplash && !showOnboarding) {
+          profilePickedThisRun = true
+          if (profileStore.profiles.value.size > 1) {
+              profileScreen = com.ntv2.app.feature.profiles.presentation.ProfileScreen.Picker
+          }
+      }
+  }
+  val profileActions = remember(activeProfileId, profileList) {
+      com.ntv2.app.core.profiles.ProfileActions(
+          current = profileList.firstOrNull { it.id == activeProfileId } ?: profileList.firstOrNull(),
+          openSwitcher = { profileScreen = com.ntv2.app.feature.profiles.presentation.ProfileScreen.Switcher },
+          openManage = { profileScreen = com.ntv2.app.feature.profiles.presentation.ProfileScreen.Manage }
+      )
+  }
+
   // "Animações" (Configurações) para qualquer tela: liga o anel de foco deslizante.
   val settingAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)
   // Respeita também o "movimento reduzido" do sistema (escala de animações = 0).
@@ -192,7 +212,8 @@ fun AppNavHost(
   Box(modifier = Modifier.fillMaxSize()) {
    androidx.compose.runtime.CompositionLocalProvider(
        com.ntv2.app.core.ui.LocalFocusRestoreSignal provides focusRestoreSignal,
-       com.ntv2.app.core.ui.LocalAnimationsEnabled provides globalAnimations
+       com.ntv2.app.core.ui.LocalAnimationsEnabled provides globalAnimations,
+       com.ntv2.app.core.profiles.LocalProfileActions provides profileActions
    ) {
     NavHost(
         navController = navController,
@@ -488,6 +509,15 @@ fun AppNavHost(
 
    }
 
+    com.ntv2.app.feature.profiles.presentation.ProfilesHost(
+        store = profileStore,
+        screen = profileScreen,
+        onNavigate = { next ->
+            profileScreen = next
+            if (next == null) focusRestoreSignal++
+        }
+    )
+
     if (showOnboarding) {
         BackHandler(enabled = replayOnboarding) { showOnboarding = false; replayOnboarding = false }
         com.ntv2.app.feature.onboarding.presentation.OnboardingScreen(
@@ -511,11 +541,11 @@ fun AppNavHost(
         ConfirmDialog(
             title = "Deseja fechar o aplicativo?",
             message = null,
-            icon = Icons.Filled.ExitToApp,
+            icon = NbrIcons.LogOut,
             confirmLabel = "Sim, sair",
-            confirmIcon = Icons.Filled.ExitToApp,
+            confirmIcon = NbrIcons.LogOut,
             cancelLabel = "Não",
-            cancelIcon = Icons.Filled.Close,
+            cancelIcon = NbrIcons.X,
             destructive = true,
             onConfirm = { (context as? Activity)?.finish() },
             onDismiss = { showExitDialog = false; focusRestoreSignal++ }
@@ -535,11 +565,11 @@ fun AppNavHost(
                 append("NTV ${update?.versionName.orEmpty()}")
                 if (notes.isNotBlank()) append("\n\n").append(notes)
             },
-            icon = Icons.Filled.SystemUpdate,
+            icon = NbrIcons.Download,
             confirmLabel = "Baixar atualização",
-            confirmIcon = Icons.Filled.SystemUpdate,
+            confirmIcon = NbrIcons.Download,
             cancelLabel = if (updateState.mandatory) "Atualização necessária" else "Agora não",
-            cancelIcon = Icons.Filled.Close,
+            cancelIcon = NbrIcons.X,
             onConfirm = {
                 dismissedUpdatePromptVersion = null
                 updateViewModel.startDownload()
@@ -561,11 +591,11 @@ fun AppNavHost(
             title = "Atualização pronta",
             message = updateState.message
                 ?: "O download foi validado. O Android pedirá a confirmação da instalação.",
-            icon = Icons.Filled.SystemUpdate,
+            icon = NbrIcons.Download,
             confirmLabel = "Instalar",
-            confirmIcon = Icons.Filled.SystemUpdate,
+            confirmIcon = NbrIcons.Download,
             cancelLabel = "Depois",
-            cancelIcon = Icons.Filled.Close,
+            cancelIcon = NbrIcons.X,
             onConfirm = updateViewModel::install,
             onDismiss = {
                 if (!updateState.mandatory) {

@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,6 +25,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /**
  * Ocupa a área do vídeo enquanto transmite: capa desfocada + "Transmitindo para <aparelho>" e o
@@ -64,35 +62,29 @@ internal fun CastingOverlay(
             modifier = Modifier.padding(24.dp)
         ) {
             if (connecting) {
-                CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(40.dp))
+                PlayerSpinner(size = 40.dp, stroke = 3.dp)
             } else {
-                Icon(Icons.Filled.CastConnected, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
+                Icon(NbrIcons.Cast, contentDescription = null, tint = com.ntv2.app.core.ui.BrandColors.Accent, modifier = Modifier.size(40.dp))
             }
             Text(
                 if (connecting) "Conectando a $deviceName…" else "Transmitindo para $deviceName",
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFFF5F5F7),
+                style = com.ntv2.app.core.ui.NbrType.Section,
                 textAlign = TextAlign.Center
             )
             Text(
                 "Mantenha o app aberto e o celular no mesmo Wi‑Fi durante o filme.",
                 color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
-                style = MaterialTheme.typography.bodySmall,
+                style = com.ntv2.app.core.ui.NbrType.Secondary,
                 textAlign = TextAlign.Center
             )
-            Row(
-                modifier = Modifier
-                    .padding(top = 6.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .border(1.dp, com.ntv2.app.core.ui.BrandColors.ContentDisabled, RoundedCornerShape(8.dp))
-                    .clickable(onClick = onStop)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.Cast, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                Text("Parar transmissão", color = Color.White, style = MaterialTheme.typography.labelLarge)
-            }
+            PlayerSecondaryButton(
+                label = "Parar transmissão",
+                onClick = onStop,
+                icon = NbrIcons.Cast,
+                height = 44.dp,
+                modifier = Modifier.padding(top = 6.dp)
+            )
         }
     }
 }

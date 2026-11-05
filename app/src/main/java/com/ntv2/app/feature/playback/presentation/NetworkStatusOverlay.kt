@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
@@ -35,6 +34,7 @@ import com.ntv2.app.core.multipart.PartStatus
 import com.ntv2.app.core.multipart.PartsSnapshot
 import com.ntv2.app.core.player.MediaTracksInfo
 import com.ntv2.app.core.player.PlaybackState
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 /**
  * Painel "Estado da rede" (aberto pelo ícone da barra de controles). Como o app faz streaming via
@@ -60,7 +60,7 @@ internal fun NetworkStatusOverlay(
 ) {
     BackHandler(enabled = true) { onDismiss() }
 
-    val connectionColor = if (connectionReady) com.ntv2.app.core.ui.BrandColors.Accent else Color(0xFFFFB020)
+    val connectionColor = if (connectionReady) com.ntv2.app.core.ui.BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.Warning
     val connectionLabel = if (connectionReady) "Conectado" else "Reconectando…"
     val stateLabel = when (playbackState) {
         PlaybackState.Ready -> "Reproduzindo"
@@ -82,34 +82,34 @@ internal fun NetworkStatusOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x80000000))
+            .background(Color(0x99000000))
             .clickable(onClick = onDismiss),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.6f)
-                .widthIn(max = 320.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xF20E1526))
-                .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(6.dp))
+                .widthIn(max = 340.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(PlayerPanelBg)
+                .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(20.dp))
                 .clickable(onClick = {})
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
+                .padding(20.dp),
+            // Mesmo cartão dos avisos do player (protótipo 24): surface@95%, raio 20, padding 20.
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Cabeçalho: ícone pequeno + título, inline (sem o círculo grande).
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(
-                    Icons.Filled.Public,
+                    NbrIcons.Info,
                     contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
+                    tint = com.ntv2.app.core.ui.BrandColors.Accent,
+                    modifier = Modifier.size(20.dp)
                 )
                 Text(
                     "Estado da rede",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    color = Color(0xFFF5F5F7),
+                    style = com.ntv2.app.core.ui.NbrType.Section
                 )
             }
 
@@ -128,8 +128,8 @@ internal fun NetworkStatusOverlay(
                 Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(connectionColor))
                 Text(
                     "  $connectionLabel · $stateLabel · buffer ${formatTime(bufferAheadMs)}",
-                    color = Color(0xFFB8C0CC),
-                    style = MaterialTheme.typography.bodySmall,
+                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary,
+                    style = com.ntv2.app.core.ui.NbrType.Caption,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -140,8 +140,8 @@ internal fun NetworkStatusOverlay(
 
             Text(
                 fileName ?: "arquivo #$fileId",
-                color = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
-                style = MaterialTheme.typography.bodySmall,
+                color = com.ntv2.app.core.ui.BrandColors.TextMuted,
+                style = com.ntv2.app.core.ui.NbrType.Caption.copy(fontSize = 11.sp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -153,8 +153,8 @@ internal fun NetworkStatusOverlay(
 @Composable
 private fun InfoBlock(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        Text(label, color = Color(0x99FFFFFF), style = MaterialTheme.typography.labelSmall)
-        Text(value, color = Color.White, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(label, color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = com.ntv2.app.core.ui.NbrType.Caption.copy(fontSize = 11.sp))
+        Text(value, color = Color(0xFFF5F5F7), style = com.ntv2.app.core.ui.NbrType.Caption, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -165,11 +165,11 @@ private fun InfoLine(label: String, value: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, color = Color(0xFF8A94A6), style = MaterialTheme.typography.bodySmall)
+        Text(label, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = com.ntv2.app.core.ui.NbrType.Caption)
         Text(
             value,
-            color = Color.White,
-            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFFF5F5F7),
+            style = com.ntv2.app.core.ui.NbrType.Caption,
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -207,8 +207,8 @@ private fun PartsMap(parts: PartsSnapshot) {
         }
         Text(
             "branca = lendo · verde = baixada · apagada = já assistida",
-            color = Color(0x80FFFFFF),
-            style = MaterialTheme.typography.labelSmall,
+            color = com.ntv2.app.core.ui.BrandColors.TextMuted,
+            style = com.ntv2.app.core.ui.NbrType.Caption.copy(fontSize = 10.sp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

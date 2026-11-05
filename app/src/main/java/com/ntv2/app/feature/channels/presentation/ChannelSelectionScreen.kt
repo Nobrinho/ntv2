@@ -1,85 +1,71 @@
 package com.ntv2.app.feature.channels.presentation
 
-import com.ntv2.app.core.ui.reserveMainBottomNav
-import com.ntv2.app.core.ui.brandBackdrop
-import androidx.compose.runtime.withFrameNanos
-
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Deselect
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.tv.material3.Icon
+import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.BrandBackdropKind
 import com.ntv2.app.core.ui.BrandButton
 import com.ntv2.app.core.ui.BrandButtonLabel
 import com.ntv2.app.core.ui.BrandButtonStyle
-import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
-import coil.compose.AsyncImage
+import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.ConfirmDialog
 import com.ntv2.app.core.ui.FocusGlideScope
-import com.ntv2.app.core.ui.glideActive
-import com.ntv2.app.core.ui.glideTarget
+import com.ntv2.app.core.ui.NbrType
+import com.ntv2.app.core.ui.brandBackdrop
+import com.ntv2.app.core.ui.icons.NbrIcons
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
-import com.ntv2.app.core.ui.RailButton
-import com.ntv2.app.core.ui.RailColumn
-import com.ntv2.app.feature.channels.presentation.state.ChannelItemUi
 import com.ntv2.app.feature.channels.presentation.state.ChannelSelectionEmptyState
 import com.ntv2.app.feature.channels.presentation.state.ChannelSelectionUiState
 import com.ntv2.app.feature.channels.presentation.viewmodel.ChannelSelectionAction
 import com.ntv2.app.feature.channels.presentation.viewmodel.ChannelSelectionViewModel
-import kotlin.math.abs
+
+/*
+ * Seleção de canais do protótipo: 09 do celular (CVoga) e TV 06 (Rzr7o).
+ * Celular: título + atualizar no topo, lista de canais em linha, rodapé com contagem · Limpar e "Continuar".
+ * TV: título + "Atualizar" no topo, grade de 4 cartões, ações "Continuar" / "Limpar" embaixo.
+ * "Voltar" e "Sair", que o protótipo não desenha, continuam: no topo (celular) e junto do "Atualizar" (TV).
+ */
+
+private const val SUBTITLE = "Escolha os canais que formam o seu catálogo."
 
 @Composable
 fun ChannelSelectionScreen(
@@ -142,62 +128,44 @@ fun ChannelSelectionScreen(
     FocusGlideScope(Modifier.fillMaxSize()) {
     BoxWithConstraints(
         modifier = Modifier.fillMaxSize()
-            .background(com.ntv2.app.core.ui.BrandColors.Background)
-            .brandBackdrop(com.ntv2.app.core.ui.BrandBackdropKind.Gradient)
+            .background(BrandColors.Background)
+            .brandBackdrop(BrandBackdropKind.Gradient)
     ) {
         val useTvLayout = adaptive.useTvLayout && maxWidth >= 720.dp
+        val onToggle: (Long) -> Unit = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
+        val onRetry: () -> Unit = { viewModel.onAction(ChannelSelectionAction.Retry) }
         if (useTvLayout) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                ChannelActionsRail(
-                    state = state,
-                    firstActionFocusRequester = firstActionFocusRequester,
-                    continueFocus = continueFocus,
-                    logoutFocus = logoutFocus,
-                    showBack = showBack,
-                    hasSelection = hasSelection,
-                    onClear = {
-                        // "Limpar" some ao limpar a seleção: move o foco antes para não perdê-lo.
-                        runCatching { firstActionFocusRequester.requestFocus() }
-                        viewModel.onAction(ChannelSelectionAction.ClearSelection)
-                    },
-                    onRefresh = { viewModel.onAction(ChannelSelectionAction.Retry) },
-                    onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
-                    onBack = onBack,
-                    onLogout = { logoutAsked = true; confirmLogout = true }
-                )
-                ChannelContent(
-                    state = state,
-                    compact = false,
-                    firstCardFocus = firstCardFocus,
-                    onRetry = { viewModel.onAction(ChannelSelectionAction.Retry) },
-                    onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
-                )
-            }
-        } else {
-            // Celular: ações na barra inferior (navbottom); atualizar = puxar a lista para baixo.
-            @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-            androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                isRefreshing = state.isLoading,
-                onRefresh = { viewModel.onAction(ChannelSelectionAction.Retry) },
-                modifier = Modifier.fillMaxSize().statusBarsPadding()
-            ) {
-                ChannelContent(
-                    state = state,
-                    compact = true,
-                    onRetry = { viewModel.onAction(ChannelSelectionAction.Retry) },
-                    onToggle = { id -> viewModel.onAction(ChannelSelectionAction.ToggleChannel(id)) }
-                )
-            }
-            ChannelBottomBar(
+            ChannelSelectionTv(
                 state = state,
-                logoutFocusRequester = firstActionFocusRequester,
                 showBack = showBack,
                 hasSelection = hasSelection,
+                refreshFocus = firstActionFocusRequester,
+                continueFocus = continueFocus,
+                logoutFocus = logoutFocus,
+                firstCardFocus = firstCardFocus,
+                onRefresh = onRetry,
+                onToggle = onToggle,
+                onClear = {
+                    // "Limpar" some ao limpar a seleção: move o foco antes para não perdê-lo.
+                    runCatching { firstActionFocusRequester.requestFocus() }
+                    viewModel.onAction(ChannelSelectionAction.ClearSelection)
+                },
+                onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
+                onBack = onBack,
+                onLogout = { logoutAsked = true; confirmLogout = true }
+            )
+        } else {
+            ChannelSelectionPhone(
+                state = state,
+                showBack = showBack,
+                hasSelection = hasSelection,
+                logoutFocus = firstActionFocusRequester,
+                onRefresh = onRetry,
+                onToggle = onToggle,
                 onClear = { viewModel.onAction(ChannelSelectionAction.ClearSelection) },
                 onContinue = { viewModel.onAction(ChannelSelectionAction.Continue) },
                 onBack = onBack,
-                onLogout = { confirmLogout = true },
-                modifier = Modifier.align(Alignment.BottomCenter)
+                onLogout = { confirmLogout = true }
             )
         }
 
@@ -205,11 +173,11 @@ fun ChannelSelectionScreen(
             ConfirmDialog(
                 title = "Sair da conta?",
                 message = "Você precisará entrar novamente para usar o app.",
-                icon = Icons.AutoMirrored.Filled.Logout,
+                icon = NbrIcons.LogOut,
                 confirmLabel = "Sair",
-                confirmIcon = Icons.AutoMirrored.Filled.Logout,
+                confirmIcon = NbrIcons.LogOut,
                 cancelLabel = "Cancelar",
-                cancelIcon = Icons.Filled.Close,
+                cancelIcon = NbrIcons.X,
                 destructive = true,
                 onConfirm = { confirmLogout = false; onLogout() },
                 onDismiss = { confirmLogout = false }
@@ -219,433 +187,253 @@ fun ChannelSelectionScreen(
     }
 }
 
+/** 09 do celular: conteúdo com padding 0/24/24/24 e gap 16; atualizar também por puxar a lista. */
 @Composable
-private fun ChannelActionsRail(
+private fun ChannelSelectionPhone(
     state: ChannelSelectionUiState,
-    firstActionFocusRequester: FocusRequester,
-    continueFocus: FocusRequester,
-    logoutFocus: FocusRequester,
     showBack: Boolean,
     hasSelection: Boolean,
-    onClear: () -> Unit,
+    logoutFocus: FocusRequester,
     onRefresh: () -> Unit,
+    onToggle: (Long) -> Unit,
+    onClear: () -> Unit,
     onContinue: () -> Unit,
     onBack: () -> Unit,
     onLogout: () -> Unit
 ) {
-    // Vindo da grade (←) com canais escolhidos, o foco entra direto em "Continuar".
-    RailColumn(enterFocus = { if (state.canContinue) continueFocus else null }) {
-        // Foco inicial na Atualizar (sempre presente); Limpar só aparece com seleção.
-        RailButton(
-            icon = Icons.Filled.Refresh,
-            label = "Atualizar",
-            modifier = Modifier.focusRequester(firstActionFocusRequester),
-            onClick = onRefresh
-        )
-        if (hasSelection) {
-            RailButton(Icons.Filled.Deselect, "Limpar", onClick = onClear)
-        }
-        RailButton(
-            icon = Icons.AutoMirrored.Filled.ArrowForward,
-            label = "Continuar",
-            enabled = state.canContinue,
-            primary = state.canContinue,
-            modifier = Modifier.focusRequester(continueFocus),
-            onClick = onContinue
-        )
-        if (showBack) {
-            RailButton(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", onClick = onBack)
-        }
-        RailButton(
-            Icons.AutoMirrored.Filled.Logout,
-            "Sair",
-            modifier = Modifier.focusRequester(logoutFocus),
-            onClick = onLogout
-        )
-    }
-}
-
-@Composable
-private fun ChannelBottomBar(
-    state: ChannelSelectionUiState,
-    logoutFocusRequester: FocusRequester,
-    showBack: Boolean,
-    hasSelection: Boolean,
-    onClear: () -> Unit,
-    onContinue: () -> Unit,
-    onBack: () -> Unit,
-    onLogout: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(com.ntv2.app.core.ui.BrandColors.Background.copy(alpha = 0.95f))
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (showBack) {
-            ChannelNavItem(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", Modifier.weight(1f), onClick = onBack)
-        }
-        if (hasSelection) {
-            ChannelNavItem(Icons.Filled.Deselect, "Limpar", Modifier.weight(1f), onClick = onClear)
-        }
-        ChannelNavItem(
-            Icons.AutoMirrored.Filled.Logout, "Sair",
-            Modifier.weight(1f).focusRequester(logoutFocusRequester), onClick = onLogout
-        )
-        ChannelNavItem(
-            Icons.AutoMirrored.Filled.ArrowForward, "Continuar",
-            Modifier.weight(if (showBack || hasSelection) 2f else 3f),
-            enabled = state.canContinue, primary = state.canContinue, showLabel = true, onClick = onContinue
-        )
-    }
-}
-
-// Item da barra inferior: ícone + rótulo, raio 4dp; "Continuar" em azul NBR quando habilitado.
-@Composable
-private fun ChannelNavItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    primary: Boolean = false,
-    showLabel: Boolean = false,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val bg = when {
-        primary -> com.ntv2.app.core.ui.BrandColors.Accent
-        focused -> com.ntv2.app.core.ui.BrandColors.Border
-        else -> com.ntv2.app.core.ui.BrandColors.Fill
-    }
-    val fg = when {
-        !enabled -> com.ntv2.app.core.ui.BrandColors.ContentDisabled
-        primary -> com.ntv2.app.core.ui.BrandColors.OnCta
-        else -> Color.White
-    }
-    Row(
-        modifier = modifier
-            .onFocusChanged { focused = it.isFocused }
-            .clip(RoundedCornerShape(4.dp))
-            .background(bg)
-            .border(
-                if (focused) 2.dp else 1.dp,
-                if (focused) com.ntv2.app.core.ui.BrandColors.Accent else com.ntv2.app.core.ui.BrandColors.BorderSubtle,
-                RoundedCornerShape(4.dp)
-            )
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 10.dp, vertical = 11.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = label, tint = fg, modifier = Modifier.size(20.dp))
-        if (showLabel) Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-    }
-}
-
-@Composable
-private fun CompactActionChip(
-    label: String,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    primary: Boolean = false,
-    onClick: () -> Unit
-) {
-    val background = when {
-        !enabled -> com.ntv2.app.core.ui.BrandColors.Fill
-        primary -> MaterialTheme.colorScheme.primary
-        else -> com.ntv2.app.core.ui.BrandColors.BorderSubtle
-    }
-    val content = if (primary && enabled) Color.Black else Color.White
-    Box(
-        modifier = modifier
-            .then(if (enabled) Modifier.glideTarget(4.dp) else Modifier)
-            .clip(RoundedCornerShape(4.dp))
-            .background(background)
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 20.dp, vertical = 13.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, color = if (enabled) content else com.ntv2.app.core.ui.BrandColors.ContentDisabled, style = MaterialTheme.typography.titleSmall)
-    }
-}
-
-@Composable
-private fun ChannelContent(
-    state: ChannelSelectionUiState,
-    compact: Boolean,
-    firstCardFocus: FocusRequester? = null,
-    onRetry: () -> Unit,
-    onToggle: (Long) -> Unit
-) {
     Column(
-        modifier = Modifier
+        Modifier
             .fillMaxSize()
-            .then(if (compact) Modifier.reserveMainBottomNav() else Modifier)
-            .padding(horizontal = if (compact) 16.dp else 24.dp, vertical = if (compact) 16.dp else 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Seleção de Canais", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-            if (state.channels.isNotEmpty()) {
-                Text(
-                    "${state.selectedChannelIds.size} de ${state.channels.size} selecionados",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = com.ntv2.app.core.ui.BrandColors.TextSecondary
-                )
-            }
-        }
-
-        when {
-            state.isLoading -> ChannelsGridSkeleton(compact = compact)
-            state.errorMessage != null -> {
-                Text("Erro: ${state.errorMessage}", color = Color.White)
-                BrandButton(onClick = onRetry) { BrandButtonLabel("Tentar novamente") }
-            }
-            state.emptyState == ChannelSelectionEmptyState.NoEligibleChannels -> {
-                Text("Nenhum canal elegível encontrado", color = Color.White)
-            }
-            else -> ChannelsGrid(state = state, compact = compact, firstCardFocus = firstCardFocus, onToggle = onToggle)
-        }
-    }
-}
-
-@Composable
-private fun ChannelsGrid(
-    state: ChannelSelectionUiState,
-    compact: Boolean,
-    firstCardFocus: FocusRequester? = null,
-    onToggle: (Long) -> Unit
-) {
-    LazyVerticalGrid(
-        modifier = Modifier.fillMaxSize(),
-        columns = if (compact) GridCells.Adaptive(180.dp) else GridCells.Fixed(4),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(state.channels, key = { it.id }) { item ->
-            val first = item.id == state.channels.first().id
-            ChannelCard(
-                item = item,
-                modifier = if (first && firstCardFocus != null) Modifier.focusRequester(firstCardFocus) else Modifier,
-                onToggle = { onToggle(item.id) }
-            )
-        }
-    }
-}
-
-// Skeleton da grade de canais: placeholders no mesmo formato do card (avatar + 2 linhas), com
-// pulse suave — evita a legenda "Carregando canais...".
-@Composable
-private fun ChannelsGridSkeleton(compact: Boolean) {
-    val transition = rememberInfiniteTransition(label = "channels-skeleton")
-    val alpha by transition.animateFloat(
-        initialValue = 0.05f,
-        targetValue = 0.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "channels-skeleton-alpha"
-    )
-    val shimmer = Color.White.copy(alpha = alpha)
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        repeat(if (compact) 8 else 6) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                repeat(if (compact) 1 else 4) {
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(com.ntv2.app.core.ui.BrandColors.Fill)
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(shimmer)
-                        )
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(0.85f)
-                                    .height(12.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(shimmer)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(0.5f)
-                                    .height(10.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(shimmer)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChannelCard(
-    item: ChannelItemUi,
-    modifier: Modifier = Modifier,
-    onToggle: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    val gliding = glideActive()
-    val selected = item.isSelected
-    val accent = MaterialTheme.colorScheme.primary
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            // Altura mínima igual para todos: nomes de 1 e 2 linhas não desalinham a grade.
-            .heightIn(min = 88.dp)
-            .glideTarget(6.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onToggle)
-            .background(
-                when {
-                    focused -> com.ntv2.app.core.ui.BrandColors.SurfaceAlt
-                    selected -> accent.copy(alpha = 0.10f)
-                    else -> com.ntv2.app.core.ui.BrandColors.Surface
-                }
-            )
-            // Foco: anel azul de 3dp (antes branco), igual ao resto do app.
-            .border(
-                width = if (focused && !gliding) 3.dp else if (selected) 2.dp else 1.dp,
-                color = when {
-                    focused && !gliding -> accent
-                    selected -> accent
-                    else -> com.ntv2.app.core.ui.BrandColors.BorderSubtle
-                },
-                shape = RoundedCornerShape(8.dp)
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
+        // Topo (34 dp): [voltar] título 28/700 · atualizar 22 accent · sair.
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth().height(34.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Selo de seleção no canto do avatar: não rouba largura do nome (uma caixa à direita
-            // cortava os nomes no meio da palavra).
-            Box {
-                ChannelAvatar(avatarPath = item.avatarPath, title = item.title)
-                if (selected) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(22.dp)
-                            .clip(CircleShape)
-                            .background(accent)
-                            .border(2.dp, com.ntv2.app.core.ui.BrandColors.Background, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = null,
-                            tint = com.ntv2.app.core.ui.BrandColors.OnCta,
-                            modifier = Modifier.size(14.dp)
+            if (showBack) {
+                PhoneTopIcon(NbrIcons.ChevronLeft, "Voltar", ChannelText, onClick = onBack)
+            }
+            Text(
+                "Seleção de Canais",
+                style = NbrType.ScreenTitle,
+                color = ChannelText,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            PhoneTopIcon(NbrIcons.RefreshCw, "Atualizar", BrandColors.Accent, onClick = onRefresh)
+            PhoneTopIcon(
+                NbrIcons.LogOut, "Sair", BrandColors.TextMuted,
+                modifier = Modifier.focusRequester(logoutFocus), onClick = onLogout
+            )
+        }
+        Text(SUBTITLE, style = NbrType.BodyLarge, color = BrandColors.TextSecondary)
+
+        @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = state.isLoading,
+            onRefresh = onRefresh,
+            modifier = Modifier.weight(1f).fillMaxWidth()
+        ) {
+            when {
+                state.isLoading -> ChannelSkeleton(tv = false)
+                state.errorMessage != null -> ChannelMessage("Erro: ${state.errorMessage}", tv = false, onRetry = onRefresh)
+                state.emptyState == ChannelSelectionEmptyState.NoEligibleChannels ->
+                    ChannelMessage("Nenhum canal elegível encontrado", tv = false)
+                else -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(state.channels, key = { it.id }) { item ->
+                        ChannelRowCard(
+                            title = item.title,
+                            avatarPath = item.avatarPath,
+                            selected = item.isSelected,
+                            onClick = { onToggle(item.id) }
                         )
                     }
                 }
             }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    item.title,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleSmall
-                )
+        }
+
+        // Rodapé (gap 12): "2 de 4 canais selecionados · Limpar" 13/400 muted + "Continuar".
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (state.channels.isNotEmpty()) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (selected) {
-                        Icon(
-                            Icons.Filled.CheckCircle,
-                            contentDescription = null,
-                            tint = accent,
-                            modifier = Modifier.size(16.dp)
+                    val countStyle = NbrType.Secondary
+                    Text(
+                        selectedCountLabel(state.selectedChannelIds.size, state.channels.size),
+                        style = countStyle,
+                        color = BrandColors.TextMuted
+                    )
+                    if (hasSelection) {
+                        Text(" · ", style = countStyle, color = BrandColors.TextMuted)
+                        Text(
+                            "Limpar",
+                            style = countStyle,
+                            color = BrandColors.TextMuted,
+                            modifier = Modifier.clickable(onClick = onClear)
                         )
                     }
-                    Text(
-                        text = if (selected) "Selecionado" else "Selecionar",
-                        color = if (selected) accent else com.ntv2.app.core.ui.BrandColors.TextMuted,
-                        style = MaterialTheme.typography.bodySmall
-                    )
                 }
+            }
+            BrandButton(
+                onClick = onContinue,
+                enabled = state.canContinue,
+                modifier = Modifier.fillMaxWidth()
+            ) { BrandButtonLabel("Continuar") }
+        }
+    }
+}
+
+/** Ícone de 22 do topo do celular, com área de toque circular de 32. */
+@Composable
+private fun PhoneTopIcon(
+    icon: ImageVector,
+    label: String,
+    tint: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+    }
+}
+
+/** TV 06: padding 36/48, gap 16; grade de 4 com gap 14; ações embaixo com gap 10. */
+@Composable
+private fun ChannelSelectionTv(
+    state: ChannelSelectionUiState,
+    showBack: Boolean,
+    hasSelection: Boolean,
+    refreshFocus: FocusRequester,
+    continueFocus: FocusRequester,
+    logoutFocus: FocusRequester,
+    firstCardFocus: FocusRequester,
+    onRefresh: () -> Unit,
+    onToggle: (Long) -> Unit,
+    onClear: () -> Unit,
+    onContinue: () -> Unit,
+    onBack: () -> Unit,
+    onLogout: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 36.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Topo: título 32/800 + secundários (Voltar, Sair, Atualizar 120).
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Seleção de Canais",
+                style = NbrType.Hero.copy(fontSize = 32.sp, lineHeight = 38.7.sp, fontWeight = FontWeight.ExtraBold),
+                color = ChannelText,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            if (showBack) {
+                TvSecondaryButton("Voltar", onClick = onBack)
+            }
+            TvSecondaryButton("Sair", modifier = Modifier.focusRequester(logoutFocus), onClick = onLogout)
+            TvSecondaryButton(
+                "Atualizar",
+                modifier = Modifier.width(120.dp).focusRequester(refreshFocus),
+                onClick = onRefresh
+            )
+        }
+        Text(SUBTITLE, style = NbrType.Body, color = BrandColors.TextSecondary)
+
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when {
+                state.isLoading -> ChannelSkeleton(tv = true)
+                state.errorMessage != null -> ChannelMessage("Erro: ${state.errorMessage}", tv = true, onRetry = onRefresh)
+                state.emptyState == ChannelSelectionEmptyState.NoEligibleChannels ->
+                    ChannelMessage("Nenhum canal elegível encontrado", tv = true)
+                else -> LazyVerticalGrid(
+                    modifier = Modifier.fillMaxSize(),
+                    columns = GridCells.Fixed(4),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    // Folga para o anel de foco não ser cortado na borda da grade.
+                    contentPadding = PaddingValues(4.dp)
+                ) {
+                    items(state.channels, key = { it.id }) { item ->
+                        val first = item.id == state.channels.first().id
+                        ChannelGridCard(
+                            title = item.title,
+                            avatarPath = item.avatarPath,
+                            selected = item.isSelected,
+                            modifier = if (first) Modifier.focusRequester(firstCardFocus) else Modifier,
+                            onClick = { onToggle(item.id) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Ações: "Continuar" 180 + "Limpar" 110 + contagem 12/400 muted.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BrandButton(
+                onClick = onContinue,
+                enabled = state.canContinue,
+                modifier = Modifier.width(180.dp).focusRequester(continueFocus)
+            ) { BrandButtonLabel("Continuar") }
+            if (hasSelection) {
+                TvSecondaryButton("Limpar", modifier = Modifier.width(110.dp), onClick = onClear)
+            }
+            if (state.channels.isNotEmpty()) {
+                Text(
+                    selectedCountLabel(state.selectedChannelIds.size, state.channels.size),
+                    style = NbrType.Caption,
+                    color = BrandColors.TextMuted
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ChannelAvatar(
-    avatarPath: String?,
-    title: String
-) {
-    val avatarSize = 48.dp
-    if (avatarPath != null) {
-        AsyncImage(
-            model = avatarPath,
-            contentDescription = title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(avatarSize)
-                .clip(CircleShape)
-        )
-    } else {
-        // Sem foto: círculo colorido (estável por título) com a inicial.
-        Box(
-            modifier = Modifier
-                .size(avatarSize)
-                .clip(CircleShape)
-                .background(colorForTitle(title)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = initialFor(title),
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium
-            )
-        }
+private fun TvSecondaryButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    BrandButton(onClick = onClick, style = BrandButtonStyle.Secondary, modifier = modifier) {
+        BrandButtonLabel(label)
     }
 }
 
-private val AVATAR_COLORS = listOf(
-    Color(0xFF5C6BC0), Color(0xFF26A69A), Color(0xFFEF5350), Color(0xFFAB47BC),
-    Color(0xFF42A5F5), Color(0xFFFFA726), Color(0xFF66BB6A), Color(0xFFEC407A)
-)
-
-private fun colorForTitle(title: String): Color =
-    AVATAR_COLORS[abs(title.hashCode()) % AVATAR_COLORS.size]
-
-private fun initialFor(title: String): String {
-    val firstLetter = title.trim().firstOrNull { it.isLetterOrDigit() }
-    return firstLetter?.uppercaseChar()?.toString() ?: "#"
+/** Erro ou lista vazia: texto text-2 centralizado e, no erro, "Tentar novamente". */
+@Composable
+private fun ChannelMessage(text: String, tv: Boolean, onRetry: (() -> Unit)? = null) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.width(if (tv) 360.dp else 280.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(text, style = NbrType.Body, color = BrandColors.TextSecondary, textAlign = TextAlign.Center)
+            if (onRetry != null) {
+                BrandButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+                    BrandButtonLabel("Tentar novamente")
+                }
+            }
+        }
+    }
 }

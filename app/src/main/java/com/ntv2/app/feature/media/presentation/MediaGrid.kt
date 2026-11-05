@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,10 +27,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -64,6 +61,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -88,6 +86,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
 import kotlin.math.roundToInt
+import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Grade da biblioteca: cards, esqueleto de carregamento e "Carregar mais".
 
@@ -125,7 +124,7 @@ internal fun LoadMoreButton(
             CircularProgressIndicator(color = content, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
             Text("Carregando…", color = content, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         } else {
-            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
+            Icon(NbrIcons.ChevronDown, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
             Text("Carregar mais", color = content, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
     }
@@ -137,7 +136,7 @@ internal fun LoadMoreButton(
 // 6 colunas: card horizontal (2 col) cabe 3 por linha; retrato (1 col) até 6 por linha.
 // Colunas pela largura DISPONÍVEL da grade (dp): ~130dp por card. Cards menores no celular
 // (2 no retrato, ~5 na paisagem) e ~6 na TV (teto). Evita card gigante em telas largas.
-internal const val GRID_TARGET_COL_DP = 115f
+internal const val GRID_TARGET_COL_DP = 107f
 internal fun columnsForWidthDp(widthDp: Float): Int =
     (widthDp / GRID_TARGET_COL_DP).toInt().coerceIn(2, 6)
 internal val GRID_GAP = 12.dp
@@ -162,7 +161,13 @@ internal fun LazyMediaGrid(
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
     // Conteúdo fixo no topo da grade (trilhas de personalização), rolando junto com os cards.
-    headerContent: (@Composable () -> Unit)? = null
+    headerContent: (@Composable () -> Unit)? = null,
+    // Folga nas bordas: na TV o card focado cresce e ganha o aro; no celular o protótipo alinha a grade à margem.
+    contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
+    horizontalGap: Dp = GRID_GAP,
+    verticalGap: Dp = GRID_GAP,
+    // Celular (protótipo): nome sempre sob a capa; TV: nome só quando não há pôster.
+    titleBelow: Boolean = false
 ) {
     val scope = rememberCoroutineScope()
     val hasHeader = headerContent != null
@@ -205,11 +210,9 @@ internal fun LazyMediaGrid(
             columns = StaggeredGridCells.Fixed(columns),
             state = state,
             modifier = Modifier.fillMaxSize(),
-            // Folga nas bordas: o card focado cresce 5% e ganha o aro verde; sem isso as colunas
-            // e linhas das pontas cortavam o destaque.
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
-            verticalItemSpacing = GRID_GAP
+            contentPadding = contentPadding,
+            horizontalArrangement = Arrangement.spacedBy(horizontalGap),
+            verticalItemSpacing = verticalGap
         ) {
             if (headerContent != null) {
                 item(key = "library-header", span = StaggeredGridItemSpan.FullLine) {
@@ -228,9 +231,10 @@ internal fun LazyMediaGrid(
                     cardLoadingStyle = cardLoadingStyle,
                     animationsEnabled = animationsEnabled,
                     showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning(),
+                    titleBelow = titleBelow,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusGlideTarget(media.mediaId, glide, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
+                        .focusGlideTarget(media.mediaId, glide, radius = CARD_RADIUS, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
                         .focusRequester(requester)
                         .onFocusChanged { if (it.isFocused) onCardFocused(media.mediaId) }
                         .onPreviewKeyEvent { e ->
@@ -379,6 +383,10 @@ internal fun MediaGridSkeleton(
 
 private val FOCUS_ACCENT = com.ntv2.app.core.ui.BrandColors.Accent
 
+/** Raio da capa do protótipo (12 dp). */
+internal val CARD_RADIUS = 12.dp
+private val CardShape = RoundedCornerShape(CARD_RADIUS)
+
 /** Borda neutra do card sem foco (some conforme o foco chega). */
 private fun DrawScope.drawIdleBorder(fraction: Float) {
     if (fraction >= 1f) return
@@ -387,7 +395,7 @@ private fun DrawScope.drawIdleBorder(fraction: Float) {
         color = com.ntv2.app.core.ui.BrandColors.Border.copy(alpha = 0x33 / 255f * (1f - fraction)),
         topLeft = androidx.compose.ui.geometry.Offset(line / 2, line / 2),
         size = androidx.compose.ui.geometry.Size(size.width - line, size.height - line),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx() - line / 2),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(CARD_RADIUS.toPx() - line / 2),
         style = androidx.compose.ui.graphics.drawscope.Stroke(line)
     )
 }
@@ -400,12 +408,13 @@ internal fun MediaCard(
     animationsEnabled: Boolean,
     showPlaybackWarning: Boolean,
     modifier: Modifier,
+    titleBelow: Boolean = false,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     // Com pôster → capa retrato (9:16). Sem pôster (capas ON) → frame 16:9. Capas OFF → placeholder.
     val cover = if (showCover) (media.posterPath ?: media.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null
-    val showTitle = !showCover || media.posterPath == null
+    val showTitle = !titleBelow && (!showCover || media.posterPath == null)
     // Foco: aro verde (cor de destaque do app) com contorno escuro por dentro, desenhado POR CIMA
     // da capa. Só a borda branca sumia em pôsteres claros e o usuário se perdia.
     // Tudo que muda com o foco (aro, fundo) segue UMA fração animada 0..1. Antes o aro e o
@@ -429,26 +438,17 @@ internal fun MediaCard(
                 val sc = 1f + (com.ntv2.app.core.ui.BRAND_FOCUS_SCALE - 1f) * focusFraction
                 scaleX = sc; scaleY = sc
             }
-            .clip(RoundedCornerShape(6.dp))
-            .drawBehind {
-                if (showTitle || focusFraction > 0f) {
-                    drawRect(androidx.compose.ui.graphics.lerp(com.ntv2.app.core.ui.BrandColors.Fill, com.ntv2.app.core.ui.BrandColors.BorderSubtle, focusFraction))
-                }
-            }
-            .drawWithContent {
-                drawContent()
-                drawIdleBorder(focusFraction)
-                // Com animações ligadas o aro é o anel único que desliza pela grade (FocusGlideRing);
-                // desligadas, cada card desenha o seu, na hora.
-                if (!animationsEnabled && focusFraction > 0f) drawFocusRing(size, focusFraction)
-            }
+            // Sem título abaixo: o card inteiro é a "capa" (clip, borda e aro); com título abaixo (celular),
+            // só a capa recebe esse acabamento e o nome fica solto embaixo, como no protótipo.
+            .then(if (titleBelow) Modifier else Modifier.cardFrame(showTitle, focusFraction, animationsEnabled))
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // Capa (proporção da imagem) com barra de progresso e alerta opcional de reprodução.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(media.gridAspectRatio(showCover))
+                    .then(if (titleBelow) Modifier.cardFrame(false, focusFraction, animationsEnabled) else Modifier)
                     .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
             ) {
                 if (cover != null) {
@@ -465,7 +465,7 @@ internal fun MediaCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Filled.Movie,
+                            NbrIcons.Clapperboard,
                             contentDescription = null,
                             tint = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
                             modifier = Modifier.size(48.dp)
@@ -476,18 +476,17 @@ internal fun MediaCard(
                 // Selos nos cantos, em pílula escura: resolução no topo esquerdo, duração embaixo à direita
                 // (acima da barra de progresso). Só aparecem quando o dado é conhecido.
                 val resolutionBadge = com.ntv2.app.core.player.VideoResolution.label(height = media.videoHeight)
+                val badgeBottom = if (media.progress > 0f) 12.dp else 8.dp
                 if (resolutionBadge != null) {
-                    CardBadge(
+                    PosterBadge(
                         text = resolutionBadge,
-                        modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = badgeBottom)
                     )
                 }
                 if (media.durationSeconds > 0) {
-                    CardBadge(
+                    PosterBadge(
                         text = durationLabel(media.durationSeconds),
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 6.dp, bottom = if (media.progress > 0f) 10.dp else 6.dp)
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = badgeBottom)
                     )
                 }
 
@@ -497,7 +496,7 @@ internal fun MediaCard(
                             .align(Alignment.BottomStart)
                             .fillMaxWidth()
                             .height(4.dp)
-                            .background(Color(0x66000000))
+                            .background(Color(0x33FFFFFF))
                     ) {
                         Box(
                             modifier = Modifier
@@ -518,7 +517,7 @@ internal fun MediaCard(
                             .padding(4.dp)
                     ) {
                         Icon(
-                            Icons.Filled.Warning,
+                            NbrIcons.TriangleAlert,
                             contentDescription = "Pode não reproduzir vídeo neste aparelho",
                             tint = com.ntv2.app.core.ui.BrandColors.Warning,
                             modifier = Modifier.size(16.dp)
@@ -540,9 +539,34 @@ internal fun MediaCard(
                         .padding(horizontal = 8.dp, vertical = 8.dp)
                 )
             }
+            if (titleBelow) {
+                Text(
+                    media.title,
+                    color = TEXT_PRIMARY,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = com.ntv2.app.core.ui.NbrType.Chip
+                )
+            }
         }
     }
 }
+
+/** Acabamento da capa: raio do protótipo, fundo do foco, borda sutil em repouso e aro (sem animações). */
+private fun Modifier.cardFrame(filled: Boolean, focusFraction: Float, animationsEnabled: Boolean): Modifier = this
+    .clip(CardShape)
+    .drawBehind {
+        if (filled || focusFraction > 0f) {
+            drawRect(androidx.compose.ui.graphics.lerp(com.ntv2.app.core.ui.BrandColors.Fill, com.ntv2.app.core.ui.BrandColors.BorderSubtle, focusFraction))
+        }
+    }
+    .drawWithContent {
+        drawContent()
+        drawIdleBorder(focusFraction)
+        // Com animações ligadas o aro é o anel único que desliza pela grade (FocusGlideRing);
+        // desligadas, cada card desenha o seu, na hora.
+        if (!animationsEnabled && focusFraction > 0f) drawFocusRing(size, focusFraction, CARD_RADIUS.toPx())
+    }
 
 /** Selo do card: pílula escura de cantos baixos para o texto ler sobre qualquer capa. */
 @Composable
@@ -583,22 +607,30 @@ internal fun LibraryTabSelector(
 @Composable
 private fun LibraryTabChip(label: String, active: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    val shape = com.ntv2.app.core.ui.BrandShapes.Pill
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(shape)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
-            .background(if (active) FOCUS_ACCENT else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
-            .then(if (focused && !active) Modifier.border(3.dp, com.ntv2.app.core.ui.BrandColors.Accent, RoundedCornerShape(4.dp)) else Modifier)
-            // Alvo de toque de 44dp no celular (antes ~36dp).
-            .heightIn(min = 44.dp)
-            .padding(horizontal = 18.dp),
+            .background(if (active) FOCUS_ACCENT else com.ntv2.app.core.ui.BrandColors.Fill)
+            .border(
+                if (focused) 2.dp else 1.dp,
+                when {
+                    focused -> com.ntv2.app.core.ui.BrandColors.Accent
+                    active -> FOCUS_ACCENT
+                    else -> com.ntv2.app.core.ui.BrandColors.BorderSubtle
+                },
+                shape
+            )
+            .height(32.dp)
+            .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             label,
-            color = if (active) Color.Black else Color(0xFFDDDDDD),
-            style = MaterialTheme.typography.labelLarge
+            color = if (active) com.ntv2.app.core.ui.BrandColors.OnCta else com.ntv2.app.core.ui.BrandColors.TextSecondary,
+            style = if (active) com.ntv2.app.core.ui.NbrType.Chip else com.ntv2.app.core.ui.NbrType.Chip.copy(fontWeight = FontWeight.Medium)
         )
     }
 }
@@ -614,7 +646,11 @@ internal fun LazySeriesGrid(
     onCardFocused: (String) -> Unit = {},
     cardLoadingStyle: CardLoadingStyle = CardLoadingStyle.DEFAULT,
     animationsEnabled: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
+    horizontalGap: Dp = GRID_GAP,
+    verticalGap: Dp = GRID_GAP,
+    titleBelow: Boolean = false
 ) {
     // Com o anel da tela (rail + grade juntos) usa o dela; senão, um próprio só da grade.
     val screenGlide = LocalFocusGlide.current
@@ -626,9 +662,9 @@ internal fun LazySeriesGrid(
             columns = StaggeredGridCells.Fixed(columns),
             state = state,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
-            verticalItemSpacing = GRID_GAP
+            contentPadding = contentPadding,
+            horizontalArrangement = Arrangement.spacedBy(horizontalGap),
+            verticalItemSpacing = verticalGap
         ) {
             items(items = series, key = { "series_${it.tmdbId}" }) { s ->
                 val id = "series_${s.tmdbId}"
@@ -637,9 +673,10 @@ internal fun LazySeriesGrid(
                     showCover = showCovers,
                     cardLoadingStyle = cardLoadingStyle,
                     animationsEnabled = animationsEnabled,
+                    titleBelow = titleBelow,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusGlideTarget(id, glide, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
+                        .focusGlideTarget(id, glide, radius = CARD_RADIUS, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
                         .focusRequester(focusRequesterFor(id))
                         .onFocusChanged { if (it.isFocused) onCardFocused(id) },
                     onClick = { onSeriesClick(s) }
@@ -657,6 +694,7 @@ private fun SeriesGridCard(
     cardLoadingStyle: CardLoadingStyle,
     animationsEnabled: Boolean,
     modifier: Modifier,
+    titleBelow: Boolean = false,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -677,20 +715,14 @@ private fun SeriesGridCard(
                 val sc = 1f + (com.ntv2.app.core.ui.BRAND_FOCUS_SCALE - 1f) * focusFraction
                 scaleX = sc; scaleY = sc
             }
-            .clip(RoundedCornerShape(6.dp))
-            .background(com.ntv2.app.core.ui.BrandColors.Fill)
-            .drawWithContent {
-                drawContent()
-                drawIdleBorder(focusFraction)
-                // Animações ligadas: o aro é o anel único que desliza (FocusGlideRing).
-                if (!animationsEnabled && focusFraction > 0f) drawFocusRing(size, focusFraction)
-            }
+            .then(if (titleBelow) Modifier else Modifier.cardFrame(true, focusFraction, animationsEnabled))
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(2f / 3f)
+                    .then(if (titleBelow) Modifier.cardFrame(false, focusFraction, animationsEnabled) else Modifier)
                     .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
             ) {
                 if (cover != null) {
@@ -704,17 +736,27 @@ private fun SeriesGridCard(
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Icon(
-                            Icons.Filled.Movie,
+                            NbrIcons.Clapperboard,
                             contentDescription = null,
                             tint = com.ntv2.app.core.ui.BrandColors.ContentDisabled,
                             modifier = Modifier.size(48.dp)
                         )
                     }
                 }
+                // Selo do protótipo para série.
+                PosterBadge("SÉRIE", Modifier.align(Alignment.BottomStart).padding(8.dp))
             }
             // Sem capa (opção desligada ou série sem pôster), o nome aparece sob o placeholder,
             // igual ao card de filmes.
-            if (series.posterUrl == null || !showCover) {
+            if (titleBelow) {
+                Text(
+                    series.title,
+                    color = TEXT_PRIMARY,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = com.ntv2.app.core.ui.NbrType.Chip
+                )
+            } else if (series.posterUrl == null || !showCover) {
                 Text(
                     series.title,
                     color = Color.White,

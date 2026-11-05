@@ -5,7 +5,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import com.ntv2.app.core.ui.reserveMainBottomNav
 import com.ntv2.app.core.ui.BrandBackdrop
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -17,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.foundation.lazy.staggeredgrid.items
@@ -459,30 +458,24 @@ fun MediaLibraryScreen(
             }
 
             // Conteúdo do canal ativo (grade plana de aspecto misto).
+            // Protótipo: celular com margem de 24 dp e 18 dp entre blocos; TV com 28 px → 14 dp.
+            // No celular a grade desce até o fundo e rola por trás da tab bar flutuante.
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(if (useTvLayout) Modifier else Modifier.statusBarsPadding())
-                    .padding(
-                        horizontal = if (useTvLayout) adaptive.tvSafeHorizontal else 14.dp,
-                        vertical = if (useTvLayout) adaptive.tvSafeVertical else 12.dp
+                    .then(
+                        if (useTvLayout) Modifier.padding(horizontal = adaptive.tvSafeHorizontal, vertical = adaptive.tvSafeVertical)
+                        else Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp)
                     ),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(if (useTvLayout) 14.dp else 18.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        state.activeChannelName.ifBlank { "Biblioteca" },
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                // Título "Biblioteca" + pílula do canal atual (o nome do canal antes era o título).
+                LibraryHeader(
+                    channelName = state.activeChannelName,
+                    useTvLayout = useTvLayout,
+                    onChannelClick = if (useTvLayout) null else ({ channelPicker = true })
+                )
 
                 // Seletor Filmes/Séries: só aparece quando o canal tem séries no índice.
                 if (state.series.isNotEmpty()) {
@@ -516,11 +509,13 @@ fun MediaLibraryScreen(
                 // para fora da tela.
                 // A Minha lista fica no rail (TV) / aba "Meu" (celular), não na grade.
                 val hasTracks = state.continueWatching.isNotEmpty() || state.recommendations.isNotEmpty()
+                // Cabeçalho "Todos os títulos" do protótipo sobre a grade (só quando há trilhas acima;
+                // sozinha a grade dispensa o rótulo e mantém o comportamento de foco de antes).
                 val libraryHeader: (@Composable () -> Unit)? = if (!hasTracks) null else {
                     {
                         Column(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                            modifier = Modifier.fillMaxWidth().padding(bottom = if (useTvLayout) 0.dp else 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(if (useTvLayout) 14.dp else 18.dp)
                         ) {
                             if (state.continueWatching.isNotEmpty()) {
                                 ContinueWatchingRow(
@@ -536,13 +531,24 @@ fun MediaLibraryScreen(
                                     items = state.recommendations,
                                     showCovers = state.showCovers,
                                     useTvLayout = useTvLayout,
-                                    onCardClick = openRecommendation
+                                    onCardClick = openRecommendation,
+                                    libraryStyle = true
                                 )
+                            }
+                            if (state.items.isNotEmpty()) {
+                                LibrarySectionTitle("Todos os títulos", useTvLayout)
                             }
                         }
                     }
                 }
 
+                // Grade: na TV mantém a folga para o foco crescer; no celular segue a margem do protótipo
+                // (gaps 10/14) e reserva embaixo o espaço da tab bar, rolando por trás dela.
+                val navReserve = if (useTvLayout) 0.dp else com.ntv2.app.core.ui.mainBottomNavReserve()
+                val gridPadding = if (useTvLayout) PaddingValues(horizontal = 10.dp, vertical = 12.dp)
+                    else PaddingValues(top = 0.dp, bottom = navReserve + 12.dp)
+                val gridHGap = if (useTvLayout) GRID_GAP else 10.dp
+                val gridVGap = if (useTvLayout) GRID_GAP else 14.dp
                 val gridContent: @Composable () -> Unit = {
                 if (state.libraryTab == com.ntv2.app.feature.media.presentation.state.LibraryTab.SERIES) {
                     LazySeriesGrid(
@@ -559,9 +565,11 @@ fun MediaLibraryScreen(
                             lastFocusedSeriesId = "series_${s.tmdbId}"
                             openSeriesTmdbId = s.tmdbId
                         },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .then(if (useTvLayout) Modifier else Modifier.reserveMainBottomNav())
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = gridPadding,
+                        horizontalGap = gridHGap,
+                        verticalGap = gridVGap,
+                        titleBelow = !useTvLayout
                     )
                 } else when {
                     state.isLoading -> MediaGridSkeleton(
@@ -578,6 +586,14 @@ fun MediaLibraryScreen(
                         onSecondary = { viewModel.onAction(MediaLibraryAction.ClearError) },
                         primaryFocus = statusFocus,
                         onLeft = if (useTvLayout) ({ runCatching { initialActionsFocus.requestFocus() } }) else null
+                    )
+
+                    state.emptyState == MediaLibraryEmptyState.NoChannelsSelected -> NoChannelPanel(
+                        onChooseChannel = onOpenSettings,
+                        onRetry = { viewModel.onAction(MediaLibraryAction.Refresh) },
+                        primaryFocus = statusFocus,
+                        onLeft = if (useTvLayout) ({ runCatching { initialActionsFocus.requestFocus() } }) else null,
+                        modifier = Modifier.padding(bottom = navReserve)
                     )
 
                     state.emptyState != null -> {
@@ -632,9 +648,11 @@ fun MediaLibraryScreen(
                             hasMore = state.hasMore,
                             loadingMore = loadMoreRequested,
                             state = gridState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .then(if (useTvLayout) Modifier else Modifier.reserveMainBottomNav()),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = gridPadding,
+                            horizontalGap = gridHGap,
+                            verticalGap = gridVGap,
+                            titleBelow = !useTvLayout,
                             focusRequesterFor = { id ->
                                 cardFocusRequesters.getOrPut(id) { FocusRequester() }
                             },
@@ -685,18 +703,6 @@ fun MediaLibraryScreen(
             }
         }
 
-        if (!useTvLayout) {
-            MainBottomNav(
-                selected = if (showMyStuff) MainTab.MyStuff else MainTab.Library,
-                onLibrary = { showMyStuff = false },
-                onChannels = { channelPicker = true },
-                onSettings = onOpenSettings,
-                onSearch = { searching = true },
-                onMyStuff = { showMyStuff = true },
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
-        }
-
         if (showMyStuff) {
             MyStuffOverlay(
                 continueWatching = state.continueWatching,
@@ -721,6 +727,19 @@ fun MediaLibraryScreen(
                 onRemoveHistory = { mediaId -> viewModel.onAction(MediaLibraryAction.RemoveFromHistory(mediaId)) },
                 onClearHistory = { viewModel.onAction(MediaLibraryAction.ClearHistory) },
                 onClose = { showMyStuff = false }
+            )
+        }
+
+        // Tab bar depois da aba Meu: no protótipo ela fica visível por cima da tela Meu.
+        if (!useTvLayout) {
+            MainBottomNav(
+                selected = if (showMyStuff) MainTab.MyStuff else MainTab.Library,
+                onLibrary = { showMyStuff = false },
+                onChannels = { channelPicker = true },
+                onSettings = onOpenSettings,
+                onSearch = { searching = true },
+                onMyStuff = { showMyStuff = true },
+                modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
 

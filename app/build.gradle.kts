@@ -74,8 +74,8 @@ android {
         applicationId = "com.ntv2.app"
         minSdk = 23
         targetSdk = 35
-        versionCode = 32
-        versionName = "0.6.0"
+        versionCode = 34
+        versionName = "0.8.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
@@ -176,7 +176,6 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.tv.foundation)
     implementation(libs.androidx.tv.material)
     implementation(libs.androidx.navigation.compose)

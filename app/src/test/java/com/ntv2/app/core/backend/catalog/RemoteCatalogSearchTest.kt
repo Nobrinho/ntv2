@@ -136,6 +136,26 @@ class RemoteCatalogSearchTest {
     }
 
     @Test
+    fun `mesma busca em menos de 5 minutos nao chama o servidor de novo`() = runTest {
+        val transport = FakeTransport { req ->
+            if (req.url.endsWith("/rpc/search_catalog")) BackendResponse(200, searchJson) else BackendResponse(200, episodesJson)
+        }
+        var clock = 0L
+        val remote = RemoteCatalogSearch(SupabaseClient(BackendConfig("http://local", "anon"), transport), now = { clock })
+        fun calls() = transport.requests.count { it.url.endsWith("/rpc/search_catalog") }
+
+        remote.searchPage("matrix")
+        clock += 4 * 60_000L
+        remote.searchPage("matrix")
+        assertEquals(1, calls())
+        remote.searchPage("matrix", offset = 30) // outra página é outra busca
+        assertEquals(2, calls())
+        clock += 2 * 60_000L
+        remote.searchPage("matrix") // expirou
+        assertEquals(3, calls())
+    }
+
+    @Test
     fun `remoto so atende texto com no maximo um genero e um ano e sem ator`() {
         val remote = RemoteCatalogSearch(SupabaseClient(BackendConfig("", "")))
         assertTrue(remote.supports("matrix", setOf("Ação"), setOf(1999), null))

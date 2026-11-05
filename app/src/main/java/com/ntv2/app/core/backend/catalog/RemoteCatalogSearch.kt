@@ -30,8 +30,19 @@ data class RemoteCatalogPage(
  */
 class RemoteCatalogSearch(
     private val client: SupabaseClient,
-    private val episodeConcurrency: Int = 4
+    private val episodeConcurrency: Int = 4,
+    private val now: () -> Long = System::currentTimeMillis
 ) : CatalogSearch {
+    /**
+     * Páginas de busca recentes (5 min, até [PAGE_CACHE_MAX] buscas): repetir a mesma busca, voltar
+     * da tela de detalhes ou trocar de aba não chega ao servidor. Fica no app porque a CDN do Supabase
+     * não guarda respostas de Edge Function (testado em 05/11/2026: sempre `CF-Cache-Status: DYNAMIC`).
+     */
+    private val pageCache = object : LinkedHashMap<String, Pair<Long, RemoteCatalogPage>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, RemoteCatalogPage>>?) =
+            size > PAGE_CACHE_MAX
+    }
+
     // Temporadas por série: a tela de série é aberta várias vezes a partir da mesma busca.
     private val seasonsCache = ConcurrentHashMap<Long, List<IndexSeason>>()
 
@@ -67,7 +78,13 @@ class RemoteCatalogSearch(
             .put("year", year?.toString() ?: JSONObject.NULL)
             .put("lim", limit)
             .put("off", offset)
-        return parseSearchCatalog(client.rpc("search_catalog", body.toString()))
+            .toString()
+        synchronized(pageCache) {
+            pageCache[body]?.let { (at, page) -> if (now() - at < PAGE_CACHE_TTL_MS) return page }
+        }
+        val page = parseSearchCatalog(client.rpc("search_catalog", body))
+        synchronized(pageCache) { pageCache[body] = now() to page }
+        return page
     }
 
     suspend fun seriesEpisodes(seriesTmdbId: Long): List<IndexSeason> {
@@ -84,6 +101,11 @@ class RemoteCatalogSearch(
                 async { permits.withPermit { s.copy(seasons = seriesEpisodes(s.tmdbId)) } }
             }.awaitAll()
         }
+    }
+
+    private companion object {
+        const val PAGE_CACHE_TTL_MS = 5L * 60L * 1000L
+        const val PAGE_CACHE_MAX = 50
     }
 }
 

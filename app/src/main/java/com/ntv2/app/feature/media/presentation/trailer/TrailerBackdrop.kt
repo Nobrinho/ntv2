@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -69,11 +70,13 @@ private class TrailerBridge(
 
     @JavascriptInterface
     fun playing() {
+        Log.i(TRAILER_LOG, "player: tocando")
         main.post { if (active) onPlaying() }
     }
 
     @JavascriptInterface
-    fun error(@Suppress("UNUSED_PARAMETER") code: String?) {
+    fun error(code: String?) {
+        Log.w(TRAILER_LOG, "player: erro $code")
         main.post { if (active) onError() }
     }
 
@@ -172,6 +175,7 @@ private fun TrailerBackdropContent(
         val t0 = SystemClock.uptimeMillis()
         try {
             delay(timeout.remainingMs)
+            Log.w(TRAILER_LOG, "player: sem 'playing' no prazo; fica a imagem")
             failed = true
         } finally {
             timeout.consume(SystemClock.uptimeMillis() - t0)
@@ -218,8 +222,9 @@ private fun TrailerBackdropContent(
             factory = { ctx ->
                 val web = try {
                     WebView(ctx)
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
                     // Sem WebView disponível (provedor atualizando/ausente): conta como falha.
+                    Log.w(TRAILER_LOG, "WebView indisponível: $t")
                     null
                 }
                 if (web == null) {
@@ -244,11 +249,13 @@ private fun TrailerBackdropContent(
                         // Chamado na thread principal: marca o renderizador como morto (nada mais é
                         // chamado no WebView além de destroy) e segue o caminho de falha.
                         webViewClient = TrailerWebViewClient(onRendererGone = {
+                            Log.w(TRAILER_LOG, "renderizador do WebView caiu; fica a imagem")
                             holder.rendererGone = true
                             bridge.release()
                             failed = true
                         })
                         addJavascriptInterface(bridge, "NtvTrailer")
+                        Log.i(TRAILER_LOG, "WebView criado para $videoId")
                         loadDataWithBaseURL(TrailerHtml.BASE_URL, TrailerHtml.build(videoId), "text/html", "utf-8", null)
                         // Criado com a tela já em segundo plano: começa suspenso até o ON_START.
                         if (!started) onPause()
@@ -298,10 +305,21 @@ fun DetailsTrailerBackdrop(
     animationsEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val videoId = remember(trailerUrl) { YouTubeIds.videoId(trailerUrl) } ?: return
+    val videoId = remember(trailerUrl) { YouTubeIds.videoId(trailerUrl) }
+    LaunchedEffect(trailerUrl) {
+        if (videoId == null) Log.i(TRAILER_LOG, "sem prévia: link ausente ou não reconhecido ($trailerUrl)")
+    }
+    if (videoId == null) return
     val context = LocalContext.current
     val dataSaver = remember { isDataSaverOn(context) }
     var failedHere by remember(videoId) { mutableStateOf(false) }
+    LaunchedEffect(videoId, trailerPreviewEnabled, showCovers, imageLoaded, dataSaver, failedHere) {
+        Log.i(
+            TRAILER_LOG,
+            "decisão $videoId: ligada=$trailerPreviewEnabled capas=$showCovers imagem=$imageLoaded " +
+                "economia=$dataSaver falhou=${failedHere || videoId in TrailerFailures.ids}"
+        )
+    }
     val allowed = !failedHere && shouldPreviewTrailer(
         videoId = videoId,
         userEnabled = trailerPreviewEnabled,
@@ -328,3 +346,5 @@ fun DetailsTrailerBackdrop(
         )
     }
 }
+
+private const val TRAILER_LOG = "NtvTrailer"

@@ -130,6 +130,22 @@ internal fun MovieDetailsOverlay(
     BackHandler(enabled = true) { onDismiss() }
     var reporting by remember { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
+    // Botão "Trailer": tela cheia com som. Só aparece com link do YouTube reconhecido.
+    val trailerVideoId = remember(details?.trailerUrl) {
+        com.ntv2.app.feature.media.presentation.trailer.YouTubeIds.videoId(details?.trailerUrl)
+    }
+    var trailerOpen by remember(media.mediaId) { mutableStateOf(false) }
+    // Ao fechar a tela cheia o foco volta ao botão principal. Pedido um quadro depois: enquanto a
+    // tela cheia existe, o foco preso nela recusa o pedido e ia parar no "Voltar".
+    var restoreFocusAfterTrailer by remember { mutableStateOf(false) }
+    LaunchedEffect(restoreFocusAfterTrailer) {
+        if (restoreFocusAfterTrailer) {
+            withFrameNanos { }
+            runCatching { playFocus.requestFocus() }
+            restoreFocusAfterTrailer = false
+        }
+    }
+    val onTrailerClick: (() -> Unit)? = trailerVideoId?.let { { trailerOpen = true } }
 
     // O fundo é o banner do filme (nunca o pôster): só cai para a capa do card se não houver banner.
     // Com "Capas" desligadas nas configurações, a tela não exibe nenhuma imagem de capa/banner.
@@ -179,8 +195,8 @@ internal fun MovieDetailsOverlay(
                         // Prévia do trailer por cima da imagem e por baixo do degradê; a imagem fica como reserva.
                         DetailsTrailerBackdrop(
                             trailerUrl = details?.trailerUrl,
-                            // "Assistir" apertado: sai o trailer (o WebView é destruído) antes do player abrir.
-                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading,
+                            // "Assistir" apertado ou trailer em tela cheia: sai a prévia (o WebView é destruído).
+                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading && !trailerOpen,
                             showCovers = showCovers,
                             imageLoaded = backdropLoaded,
                             animationsEnabled = animationsEnabled,
@@ -213,6 +229,7 @@ internal fun MovieDetailsOverlay(
                     tv = false,
                     headerInHero = true,
                     onReportClick = { reporting = true },
+                    onTrailerClick = onTrailerClick,
                     isFavorite = isFavorite,
                     onToggleFavorite = onToggleFavorite,
                     recommendations = recommendations,
@@ -252,8 +269,8 @@ internal fun MovieDetailsOverlay(
                         // Prévia do trailer por cima da imagem e por baixo do degradê; a imagem fica como reserva.
                         DetailsTrailerBackdrop(
                             trailerUrl = details?.trailerUrl,
-                            // "Assistir" apertado: sai o trailer (o WebView é destruído) antes do player abrir.
-                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading,
+                            // "Assistir" apertado ou trailer em tela cheia: sai a prévia (o WebView é destruído).
+                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading && !trailerOpen,
                             showCovers = showCovers,
                             imageLoaded = backdropLoaded,
                             animationsEnabled = animationsEnabled,
@@ -301,6 +318,7 @@ internal fun MovieDetailsOverlay(
                             // O elenco vai na coluna da direita (protótipo 09).
                             showCast = false,
                             onReportClick = { reporting = true },
+                            onTrailerClick = onTrailerClick,
                             isFavorite = isFavorite,
                             onToggleFavorite = onToggleFavorite,
                             // As recomendações vão nas fileiras full-width abaixo (não inline na coluna).
@@ -356,6 +374,15 @@ internal fun MovieDetailsOverlay(
                     .statusBarsPadding()
                     .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                     .padding(start = 16.dp, top = 4.dp)
+            )
+        }
+        if (trailerOpen && trailerVideoId != null) {
+            com.ntv2.app.feature.media.presentation.trailer.TrailerFullscreen(
+                videoId = trailerVideoId,
+                onClose = {
+                    trailerOpen = false
+                    restoreFocusAfterTrailer = true
+                }
             )
         }
         if (reporting) {
@@ -428,6 +455,7 @@ internal fun DetailsInfo(
     headerInHero: Boolean = false,
     showCast: Boolean = true,
     onReportClick: () -> Unit = {},
+    onTrailerClick: (() -> Unit)? = null,
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     recommendations: List<MediaCardUi> = emptyList(),
@@ -471,7 +499,8 @@ internal fun DetailsInfo(
                 playFailedText = playFailedText,
                 isFavorite = isFavorite,
                 onToggleFavorite = onToggleFavorite,
-                onReportClick = onReportClick
+                onReportClick = onReportClick,
+                onTrailerClick = onTrailerClick
             )
             if (isFavorite) InListLabel()
         }
@@ -768,7 +797,9 @@ internal fun DetailsActionRow(
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     onReportClick: () -> Unit = {},
-    playFailedText: String? = null
+    playFailedText: String? = null,
+    /** Trailer em tela cheia; nulo = título sem trailer (o botão não aparece). */
+    onTrailerClick: (() -> Unit)? = null
 ) {
     val playLabel = when {
         playLoading -> "Abrindo…"
@@ -800,6 +831,7 @@ internal fun DetailsActionRow(
                 failed = playFailed && !playLoading
             )
             if (showRestart) MovieDetailPillButton(NbrIcons.RotateCcw, "Recomeçar", onRestart)
+            if (onTrailerClick != null) MovieDetailPillButton(NbrIcons.Clapperboard, "Trailer", onTrailerClick)
             MovieDetailPillButton(favoriteIcon, favoriteDescription, onToggleFavorite, tint = favoriteTint)
             MovieDetailPillButton(NbrIcons.Flag, "Reportar", onReportClick)
         }
@@ -828,6 +860,7 @@ internal fun DetailsActionRow(
         }
         val roundTop = Modifier.padding(top = 2.dp)
         if (showRestart) MovieDetailRoundButton(NbrIcons.RotateCcw, "Recomeçar", onRestart, roundTop)
+        if (onTrailerClick != null) MovieDetailRoundButton(NbrIcons.Clapperboard, "Ver trailer", onTrailerClick, roundTop)
         MovieDetailRoundButton(
             favoriteIcon, favoriteDescription, onToggleFavorite, roundTop,
             tint = favoriteTint,

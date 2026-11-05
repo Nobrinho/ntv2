@@ -66,6 +66,7 @@ import coil.compose.AsyncImage
 import com.ntv2.app.feature.media.presentation.trailer.DetailsTrailerBackdrop
 import com.ntv2.app.core.ui.BrandButton
 import com.ntv2.app.core.ui.BrandButtonLabel
+import com.ntv2.app.core.ui.BrandButtonStyle
 import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.FocusGlideScope
 import com.ntv2.app.core.ui.NbrType
@@ -140,6 +141,21 @@ internal fun SeriesDetailsOverlay(
     var seasonSheet by remember { mutableStateOf(false) }
     var optionsFor by remember { mutableStateOf<MediaItemSummary?>(null) }
     var reportFor by remember { mutableStateOf<MediaItemSummary?>(null) }
+    // Botão "Trailer": tela cheia com som. Só aparece com link do YouTube reconhecido.
+    val trailerVideoId = remember(series.trailerUrl) {
+        com.ntv2.app.feature.media.presentation.trailer.YouTubeIds.videoId(series.trailerUrl)
+    }
+    var trailerOpen by remember(series.tmdbId) { mutableStateOf(false) }
+    // Ao fechar a tela cheia o foco volta ao botão principal. Pedido um quadro depois: enquanto a
+    // tela cheia existe, o foco preso nela recusa o pedido e ia parar no "Voltar".
+    var restoreFocusAfterTrailer by remember { mutableStateOf(false) }
+    LaunchedEffect(restoreFocusAfterTrailer) {
+        if (restoreFocusAfterTrailer) {
+            withFrameNanos { }
+            runCatching { playFocus.requestFocus() }
+            restoreFocusAfterTrailer = false
+        }
+    }
 
     FocusGlideScope(Modifier.fillMaxSize()) {
     Box(
@@ -151,7 +167,7 @@ internal fun SeriesDetailsOverlay(
     ) {
         if (isTv) {
             // Fundo: capa em tela cheia com degradê horizontal bg@98% → bg@85% (45%) → bg@60%.
-            SeriesBackdrop(series, showCovers, Modifier.fillMaxSize(), trailerPreviewEnabled = trailerPreviewEnabled, animationsEnabled = animationsEnabled)
+            SeriesBackdrop(series, showCovers, Modifier.fillMaxSize(), trailerPreviewEnabled = trailerPreviewEnabled && !trailerOpen, animationsEnabled = animationsEnabled)
             // ── TV: duas colunas com handshake de foco entre painéis (→ entra na lista, ← volta) ──
             val listFocus = remember { FocusRequester() }
             val backFocus = remember { FocusRequester() }
@@ -205,6 +221,18 @@ internal fun SeriesDetailsOverlay(
                                 style = NbrType.Caption.copy(fontSize = 11.sp, lineHeight = 13.sp),
                                 color = BrandColors.Accent
                             )
+                            if (trailerVideoId != null) {
+                                BrandButton(
+                                    onClick = { trailerOpen = true },
+                                    style = BrandButtonStyle.Secondary,
+                                    modifier = Modifier
+                                        .width(260.dp)
+                                        .focusProperties { if (episodes.isNotEmpty()) right = listFocus }
+                                ) {
+                                    Icon(NbrIcons.Clapperboard, contentDescription = null, tint = SeriesText, modifier = Modifier.size(15.dp))
+                                    BrandButtonLabel("Trailer")
+                                }
+                            }
                         }
                     }
                 }
@@ -270,7 +298,7 @@ internal fun SeriesDetailsOverlay(
                 contentPadding = PaddingValues(bottom = navBottom + 24.dp)
             ) {
                 item(key = "hero") {
-                    SeriesHero(series, showCovers, onClose, onFilterClick, trailerPreviewEnabled, animationsEnabled)
+                    SeriesHero(series, showCovers, onClose, onFilterClick, trailerPreviewEnabled && !trailerOpen, animationsEnabled)
                 }
                 item(key = "content") {
                     Column(
@@ -296,6 +324,16 @@ internal fun SeriesDetailsOverlay(
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                                if (trailerVideoId != null) {
+                                    BrandButton(
+                                        onClick = { trailerOpen = true },
+                                        style = BrandButtonStyle.Secondary,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(NbrIcons.Clapperboard, contentDescription = null, tint = SeriesText, modifier = Modifier.size(20.dp))
+                                        BrandButtonLabel("Ver trailer")
+                                    }
+                                }
                             }
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -373,6 +411,15 @@ internal fun SeriesDetailsOverlay(
                     }
                 }
             }
+        }
+        if (trailerOpen && trailerVideoId != null) {
+            com.ntv2.app.feature.media.presentation.trailer.TrailerFullscreen(
+                videoId = trailerVideoId,
+                onClose = {
+                    trailerOpen = false
+                    restoreFocusAfterTrailer = true
+                }
+            )
         }
     }
     }

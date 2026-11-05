@@ -58,3 +58,20 @@ object TrailerFailures {
         failed.add(id)
     }
 }
+
+/**
+ * Por que a prévia não entrou. Só falha que se repetiria igual (vídeo bloqueado fora do YouTube,
+ * renderizador que cai, aparelho sem WebView) bloqueia o vídeo até reabrir o app; demora para começar
+ * pode ser rede ou decoder ocupado, e a próxima abertura dos detalhes tenta de novo.
+ */
+enum class TrailerFailure(val blocksSession: Boolean) {
+    TIMEOUT(blocksSession = false),
+    PLAYER_ERROR(blocksSession = true),
+    RENDERER_GONE(blocksSession = true),
+    NO_WEBVIEW(blocksSession = true);
+
+    /** Guarda o ID na lista da sessão quando a falha bloqueia. */
+    fun record(id: String) {
+        if (blocksSession) TrailerFailures.add(id)
+    }
+}

@@ -59,9 +59,10 @@ fun isDataSaverOn(context: Context): Boolean {
  * Ponte JS -> Kotlin. Os métodos chegam na thread do JavaBridge (não na principal): tudo é repassado
  * para a thread principal, e nada é entregue depois que o componente saiu da tela ([active] = false).
  */
-private class TrailerBridge(
+internal class TrailerBridge(
     private val onPlaying: () -> Unit,
-    private val onError: () -> Unit,
+    private val onError: (String?) -> Unit,
+    private val onEnded: () -> Unit = {},
 ) {
     private val main = Handler(Looper.getMainLooper())
 
@@ -77,7 +78,25 @@ private class TrailerBridge(
     @JavascriptInterface
     fun error(code: String?) {
         Log.w(TRAILER_LOG, "player: erro $code")
-        main.post { if (active) onError() }
+        main.post { if (active) onError(code) }
+    }
+
+    /** Só diagnóstico: o IFrame API carregou e o player foi criado. */
+    @JavascriptInterface
+    fun ready() {
+        Log.i(TRAILER_LOG, "player: pronto")
+    }
+
+    /** Só diagnóstico: -1 sem iniciar, 0 fim, 1 tocando, 2 pausado, 3 carregando, 5 na fila. */
+    @JavascriptInterface
+    fun state(code: String?) {
+        Log.i(TRAILER_LOG, "player: estado $code")
+    }
+
+    @JavascriptInterface
+    fun ended() {
+        Log.i(TRAILER_LOG, "player: fim do vídeo")
+        main.post { if (active) onEnded() }
     }
 
     fun release() {
@@ -104,7 +123,7 @@ private class WebViewHolder {
  * Se o renderizador morrer (comum com vídeo no Fire TV de pouca RAM), devolve `true` para o app
  * não ser encerrado junto e conta como falha (fica a imagem).
  */
-private class TrailerWebViewClient(private val onRendererGone: () -> Unit) : WebViewClient() {
+internal class TrailerWebViewClient(private val onRendererGone: () -> Unit) : WebViewClient() {
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
         request?.isForMainFrame == true
 
@@ -112,6 +131,18 @@ private class TrailerWebViewClient(private val onRendererGone: () -> Unit) : Web
     @Deprecated("API < 24")
     @Suppress("OVERRIDE_DEPRECATION")
     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
+
+    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+        Log.i(TRAILER_LOG, "página: início ${url?.take(60)}")
+    }
+
+    override fun onPageFinished(view: WebView?, url: String?) {
+        Log.i(TRAILER_LOG, "página: carregada ${url?.take(60)}")
+    }
+
+    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
+        Log.w(TRAILER_LOG, "página: erro ${error?.errorCode} ${error?.description} em ${request?.url?.toString()?.take(80)}")
+    }
 
     override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
         onRendererGone()
@@ -121,7 +152,7 @@ private class TrailerWebViewClient(private val onRendererGone: () -> Unit) : Web
 
 /**
  * Prévia do trailer (player oficial do YouTube, mudo) para o fundo dos detalhes. Fica invisível até o
- * vídeo realmente tocar; erro ou nada de `playing` em 8 s chama [onFailed] (quem chama tira o
+ * vídeo realmente tocar; erro ou nada de `playing` em 8 s chama [onFailed] com o motivo (quem chama tira o
  * componente da tela e a imagem de fundo continua). Nunca recebe foco do D-pad e o WebView é
  * destruído quando sai da composição.
  */
@@ -129,7 +160,7 @@ private class TrailerWebViewClient(private val onRendererGone: () -> Unit) : Web
 fun TrailerBackdrop(
     videoId: String,
     animationsEnabled: Boolean,
-    onFailed: (String) -> Unit,
+    onFailed: (String, TrailerFailure) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Trocar de ID recria tudo (WebView, ponte e prazo), em vez de reaproveitar o player antigo.
@@ -143,24 +174,24 @@ fun TrailerBackdrop(
 private fun TrailerBackdropContent(
     videoId: String,
     animationsEnabled: Boolean,
-    onFailed: (String) -> Unit,
+    onFailed: (String, TrailerFailure) -> Unit,
     modifier: Modifier,
 ) {
     val currentOnFailed by rememberUpdatedState(onFailed)
     var playing by remember { mutableStateOf(false) }
-    var failed by remember { mutableStateOf(false) }
+    var failure by remember { mutableStateOf<TrailerFailure?>(null) }
 
     val bridge = remember {
         TrailerBridge(
             onPlaying = { playing = true },
-            onError = { failed = true },
+            onError = { failure = TrailerFailure.PLAYER_ERROR },
         )
     }
     val holder = remember { WebViewHolder() }
 
     // Uma falha só: avisa quem chama (que tira o componente da composição).
-    LaunchedEffect(failed) {
-        if (failed) currentOnFailed(videoId)
+    LaunchedEffect(failure) {
+        failure?.let { currentOnFailed(videoId, it) }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     var started by remember {
@@ -175,8 +206,8 @@ private fun TrailerBackdropContent(
         val t0 = SystemClock.uptimeMillis()
         try {
             delay(timeout.remainingMs)
-            Log.w(TRAILER_LOG, "player: sem 'playing' no prazo; fica a imagem")
-            failed = true
+            Log.w(TRAILER_LOG, "player: sem 'playing' no prazo; fica a imagem (tenta de novo na próxima abertura)")
+            failure = TrailerFailure.TIMEOUT
         } finally {
             timeout.consume(SystemClock.uptimeMillis() - t0)
         }
@@ -229,10 +260,13 @@ private fun TrailerBackdropContent(
                 }
                 if (web == null) {
                     bridge.release()
-                    failed = true
+                    failure = TrailerFailure.NO_WEBVIEW
                     View(ctx)
                 } else {
                     web.apply {
+                        // Altura fixa (MATCH_PARENT): com o WRAP_CONTENT padrão do AndroidView o WebView mede a
+                        // altura pelo conteúdo, o iframe do player ficava com 0 px e o vídeo tocava invisível.
+                        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                         isFocusable = false
                         isFocusableInTouchMode = false
                         isClickable = false
@@ -252,7 +286,7 @@ private fun TrailerBackdropContent(
                             Log.w(TRAILER_LOG, "renderizador do WebView caiu; fica a imagem")
                             holder.rendererGone = true
                             bridge.release()
-                            failed = true
+                            failure = TrailerFailure.RENDERER_GONE
                         })
                         addJavascriptInterface(bridge, "NtvTrailer")
                         Log.i(TRAILER_LOG, "WebView criado para $videoId")
@@ -291,8 +325,9 @@ private fun TrailerBackdropContent(
 
 /**
  * Fundo dos detalhes com a prévia: decide se o trailer entra ([shouldPreviewTrailer]) e só cria o
- * WebView 2 s depois de a imagem de fundo ter carregado. Em falha, guarda o ID na sessão e tira o
- * trailer da composição (a imagem por baixo continua).
+ * WebView 2 s depois de a imagem de fundo ter carregado. Em falha, tira o trailer da composição (a
+ * imagem por baixo continua); só falha que bloqueia ([TrailerFailure.blocksSession]) guarda o ID na
+ * sessão, demora para começar volta a tentar na próxima abertura dos detalhes.
  *
  * [trailerPreviewEnabled] já combina a configuração local com a flag remota.
  */
@@ -338,8 +373,9 @@ fun DetailsTrailerBackdrop(
         TrailerBackdrop(
             videoId = videoId,
             animationsEnabled = animationsEnabled,
-            onFailed = { id ->
-                TrailerFailures.add(id)
+            onFailed = { id, reason ->
+                // Fecha esta tentativa; só o que se repetiria igual bloqueia até reabrir o app.
+                reason.record(id)
                 failedHere = true
             },
             modifier = modifier,
@@ -347,4 +383,4 @@ fun DetailsTrailerBackdrop(
     }
 }
 
-private const val TRAILER_LOG = "NtvTrailer"
+internal const val TRAILER_LOG = "NtvTrailer"

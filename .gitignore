@@ -29,3 +29,6 @@ ntv2-device.db
 
 # Traces do Perfetto (diagnóstico local)
 *.pftrace
+
+# CLI do Supabase rodada na pasta do app (o backend mora no repo ntv2-backend)
+supabase/.temp/

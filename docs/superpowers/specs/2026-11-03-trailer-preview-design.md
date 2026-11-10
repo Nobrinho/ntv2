@@ -136,3 +136,19 @@ No plano do catálogo o trailer ia no `extra`. Isso não funciona para o `import
 - **Custo do backend:** uma coluna de texto curta. A diferença gerada pelo backfill é de uma vez só. Continua no Free.
 - **Quota do TMDB:** o backfill faz uma chamada por item que ainda não tem trailer, em paralelo limitado como o
   `_backfill_logos`, e uma vez só por causa do cache.
+
+## Estado em 0.9.2 (09/11/2026)
+O desenho acima foi ampliado depois da 0.9.0. Hoje, na TV:
+- A prévia começa muda (exigência do autoplay) e liga o som em **50%** assim que toca. Ela fica invisível nos
+  primeiros 3 s, que é quando o YouTube mostra título e ícones sobre o vídeo.
+- O player cobre a área toda em 16:9 (corta em cima e embaixo em vez de barras pretas), com degradê nas bordas.
+  Sem controles, sem anotações, sem repetir. O app encerra ~0,6 s antes do fim, para a grade de recomendados do
+  YouTube não aparecer, e então a imagem de fundo volta.
+- **Botão Trailer:** se a prévia do mesmo vídeo está tocando, a tela cheia usa o mesmo WebView no lugar, sem nova
+  requisição: esconde a interface, sobe o volume para 100% e liga a legenda em português. Senão, abre um player
+  novo já com legenda. No fim do trailer, volta direto aos detalhes.
+- Legenda só na tela cheia. Texto gravado no próprio vídeo (ex.: trailer de Portugal) não tem como tirar: troque o
+  `trailer_url` do título.
+- O logo dos detalhes encolhe enquanto a prévia está visível.
+- Arquivos: `TrailerHtml.kt` (página e funções JS `ntvSound`, `ntvCaptions`, `ntvToggle`, `ntvSeek` e
+  `ntvRestart`), `TrailerBackdrop.kt` (prévia e `TrailerHandle`) e `TrailerFullscreen.kt`.

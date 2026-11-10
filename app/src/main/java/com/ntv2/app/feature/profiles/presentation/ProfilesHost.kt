@@ -66,6 +66,9 @@ import com.ntv2.app.core.ui.ConfirmDialog
 import com.ntv2.app.core.ui.NbrType
 import com.ntv2.app.core.ui.icons.NbrIcons
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
+import com.ntv2.app.core.ui.trapFocus
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 
 /** Telas do fluxo de perfis (protótipo 43, 44, 60-66; TV 19, 22-24). */
 sealed interface ProfileScreen {
@@ -95,7 +98,12 @@ sealed interface PinPurpose {
  * MOCK: dados locais ([ProfileStore]); ver a nota na classe.
  */
 @Composable
-fun ProfilesHost(store: ProfileStore, screen: ProfileScreen?, onNavigate: (ProfileScreen?) -> Unit) {
+fun ProfilesHost(
+    store: ProfileStore,
+    screen: ProfileScreen?,
+    modifier: Modifier = Modifier,
+    onNavigate: (ProfileScreen?) -> Unit
+) {
     if (screen == null) return
     val profiles by store.profiles.collectAsState()
     val activeId by store.activeId.collectAsState()
@@ -133,6 +141,7 @@ fun ProfilesHost(store: ProfileStore, screen: ProfileScreen?, onNavigate: (Profi
 
     if (screen is ProfileScreen.Switcher) {
         SwitcherPanel(
+            modifier = modifier,
             profiles = profiles, activeId = activeId, tv = tv,
             onPick = { requestSwitch(it, fromPicker = false) },
             onAdd = { onNavigate(ProfileScreen.Edit(Profile.new(color = profiles.size % ProfilePalette.size), true)) },
@@ -159,9 +168,12 @@ fun ProfilesHost(store: ProfileStore, screen: ProfileScreen?, onNavigate: (Profi
     }
 
     Box(
-        Modifier
+        modifier
             .fillMaxSize()
             .background(BrandColors.Background)
+            // Antes do clickable: o focusRequester do chamador precisa cair no grupo (que entrega o
+            // foco ao 1º item), não no focável desativado do clickable.
+            .trapFocus() // o D-pad não escapa para a tela escondida por baixo
             .clickable(enabled = false) {} // bloqueia toques no app por baixo
     ) {
         AnimatedContent(
@@ -302,7 +314,10 @@ private fun ProfileGrid(
     footer: @Composable ColumnScope.() -> Unit
 ) {
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    // Dentro do AnimatedContent o nó pode ainda não estar anexado no 1º frame: tenta de novo.
+    LaunchedEffect(Unit) {
+        repeat(5) { if (runCatching { firstFocus.requestFocus() }.isSuccess) return@LaunchedEffect; kotlinx.coroutines.delay(50) }
+    }
     ProfilePage(tv = tv, centered = true) {
         Text(title, style = NbrType.PageTitle.copy(fontSize = if (tv) 28.sp else 26.sp), color = ProfileText, textAlign = TextAlign.Center)
         if (subtitle != null) Text(subtitle, style = NbrType.Secondary, color = BrandColors.TextSecondary, textAlign = TextAlign.Center)
@@ -677,6 +692,7 @@ private fun PinKey(key: String, modifier: Modifier, size: Int, onClick: () -> Un
 /** 66 Trocar de perfil (sheet) / TV 24 (painel lateral). */
 @Composable
 private fun SwitcherPanel(
+    modifier: Modifier,
     profiles: List<Profile>,
     activeId: String,
     tv: Boolean,
@@ -687,7 +703,9 @@ private fun SwitcherPanel(
 ) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-    Box(Modifier.fillMaxSize().background(Color(0xB3000000)).clickable(onClick = onDismiss)) {
+    Box(modifier.fillMaxSize().background(Color(0xB3000000)).trapFocus()
+        // Toque fora fecha; via pointerInput para o fundo não virar alvo de foco do D-pad.
+        .pointerInput(Unit) { detectTapGestures { onDismiss() } }) {
         val panel: Modifier = if (tv) {
             Modifier.align(Alignment.CenterEnd).width(320.dp).fillMaxSize().background(BrandColors.Surface).padding(horizontal = 28.dp, vertical = 48.dp)
         } else {

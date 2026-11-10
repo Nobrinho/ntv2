@@ -513,7 +513,9 @@ fun PlaybackScreen(
 
     // Back fecha a barra de controles em vez de sair, quando ela está visível.
     BackHandler(enabled = controlsVisible) { controlsVisible = false }
-    BackHandler(enabled = adaptive.isTv && !controlsVisible && trackPicker == null) {
+    // Voltar duas vezes para sair: com controle remoto/teclado é fácil apertar Voltar sem querer
+    // (TV ou tablet com controle). Só toque sai direto, como num app de celular.
+    BackHandler(enabled = adaptive.hasKeyNavigation && !controlsVisible && trackPicker == null) {
         if (backArmed) onBack() else backArmed = true
     }
     // Com a tela de erro aberta, Voltar sai do player direto.
@@ -621,6 +623,7 @@ fun PlaybackScreen(
                         settingsFocus = settingsFocus,
                         compact = compactControls,
                         isTv = adaptive.isTv,
+                        keyNavigation = adaptive.hasKeyNavigation,
                         showFullscreen = compactControls,
                         onBack = onBack,
                         onDismiss = { controlsVisible = false },

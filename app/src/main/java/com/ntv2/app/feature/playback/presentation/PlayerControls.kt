@@ -167,6 +167,8 @@ internal fun StreamingControlsOverlay(
     settingsFocus: FocusRequester,
     compact: Boolean,
     isTv: Boolean,
+    /** Navegação por teclas (TV ou controle/teclado no tablet): liga os atalhos de foco do D-pad. */
+    keyNavigation: Boolean = isTv,
     showFullscreen: Boolean,
     onBack: () -> Unit,
     onDismiss: () -> Unit,
@@ -233,6 +235,7 @@ internal fun StreamingControlsOverlay(
         scrubberFocus = scrubberFocus,
         settingsFocus = settingsFocus,
         isTv = isTv,
+        keyNavigation = keyNavigation,
         showFullscreen = showFullscreen,
         onBack = onBack,
         onDismiss = onDismiss,
@@ -268,6 +271,8 @@ internal fun LandscapeControlsOverlay(
     scrubberFocus: FocusRequester,
     settingsFocus: FocusRequester,
     isTv: Boolean,
+    /** Navegação por teclas (TV ou controle/teclado no tablet): liga os atalhos de foco do D-pad. */
+    keyNavigation: Boolean = isTv,
     showFullscreen: Boolean,
     onBack: () -> Unit,
     onDismiss: () -> Unit,
@@ -299,9 +304,9 @@ internal fun LandscapeControlsOverlay(
     val audioEnabled = tracks.audios.size > 1
     val settingsEnabled = audioEnabled || ccEnabled
     val meta = playerMetaLine(tracks)
-    // Link horizontal explícito só na TV (dpad); no celular deixa a navegação espacial/toque.
+    // Link horizontal explícito com D-pad (TV ou controle conectado); só toque deixa a navegação espacial.
     fun Modifier.hLink(left: FocusRequester? = null, right: FocusRequester? = null): Modifier =
-        if (!isTv) this else this.focusProperties {
+        if (!keyNavigation) this else this.focusProperties {
             down = scrubberFocus
             left?.let { this.left = it }
             right?.let { this.right = it }

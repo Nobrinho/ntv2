@@ -5,6 +5,10 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.focus.onFocusChanged
 
 import android.app.Activity
 import android.app.ActivityManager
@@ -209,7 +213,34 @@ fun AppNavHost(
       }.getOrDefault(true)
   }
   val globalAnimations = settingAnimations && systemAnimations
-  Box(modifier = Modifier.fillMaxSize()) {
+  // Perfis abertos por cima: se o foco estiver na tela de baixo (ex.: a biblioteca pediu foco ao
+  // carregar), o D-pad agiria num item invisível e o app pareceria travado. Redireciona para o overlay.
+  val profileFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+  var profileHasFocus by remember { mutableStateOf(false) }
+  // Abre já com o 1º perfil focado e recupera o foco se a tela de baixo o tomar ao carregar.
+  // Em modo toque o Android recusa foco programático; se há teclas físicas (controle/teclado, ou
+  // aparelho sem toque, como TV), sai do modo toque para o foco aparecer sem precisar de uma tecla.
+  val rootView = androidx.compose.ui.platform.LocalView.current
+  val hasHardwareKeys = rememberAdaptiveLayoutInfo().hasKeyNavigation
+  androidx.compose.runtime.LaunchedEffect(profileScreen != null, profileHasFocus) {
+      if (profileScreen == null || profileHasFocus) return@LaunchedEffect
+      repeat(10) {
+          kotlinx.coroutines.delay(80)
+          if (profileHasFocus) return@LaunchedEffect
+          if (hasHardwareKeys && rootView.isInTouchMode) rootView.requestFocusFromTouch()
+          runCatching { profileFocus.requestFocus() }
+      }
+  }
+  Box(modifier = Modifier.fillMaxSize().onPreviewKeyEvent { e ->
+      if (profileScreen == null || profileHasFocus || e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
+      val nav = when (e.key) {
+          Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight,
+          Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> true
+          else -> false
+      }
+      if (nav) runCatching { profileFocus.requestFocus() }
+      nav
+  }) {
    androidx.compose.runtime.CompositionLocalProvider(
        com.ntv2.app.core.ui.LocalFocusRestoreSignal provides focusRestoreSignal,
        com.ntv2.app.core.ui.LocalAnimationsEnabled provides globalAnimations,
@@ -292,8 +323,9 @@ fun AppNavHost(
         }
 
         composable(RoutePath.MEDIA_LIBRARY) {
-            // Passo da grade: TV = 5 colunas, celular = 2 (reflete na paginação em múltiplos).
-            val mediaGridStep = if (rememberAdaptiveLayoutInfo().isTv) 5 else 2
+            // Passo da grade (reflete na paginação em múltiplos): TV e tablet mostram muitas colunas
+            // (5-6), celular 2. Pelo aparelho e não pelo layout: o ViewModel não é recriado ao girar.
+            val mediaGridStep = if (rememberAdaptiveLayoutInfo().isPhone) 2 else 5
             val mediaViewModel: MediaLibraryViewModel = viewModel(
                 factory = MediaLibraryViewModelFactory(
                     mediaRepository = appContainer.mediaRepository,
@@ -512,6 +544,9 @@ fun AppNavHost(
     com.ntv2.app.feature.profiles.presentation.ProfilesHost(
         store = profileStore,
         screen = profileScreen,
+        modifier = Modifier
+            .focusRequester(profileFocus)
+            .onFocusChanged { profileHasFocus = it.hasFocus },
         onNavigate = { next ->
             profileScreen = next
             if (next == null) focusRestoreSignal++

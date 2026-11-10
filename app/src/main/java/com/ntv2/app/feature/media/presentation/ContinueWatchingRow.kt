@@ -26,7 +26,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -41,6 +40,7 @@ import coil.compose.AsyncImage
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.ntv2.app.core.ui.focusGlow
 import com.ntv2.app.core.ui.glideActive
 import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.feature.media.presentation.state.MediaCardUi
@@ -128,9 +128,7 @@ private fun ContinueCard(
                 .glideTarget(if (useTvLayout) 10.dp else 12.dp)
                 // Foco do protótipo (TV): contorno azul com brilho.
                 .then(
-                    if (focused && !gliding && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                        Modifier.shadow(12.dp, shape, ambientColor = BRAND_ACCENT, spotColor = BRAND_ACCENT)
-                    } else Modifier
+                    Modifier.focusGlow(focused && !gliding, if (useTvLayout) 10.dp else 12.dp, BRAND_ACCENT)
                 )
                 .clip(shape)
                 .onFocusChanged { focused = it.isFocused }

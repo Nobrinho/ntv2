@@ -306,6 +306,23 @@ internal fun DrawScope.drawSpacedFocusRing(size: Size, alpha: Float, cornerRadiu
     )
 }
 
+/**
+ * Brilho de foco desenhado (traço largo e translúcido em volta do item). Substitui a sombra colorida
+ * (`shadow` com elevação): a sombra é recalculada pela GPU a cada troca de foco e pesa em TV fraca.
+ */
+fun Modifier.focusGlow(focused: Boolean, cornerRadius: Dp, color: Color = FOCUS_ACCENT): Modifier =
+    if (!focused) this else drawBehind {
+        val glow = 6.dp.toPx()
+        val radius = min(cornerRadius.toPx(), min(size.width, size.height) / 2f)
+        drawRoundRect(
+            color = color.copy(alpha = 0.22f),
+            topLeft = Offset(-glow / 2, -glow / 2),
+            size = Size(size.width + glow, size.height + glow),
+            cornerRadius = CornerRadius(radius + glow / 2),
+            style = Stroke(glow)
+        )
+    }
+
 /** Aro de foco do app: verde com contorno escuro por dentro. A espessura acompanha o tamanho do item. */
 internal fun DrawScope.drawFocusRing(size: Size, alpha: Float, cornerRadiusPx: Float = 6.dp.toPx()) {
     val outer = (min(size.width, size.height) * 0.07f).coerceIn(2.dp.toPx(), 4.dp.toPx())

@@ -40,7 +40,6 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -168,8 +167,10 @@ internal fun TvSearchOverlay(
     val gridColumns = if (textEnabled) 5 else 8
     var showFilters by remember { mutableStateOf(false) }
     val listState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
-    val keyRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
-    val resultRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
+    // Mapas comuns (não observáveis): gravar num mapa de estado durante a composição invalidava
+    // todos os itens que já o tinham lido a cada resultado novo.
+    val keyRequesters = remember { HashMap<String, FocusRequester>() }
+    val resultRequesters = remember { HashMap<String, FocusRequester>() }
     fun keyRequester(id: String) = keyRequesters.getOrPut(id) { FocusRequester() }
     fun resultRequester(id: String) = resultRequesters.getOrPut(id) { FocusRequester() }
 

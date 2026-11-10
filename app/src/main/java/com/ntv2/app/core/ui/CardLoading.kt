@@ -57,7 +57,10 @@ enum class CardLoadingStyle(val label: String, val description: String) {
     val startsImmediately: Boolean get() = this == BLUR_UP && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     companion object {
-        val DEFAULT = BLUR_UP
+        // Fade-in: fundo parado e a capa surgindo. O blur-up (padrão antigo) custa, no Android 12+,
+        // uma 2ª imagem e um desfoque em camada própria por card durante a rolagem; continua
+        // disponível nas Configurações para quem escolher.
+        val DEFAULT = FADE_IN
         fun fromName(name: String?): CardLoadingStyle =
             entries.firstOrNull { it.name == name } ?: DEFAULT
     }
@@ -258,7 +261,9 @@ fun CoverWithLoading(
         label = "cover-alpha"
     )
     val fadeDone by remember(cover) { androidx.compose.runtime.derivedStateOf { coverAlpha >= 1f } }
-    Box(modifier = modifier) {
+    // Fundo neutro só enquanto a capa não cobre o card: depois dela é pintura escondida (overdraw)
+    // em cada card de cada quadro da rolagem.
+    Box(modifier = modifier.drawBehind { if (!fadeDone) drawRect(PLACEHOLDER_BG) }) {
         if (showLoading && !fadeDone && !style.staticPlaceholder) {
             CardLoadingPlaceholder(
                 style = style,

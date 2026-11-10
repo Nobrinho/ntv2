@@ -26,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -215,10 +214,7 @@ fun BrandButton(
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .then(
-                if (focused && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                    Modifier.scale(1.03f).shadow(14.dp, shape, ambientColor = glow, spotColor = glow)
-                } else if (focused) Modifier.scale(1.03f)
-                else Modifier
+                if (focused) Modifier.scale(1.03f).focusGlow(true, 999.dp, glow) else Modifier
             )
             .clip(shape)
             .background(fill.copy(alpha = fill.alpha * a))

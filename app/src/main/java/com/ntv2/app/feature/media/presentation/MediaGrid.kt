@@ -322,7 +322,9 @@ internal fun MediaGridSkeleton(
     modifier: Modifier = Modifier
 ) {
     val transition = rememberInfiniteTransition(label = "skeleton")
-    val alpha by transition.animateFloat(
+    // State lido só no desenho: o pulso redesenha os blocos sem recompor o esqueleto a cada quadro
+    // (ele roda justamente enquanto a biblioteca carrega e a CPU está mais ocupada).
+    val alpha = transition.animateFloat(
         initialValue = 0.05f,
         targetValue = 0.15f,
         animationSpec = infiniteRepeatable(
@@ -331,7 +333,6 @@ internal fun MediaGridSkeleton(
         ),
         label = "skeleton-alpha"
     )
-    val shimmer = Color.White.copy(alpha = alpha)
     // Mosaico determinístico: mistura paisagem (16:9) e retrato (2:3); capas OFF → tudo retrato.
     val aspects = remember(showCovers) {
         if (!showCovers) List(24) { 2f / 3f }
@@ -352,7 +353,7 @@ internal fun MediaGridSkeleton(
                             .fillMaxWidth()
                             .weight(1f)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(shimmer)
+                            .drawBehind { drawRect(Color.White, alpha = alpha.value) }
                     )
                     if (!showCovers) {
                         Spacer(modifier = Modifier.height(10.dp))
@@ -361,7 +362,7 @@ internal fun MediaGridSkeleton(
                                 .fillMaxWidth(0.72f)
                                 .height(12.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(shimmer)
+                                .drawBehind { drawRect(Color.White, alpha = alpha.value) }
                         )
                     }
                 }
@@ -451,7 +452,8 @@ internal fun MediaCard(
     // fundo trocavam de uma vez: ao passar de um card para o outro havia
     // um instante com nenhum card em destaque (e o zIndex caía antes da hora),
     // o que dava a impressão de a grade tremer.
-    val focusFraction by animateFloatAsState(
+    // State (sem `by`): lido só no graphicsLayer/desenho, então a animação de foco não recompõe o card.
+    val focusFraction = animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
         animationSpec = tween(if (animationsEnabled) com.ntv2.app.core.ui.FOCUS_ANIM_MS else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "card-focus"
@@ -465,7 +467,7 @@ internal fun MediaCard(
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .graphicsLayer {
-                val sc = 1f + (com.ntv2.app.core.ui.BRAND_FOCUS_SCALE - 1f) * focusFraction
+                val sc = 1f + (com.ntv2.app.core.ui.BRAND_FOCUS_SCALE - 1f) * focusFraction.value
                 scaleX = sc; scaleY = sc
             }
             // Sem título abaixo: o card inteiro é a "capa" (clip, borda e aro); com título abaixo (celular),
@@ -479,7 +481,8 @@ internal fun MediaCard(
                     .fillMaxWidth()
                     .aspectRatio(media.gridAspectRatio(showCover))
                     .then(if (titleBelow) Modifier.cardFrame(false, focusFraction, animationsEnabled) else Modifier)
-                    .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
+                    // Com capa, o fundo é pintado pela própria CoverWithLoading só até a imagem cobrir o card.
+                    .then(if (cover == null) Modifier.background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt) else Modifier)
             ) {
                 if (cover != null) {
                     com.ntv2.app.core.ui.CoverWithLoading(
@@ -584,15 +587,17 @@ internal fun MediaCard(
 }
 
 /** Acabamento da capa: raio do protótipo, fundo do foco, borda sutil em repouso e aro (sem animações). */
-private fun Modifier.cardFrame(filled: Boolean, focusFraction: Float, animationsEnabled: Boolean): Modifier = this
+private fun Modifier.cardFrame(filled: Boolean, focus: androidx.compose.runtime.State<Float>, animationsEnabled: Boolean): Modifier = this
     .clip(CardShape)
     .drawBehind {
+        val focusFraction = focus.value
         if (filled || focusFraction > 0f) {
             drawRect(androidx.compose.ui.graphics.lerp(com.ntv2.app.core.ui.BrandColors.Fill, com.ntv2.app.core.ui.BrandColors.BorderSubtle, focusFraction))
         }
     }
     .drawWithContent {
         drawContent()
+        val focusFraction = focus.value
         drawIdleBorder(focusFraction)
         // Com animações ligadas o aro é o anel único que desliza pela grade (FocusGlideRing);
         // desligadas, cada card desenha o seu, na hora.
@@ -732,7 +737,8 @@ private fun SeriesGridCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val cover = if (showCover) series.posterUrl?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null
-    val focusFraction by animateFloatAsState(
+    // State (sem `by`): lido só no graphicsLayer/desenho, então a animação de foco não recompõe o card.
+    val focusFraction = animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
         animationSpec = tween(if (animationsEnabled) com.ntv2.app.core.ui.FOCUS_ANIM_MS else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "series-card-focus"
@@ -745,7 +751,7 @@ private fun SeriesGridCard(
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick)
             .graphicsLayer {
-                val sc = 1f + (com.ntv2.app.core.ui.BRAND_FOCUS_SCALE - 1f) * focusFraction
+                val sc = 1f + (com.ntv2.app.core.ui.BRAND_FOCUS_SCALE - 1f) * focusFraction.value
                 scaleX = sc; scaleY = sc
             }
             .then(if (titleBelow) Modifier else Modifier.cardFrame(true, focusFraction, animationsEnabled))
@@ -756,7 +762,8 @@ private fun SeriesGridCard(
                     .fillMaxWidth()
                     .aspectRatio(2f / 3f)
                     .then(if (titleBelow) Modifier.cardFrame(false, focusFraction, animationsEnabled) else Modifier)
-                    .background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt)
+                    // Com capa, o fundo é pintado pela própria CoverWithLoading só até a imagem cobrir o card.
+                    .then(if (cover == null) Modifier.background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt) else Modifier)
             ) {
                 if (cover != null) {
                     com.ntv2.app.core.ui.CoverWithLoading(

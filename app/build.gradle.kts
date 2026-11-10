@@ -118,6 +118,16 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        // Medição de desempenho: igual à release (R8, baseline profile), mas assinada com a chave de
+        // debug e com outro ID, para instalar ao lado do app sem desinstalar nada. Não é publicada.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".bench"
+            versionNameSuffix = "-bench"
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+        }
     }
 
     compileOptions {

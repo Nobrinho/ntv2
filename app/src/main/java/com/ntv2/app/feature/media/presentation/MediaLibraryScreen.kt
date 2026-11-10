@@ -39,7 +39,6 @@ import com.ntv2.app.core.ui.LocalFocusRestoreSignal
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -96,12 +95,20 @@ fun MediaLibraryScreen(
         thumbnailPath: String?
     ) -> Unit
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Estado completo: lido só dentro do bloco da busca. O resto da tela lê uma fatia sem os campos
+    // que mudam a cada tecla da busca; antes cada tecla reexecutava o corpo inteiro desta tela
+    // (dezenas de efeitos e lambdas), mesmo com a biblioteca coberta pelo overlay.
+    val fullState = viewModel.uiState.collectAsStateWithLifecycle()
+    val state by remember(fullState) {
+        androidx.compose.runtime.derivedStateOf { fullState.value.withoutSearchTyping() }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     val initialActionsFocus = remember { FocusRequester() }
     // Botão principal do painel de vazio/erro: alvo do → no rail (sem grade, não há outro destino).
     val statusFocus = remember { FocusRequester() }
-    val cardFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
+    // Mapa comum (não observável): com mutableStateMapOf cada card novo que entrava na rolagem
+    // gravava no mapa e invalidava o escopo de TODOS os cards visíveis que o tinham lido.
+    val cardFocusRequesters = remember { HashMap<String, FocusRequester>() }
     // Teclado de busca próprio (D-pad) e picker de canal ativo — overlays na tela.
     var searching by remember { mutableStateOf(false) }
     var channelPicker by remember { mutableStateOf(false) }
@@ -159,6 +166,17 @@ fun MediaLibraryScreen(
     // "Escolher canal" aberto pelo rail: ao fechar com Voltar, o foco volta ao botão Canais.
     var pickerFromRail by remember { mutableStateOf(false) }
     val restoreSignal = LocalFocusRestoreSignal.current
+
+    // Poda o mapa de FocusRequester quando a lista encolhe/troca (canal novo, teto de cards): sem
+    // isto ele só crescia durante a sessão. Cards ainda na lista mantêm o mesmo requester.
+    LaunchedEffect(state.items, state.series) {
+        if (cardFocusRequesters.size > state.items.size + state.series.size + 64) {
+            val alive = HashSet<String>(state.items.size + state.series.size)
+            state.items.mapTo(alive) { it.mediaId }
+            state.series.mapTo(alive) { "series_${it.tmdbId}" }
+            cardFocusRequesters.keys.retainAll(alive)
+        }
+    }
 
     // Devolve o foco a um card (rola até ele se preciso); sem cards, vai para a barra de ações.
     fun focusCard(mediaId: String?) {
@@ -913,7 +931,8 @@ fun MediaLibraryScreen(
             )
         }
 
-        if (searching) {
+        if (searching) IsolatedStateScope {
+            @Suppress("NAME_SHADOWING") val state = fullState.value
             val searchInProgress = state.isSearchPending || state.isSearchLoading
             val filtersActive = state.searchFilters.hasAttribute
             val searchHidden = (state.searchQuery.isBlank() && !filtersActive) || searchInProgress
@@ -1035,6 +1054,22 @@ fun MediaLibraryScreen(
     }
     }
 }
+
+/** Escopo de recomposição próprio: o que o conteúdo lê de estado não invalida a tela em volta. */
+@Composable
+private fun IsolatedStateScope(content: @Composable () -> Unit) = content()
+
+/** Fatia do estado sem os campos que mudam a cada tecla/etapa da busca (lidos só pelo overlay da busca). */
+private fun com.ntv2.app.feature.media.presentation.state.MediaLibraryUiState.withoutSearchTyping() = copy(
+    searchQuery = "",
+    searchFilters = com.ntv2.app.feature.media.presentation.state.SearchFilters(),
+    searchActorCount = 0,
+    searchResults = emptyList(),
+    isSearchPending = false,
+    isSearchLoading = false,
+    searchHasMore = false,
+    isSearchLoadingMore = false
+)
 
 /** Formata a duração em horas e minutos (ex.: 71 min → "1h11min"; 45 min → "45min"). */
 internal fun durationLabel(durationSeconds: Int): String {

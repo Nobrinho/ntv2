@@ -30,7 +30,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -51,6 +50,7 @@ import androidx.tv.material3.Text
 import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.BrandShapes
 import com.ntv2.app.core.ui.NbrType
+import com.ntv2.app.core.ui.focusGlow
 import com.ntv2.app.core.ui.icons.NbrIcons
 
 // Peças da busca do protótipo (12/13 Busca no celular, TV 08 Busca, 54 Busca sem resultado).
@@ -367,11 +367,7 @@ internal fun TvSearchPoster(
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
                 .graphicsLayer { val s = if (focused) com.ntv2.app.core.ui.BRAND_FOCUS_SCALE else 1f; scaleX = s; scaleY = s }
-                .then(
-                    if (focused && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                        Modifier.shadow(12.dp, shape, ambientColor = BrandColors.Accent, spotColor = BrandColors.Accent)
-                    } else Modifier
-                )
+                .focusGlow(focused, 10.dp)
                 .clip(shape)
                 .background(BrandColors.SurfaceAlt)
                 .border(if (focused) 2.dp else 1.dp, if (focused) BrandColors.Accent else BrandColors.BorderSubtle, shape),
@@ -432,11 +428,7 @@ internal fun TvKey(
     Box(
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
-            .then(
-                if (focused && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                    Modifier.shadow(10.dp, shape, ambientColor = BrandColors.Accent, spotColor = BrandColors.Accent)
-                } else Modifier
-            )
+            .focusGlow(focused, 8.dp)
             .clip(shape)
             .background(if (primary) BrandColors.Accent else if (focused) BrandColors.SurfaceAlt else BrandColors.Fill)
             .border(

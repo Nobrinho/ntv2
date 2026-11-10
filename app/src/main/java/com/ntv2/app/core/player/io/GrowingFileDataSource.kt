@@ -198,6 +198,12 @@ private class GrowingFileDataSource(
             // Fim da parte (tamanho exato conhecido): não espera o TDLib marcar o arquivo completo,
             // o que nunca acontece numa cópia recriada só a partir do meio.
             knownSizeFor(fileId)?.let { size -> if (readPosition >= size) return C.RESULT_END_OF_INPUT }
+            // Fim do arquivo único: com a janela de disco o TDLib nunca marca o arquivo completo, então
+            // sem isto a leitura no último byte ficava esperando (e pedindo) bytes que não existem e o
+            // player nunca chegava ao fim (não voltava aos Detalhes).
+            partialFileAccessor.expectedBytes(fileId)?.takeIf { it > 0L }?.let { size ->
+                if (readPosition >= size) return C.RESULT_END_OF_INPUT
+            }
             // Leitura avançou (a partir do início fixado) para dentro do trecho liberado: reabre
             // sobre uma cópia nova, baixada a partir da posição atual.
             if (isEvicted(readPosition)) reopenAfterReset(readPosition)

@@ -94,6 +94,8 @@ sealed interface MediaLibraryAction {
 
 /** Teto padrão de cards mantidos por canal (o AppNavHost ajusta por aparelho; ver loadPrevious). */
 private const val MAX_RETAINED_ITEMS = 1_000
+/** Teto de páginas do Telegram por carga da grade (canal só de séries não vira loop longo). */
+private const val MAX_PAGES_PER_LOAD = 6
 
 /** Espera antes de recalcular as recomendações (agrupa disparos seguidos). */
 private const val RECOMMEND_DEBOUNCE_MS = 250L
@@ -287,7 +289,7 @@ class MediaLibraryViewModel(
     fun onAction(action: MediaLibraryAction) {
         when (action) {
             MediaLibraryAction.Load,
-            MediaLibraryAction.Refresh -> loadFirstPages()
+            MediaLibraryAction.Refresh -> loadFirstPages(refreshing = true)
 
             is MediaLibraryAction.SearchChanged -> {
                 searchDebounceJob?.cancel()
@@ -337,6 +339,8 @@ class MediaLibraryViewModel(
                         com.ntv2.app.feature.media.presentation.state.SearchFilters(years = setOfNotNull(f.value.trim().toIntOrNull()))
                     com.ntv2.app.feature.media.presentation.state.SearchFilterKind.ACTOR ->
                         com.ntv2.app.feature.media.presentation.state.SearchFilters(actor = f.value.trim())
+                    com.ntv2.app.feature.media.presentation.state.SearchFilterKind.DIRECTOR ->
+                        com.ntv2.app.feature.media.presentation.state.SearchFilters(director = f.value.trim())
                 }
                 applySearchFilters(filters, keepQuery = false)
             }
@@ -541,15 +545,18 @@ class MediaLibraryViewModel(
     }
 
     /** Carrega a 1ª página do canal ativo (grade plana). */
-    private fun loadActiveChannel(channel: ChannelSummary, keepTab: Boolean = false) {
+    private fun loadActiveChannel(channel: ChannelSummary, keepTab: Boolean = false, refreshing: Boolean = false) {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
+          try {
             clearChannelData()
             channelOrder += channel.id
             channelTitles[channel.id] = channel.title
             _uiState.update {
                 it.copy(
-                    isLoading = true,
+                    // Atualizar (puxar a tela): a grade atual fica até a nova chegar, sem esqueleto.
+                    isLoading = !refreshing,
+                    isLoadingMore = false,
                     isSearchPending = false,
                     isSearchLoading = false,
                     errorMessage = null,
@@ -567,8 +574,10 @@ class MediaLibraryViewModel(
             var attempt = 0
             while (attempt < 4) {
                 val result = runCatching {
-                    withContext(ioDispatcher) { fetchPage(channel.id, channel.title, query, fromMessageId = 0L) }
+                    withContext(ioDispatcher) { fetchVisibleFill(channel.id, channel.title, fromMessageId = 0L) }
                 }.getOrElse { error ->
+                    // Cancelada (outra carga começou): não vira erro nem desliga o carregamento dela.
+                    if (error is kotlinx.coroutines.CancellationException) throw error
                     if (attempt == 3) {
                         _uiState.update {
                             it.copy(
@@ -609,6 +618,10 @@ class MediaLibraryViewModel(
             }
             recomputeRecommendations()
             loadSeriesForChannel(channel.id, channel.title)
+          } finally {
+            // Sempre some o indicador do "puxar para atualizar" (sucesso, erro ou cancelamento).
+            if (refreshing) _uiState.update { it.copy(isRefreshing = false) }
+          }
         }
     }
 
@@ -628,11 +641,12 @@ class MediaLibraryViewModel(
                     .map { it.toSeriesSummary(channelId, channelTitle) }
             }
             val (genres, years) = runCatching { idx.filterOptions(channelId) }.getOrDefault(emptyList<String>() to emptyList())
+            val (hasImdb, hasRt) = runCatching { idx.ratingsAvailable(channelId) }.getOrDefault(false to false)
             if (_uiState.value.activeChannelId != channelId) return@launch
             _uiState.update {
                 it.copy(
                     series = series,
-                    searchFilterOptions = com.ntv2.app.feature.media.presentation.state.SearchFilterOptions(genres, years)
+                    searchFilterOptions = com.ntv2.app.feature.media.presentation.state.SearchFilterOptions(genres, years, hasImdb, hasRt)
                 )
             }
         }
@@ -917,6 +931,7 @@ class MediaLibraryViewModel(
             genres = genres,
             year = year,
             trailerUrl = trailerUrl,
+            logoUrl = logoUrl,
             seasons = seasons.map { season ->
                 com.ntv2.app.feature.media.domain.SeasonSummary(
                     number = season.number,
@@ -1103,7 +1118,7 @@ class MediaLibraryViewModel(
                 }
                 val catalog = catalogSearch ?: com.ntv2.app.feature.media.data.index.LocalCatalogSearch(idx)
                 val (allMovies, allSeries) = runCatching {
-                    catalog.search(activeId, query, filters.genres, filters.years, filters.actor, kind)
+                    catalog.search(activeId, query, filters.genres, filters.years, filters.actor, kind, attrs = filters.attrs)
                 }.getOrDefault(emptyList<com.ntv2.app.feature.media.data.index.IndexMovie>() to
                     emptyList<com.ntv2.app.feature.media.data.index.IndexSeries>())
                 val movies = if (filters.type == com.ntv2.app.feature.media.presentation.state.SearchTypeFilter.SERIES) emptyList() else allMovies
@@ -1191,10 +1206,14 @@ class MediaLibraryViewModel(
     }
 
     /** Recarrega a 1ª página do canal ativo (Atualizar / busca). */
-    private fun loadFirstPages() {
-        val activeId = _uiState.value.activeChannelId ?: return
+    private fun loadFirstPages(refreshing: Boolean = false) {
+        val activeId = _uiState.value.activeChannelId ?: run {
+            _uiState.update { it.copy(isRefreshing = false) }
+            return
+        }
         val title = channelTitles[activeId] ?: _uiState.value.activeChannelName
-        loadActiveChannel(ChannelSummary(id = activeId, title = title, avatarPath = null), keepTab = true)
+        if (refreshing) _uiState.update { it.copy(isRefreshing = true) }
+        loadActiveChannel(ChannelSummary(id = activeId, title = title, avatarPath = null), keepTab = true, refreshing = refreshing)
     }
 
     /** Carrega a próxima página de um canal específico e a acrescenta. */
@@ -1203,10 +1222,12 @@ class MediaLibraryViewModel(
         if (cursor == 0L || channelId in loadingMore) return
         val title = channelTitles[channelId] ?: return
         loadingMore += channelId
+        _uiState.update { it.copy(isLoadingMore = true) }
         trackPaging(viewModelScope.launch {
+          try {
             runCatching {
                 withContext(ioDispatcher) {
-                    fetchPage(channelId, title, query = "", fromMessageId = cursor)
+                    fetchVisibleFill(channelId, title, fromMessageId = cursor)
                 }
             }.onSuccess { page ->
                 val existing = channelItems[channelId].orEmpty()
@@ -1232,6 +1253,7 @@ class MediaLibraryViewModel(
                         hasMore = sections.firstOrNull()?.hasMore ?: false,
                         hasPrevious = sections.firstOrNull()?.hasPrevious ?: false,
                         emptyState = emptyStateFor(sections),
+                        isLoadingMore = false,
                         loadMoreNonce = it.loadMoreNonce + 1
                     )
                 }
@@ -1241,11 +1263,17 @@ class MediaLibraryViewModel(
                 _uiState.update {
                     it.copy(
                         errorMessage = error.message ?: "Falha ao carregar mais",
+                        isLoadingMore = false,
                         loadMoreNonce = it.loadMoreNonce + 1
                     )
                 }
             }
+          } finally {
+            // Cancelada (atualizar/trocar de canal) também libera: antes o botão ficava em
+            // "Carregando…" desabilitado e a carga pelo foco travava.
             loadingMore -= channelId
+            if (loadingMore.isEmpty()) _uiState.update { it.copy(isLoadingMore = false) }
+          }
         })
     }
 
@@ -1260,9 +1288,13 @@ class MediaLibraryViewModel(
         val anchor = channelItems[channelId]?.firstOrNull()?.messageIdOrNull() ?: return
         loadingPrevious += channelId
         trackPaging(viewModelScope.launch {
+          try {
             runCatching {
                 withContext(ioDispatcher) {
-                    mediaRepository.fetchNewerChannelVideos(channelId, title, anchor, pageSize)
+                    // Grade do índice: a página de cima também vem dele (o histórico do Telegram
+                    // traria episódios ou nada).
+                    indexNewerPage(channelId, title, anchor)
+                        ?: mediaRepository.fetchNewerChannelVideos(channelId, title, anchor, pageSize)
                 }
             }.onSuccess { page ->
                 val existing = channelItems[channelId].orEmpty()
@@ -1282,7 +1314,9 @@ class MediaLibraryViewModel(
                 }
                 projectSections()
             }
+          } finally {
             loadingPrevious -= channelId
+          }
         })
     }
 
@@ -1293,6 +1327,95 @@ class MediaLibraryViewModel(
 
     /** mediaId é "chatId_messageId". */
     private fun MediaItemSummary.messageIdOrNull(): Long? = mediaId.substringAfterLast('_').toLongOrNull()
+
+    /**
+     * Página da grade que rende filmes de verdade. Uma página do Telegram traz até [pageSize]
+     * vídeos, mas episódios de série e partes 2+ de filme dividido não entram na grade de Filmes:
+     * num canal com muitas séries (NBRlib) uma página rendia 1 ou 2 cards e o "Carregar mais"
+     * parecia não fazer nada. Continua buscando até juntar [pageSize] cards visíveis, o fim do
+     * canal ou [MAX_PAGES_PER_LOAD] páginas.
+     */
+    private suspend fun fetchVisibleFill(
+        channelId: Long,
+        channelTitle: String,
+        fromMessageId: Long
+    ): com.ntv2.app.feature.media.domain.MediaPage {
+        // Canal com índice (NBRlib): a grade vem do índice, que já lista só os filmes. O histórico do
+        // Telegram tem blocos de centenas de episódios seguidos (dezenas de páginas sem um filme).
+        indexGridPage(channelId, channelTitle, fromMessageId)?.let { return it }
+        val minSeconds = _uiState.value.minDurationMinutes * 60
+        val items = ArrayList<com.ntv2.app.feature.media.domain.MediaItemSummary>()
+        var cursor = fromMessageId
+        var pages = 0
+        var visible = 0
+        while (true) {
+            val page = fetchPage(channelId, channelTitle, query = "", fromMessageId = cursor)
+            pages++
+            items += page.items
+            val pageVisible = page.items.count {
+                (it.durationSeconds <= 0 || it.durationSeconds >= minSeconds) &&
+                    it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE
+            }
+            visible += pageVisible
+            gridLog(
+                "canal=$channelId página ${pages}: ${page.items.size} vídeos, $pageVisible na grade (total $visible)"
+            )
+            cursor = page.nextCursor
+            if (cursor == 0L || visible >= pageSize || pages >= MAX_PAGES_PER_LOAD) break
+        }
+        return com.ntv2.app.feature.media.domain.MediaPage(items = items, nextCursor = cursor)
+    }
+
+    /**
+     * Página da grade montada do índice: [pageSize] filmes a partir de [fromMessageId] (id do TDLib;
+     * 0 = do mais novo), do post mais novo ao mais antigo. Na 1ª página entram antes os filmes
+     * recém-postados que o índice ainda não tem (1ª página do Telegram). Null = canal sem índice.
+     */
+    private suspend fun indexGridPage(
+        channelId: Long,
+        channelTitle: String,
+        fromMessageId: Long
+    ): com.ntv2.app.feature.media.domain.MediaPage? {
+        val idx = searchIndexRepository ?: return null
+        if (!runCatching { idx.covers(channelId) }.getOrDefault(false)) return null
+        val movies = runCatching { idx.allMovies(channelId) }.getOrDefault(emptyList())
+        if (movies.isEmpty()) return null
+        val start = if (fromMessageId == 0L) 0
+            else movies.indexOfFirst { tdlibMessageId(it.videoMessageId) <= fromMessageId }.takeIf { it >= 0 } ?: movies.size
+        val slice = movies.subList(start, minOf(start + pageSize, movies.size))
+        val nextCursor = movies.getOrNull(start + pageSize)?.let { tdlibMessageId(it.videoMessageId) } ?: 0L
+        val fromIndex = slice.map { it.toSummary(channelId, channelTitle) }
+        val fresh = if (fromMessageId != 0L) emptyList() else {
+            val known = movies.mapTo(HashSet()) { "${channelId}_${tdlibMessageId(it.videoMessageId)}" }
+            runCatching { fetchPage(channelId, channelTitle, query = "", fromMessageId = 0L).items }
+                .getOrDefault(emptyList())
+                .filter { it.mediaId !in known && it.mediaType != com.ntv2.app.feature.media.domain.MediaType.EPISODE }
+        }
+        gridLog(
+            "canal=$channelId índice: ${fromIndex.size} filmes (de ${start + 1}/${movies.size}) + ${fresh.size} novos do Telegram"
+        )
+        return com.ntv2.app.feature.media.domain.MediaPage(items = fresh + fromIndex, nextCursor = nextCursor)
+    }
+
+    /** Diagnóstico da grade no Logcat (tag NtvGrid); nos testes JVM o Log do Android não existe. */
+    private fun gridLog(message: String) {
+        runCatching { android.util.Log.i("NtvGrid", message) }
+    }
+
+    /** Página "de cima" do índice: os [pageSize] filmes logo antes (mais novos) de [anchor]. */
+    private suspend fun indexNewerPage(
+        channelId: Long,
+        channelTitle: String,
+        anchor: Long
+    ): com.ntv2.app.feature.media.domain.MediaPage? {
+        val idx = searchIndexRepository ?: return null
+        if (!runCatching { idx.covers(channelId) }.getOrDefault(false)) return null
+        val movies = runCatching { idx.allMovies(channelId) }.getOrDefault(emptyList())
+        val at = movies.indexOfFirst { tdlibMessageId(it.videoMessageId) <= anchor }
+        if (at <= 0) return com.ntv2.app.feature.media.domain.MediaPage(emptyList(), 0L)
+        val slice = movies.subList(maxOf(0, at - pageSize), at)
+        return com.ntv2.app.feature.media.domain.MediaPage(slice.map { it.toSummary(channelId, channelTitle) }, 0L)
+    }
 
     private suspend fun fetchPage(
         channelId: Long,
@@ -1635,7 +1758,10 @@ class MediaLibraryViewModel(
     /** Itens da Minha lista/Histórico podem não estar na grade carregada (cache de detalhes vazio):
      *  busca os metadados no índice local antes de abrir os Detalhes. */
     suspend fun ensureDetails(media: MediaCardUi) {
-        if (mediaDetailsCache.get(media.mediaId) != null) return
+        // Entrada só com o básico (título/duração, vinda do histórico do "Continuar assistindo") não
+        // conta: completa pelo índice, senão os Detalhes abriam sem sinopse, ano e elenco.
+        val cached = mediaDetailsCache.get(media.mediaId)
+        if (cached != null && !cached.synopsis.isNullOrBlank()) return
         val idx = searchIndexRepository ?: return
         val messageId = media.mediaId.substringAfterLast('_').toLongOrNull() ?: return
         val movie = runCatching { idx.movieByMessage(media.channelId, messageId) }.getOrNull() ?: return
@@ -1741,6 +1867,8 @@ class MediaLibraryViewModel(
                 logoPath = logoPath,
                 durationSeconds = durationSeconds,
                 rating = rating,
+                imdbRating = imdbRating,
+                rtScore = rtScore,
                 ageRating = ageRating,
                 country = country,
                 quality = quality,

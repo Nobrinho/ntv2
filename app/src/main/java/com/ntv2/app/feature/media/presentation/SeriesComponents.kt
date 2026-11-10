@@ -44,6 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -238,6 +240,12 @@ internal fun SeriesEpisodeCard(
     tv: Boolean,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    /** Card aberto: mostra os detalhes do episódio e os botões de assistir. */
+    expanded: Boolean = false,
+    animationsEnabled: Boolean = true,
+    onPlay: () -> Unit = {},
+    onRestart: (() -> Unit)? = null,
+    /** OK/toque no card: abre ou fecha os detalhes (não toca direto). */
     onClick: () -> Unit
 ) {
     val state = seriesEpisodeState(progress)
@@ -257,15 +265,19 @@ internal fun SeriesEpisodeCard(
         tv && current -> 1.dp to BrandColors.Accent.copy(alpha = 0.4f)
         else -> 1.dp to BrandColors.BorderSubtle
     }
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (tv) Modifier.heightIn(min = 77.dp).glideTarget(radius) else Modifier)
             .clip(shape)
+            .background(if (expanded) BrandColors.SurfaceAlt else bg)
+            .border(borderW, borderC, shape)
+    ) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (tv) Modifier.heightIn(min = 77.dp).glideTarget(radius) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .background(bg)
-            .border(borderW, borderC, shape)
             .padding(if (tv) 7.dp else 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -287,7 +299,7 @@ internal fun SeriesEpisodeCard(
                 maxLines = if (tv) 1 else 2,
                 overflow = TextOverflow.Ellipsis
             )
-            episode.seriesEpisodeSubtitle()?.let {
+            episode.seriesEpisodeSubtitle()?.takeIf { !expanded }?.let {
                 Text(
                     it,
                     style = if (tv) NbrType.Caption.copy(fontSize = 10.sp, lineHeight = 13.5.sp)
@@ -302,6 +314,81 @@ internal fun SeriesEpisodeCard(
             SeriesEpisodeState.Watched -> Icon(NbrIcons.CircleCheck, contentDescription = "Assistido", tint = BrandColors.Success, modifier = Modifier.size(20.dp))
             SeriesEpisodeState.Current -> Icon(NbrIcons.PlayFilled, contentDescription = "Em andamento", tint = BrandColors.Accent, modifier = Modifier.size(20.dp))
             SeriesEpisodeState.None -> Unit
+        }
+        Icon(
+            NbrIcons.ChevronDown,
+            contentDescription = if (expanded) "Fechar detalhes" else "Ver detalhes",
+            tint = BrandColors.TextMuted,
+            modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = if (expanded) 180f else 0f }
+        )
+    }
+    AnimatedVisibility(
+        visible = expanded,
+        enter = if (animationsEnabled) androidx.compose.animation.expandVertically(tween(220)) + fadeIn(tween(220))
+            else androidx.compose.animation.EnterTransition.None,
+        exit = if (animationsEnabled) androidx.compose.animation.shrinkVertically(tween(180)) + fadeOut(tween(180))
+            else androidx.compose.animation.ExitTransition.None
+    ) {
+        SeriesEpisodeDetails(episode, progress, tv, onPlay, onRestart)
+    }
+    }
+}
+
+/** "S01E03 · 12/05/2024 · 58min · FHD · Dublado" (partes ausentes somem). */
+private fun MediaItemSummary.episodeFacts(): String = listOfNotNull(
+    if (seasonNumber != null && episodeNumber != null) "S%02dE%02d".format(seasonNumber, episodeNumber) else null,
+    airDate?.takeIf { it.length >= 10 }?.let { "${it.substring(8, 10)}/${it.substring(5, 7)}/${it.substring(0, 4)}" },
+    durationSeconds.takeIf { it > 0 }?.let { durationLabel(it) },
+    quality?.takeIf { it.isNotBlank() },
+    audio?.takeIf { it.isNotBlank() }
+).joinToString(" · ")
+
+/** Detalhes do episódio dentro do card aberto: dados, sinopse inteira e Assistir/Recomeçar (foco no Assistir). */
+@Composable
+private fun SeriesEpisodeDetails(
+    episode: MediaItemSummary,
+    progress: Float,
+    tv: Boolean,
+    onPlay: () -> Unit,
+    onRestart: (() -> Unit)?
+) {
+    val playFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(episode.mediaId) {
+        // O botão entra junto com a animação: tenta por alguns quadros até pegar o foco.
+        repeat(10) {
+            if (runCatching { playFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+            androidx.compose.runtime.withFrameNanos { }
+        }
+    }
+    val started = progress > 0f && progress < SERIES_WATCHED_FRACTION
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        episode.episodeFacts().takeIf { it.isNotEmpty() }?.let {
+            Text(it, style = NbrType.Caption.copy(fontWeight = FontWeight.SemiBold), color = BrandColors.TextSecondary)
+        }
+        episode.synopsis?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            Text(
+                it,
+                style = if (tv) NbrType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp) else NbrType.Secondary,
+                color = BrandColors.TextSecondary
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            com.ntv2.app.core.ui.BrandButton(
+                onClick = onPlay,
+                modifier = Modifier.focusRequester(playFocus)
+            ) {
+                Icon(NbrIcons.PlayFilled, contentDescription = null, tint = BrandColors.OnCta, modifier = Modifier.size(14.dp))
+                com.ntv2.app.core.ui.BrandButtonLabel(if (started) "Continuar" else "Assistir")
+            }
+            if (started && onRestart != null) {
+                com.ntv2.app.core.ui.BrandButton(onClick = onRestart, style = com.ntv2.app.core.ui.BrandButtonStyle.Secondary) {
+                    Icon(NbrIcons.RotateCcw, contentDescription = null, tint = SeriesText, modifier = Modifier.size(14.dp))
+                    com.ntv2.app.core.ui.BrandButtonLabel("Recomeçar")
+                }
+            }
         }
     }
 }

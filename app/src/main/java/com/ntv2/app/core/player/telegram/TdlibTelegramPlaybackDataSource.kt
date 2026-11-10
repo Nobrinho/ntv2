@@ -160,6 +160,10 @@ class TdlibTelegramPlaybackDataSource(
     override fun isComplete(fileId: Int): Boolean = states[fileId]?.value?.isDownloadComplete ?: false
 
     override fun requestRange(fileId: Int, offsetBytes: Long, lengthBytes: Long, priority: Int) {
+        // O TDLib aborta o processo (PartsManager "Check res >= 0") com pedido fora do arquivo:
+        // limita ao tamanho conhecido e descarta o que começa no fim ou depois dele.
+        val range = clampDownloadRange(offsetBytes, lengthBytes, expectedBytes(fileId)) ?: return
+        val (offsetBytes, lengthBytes) = range
         val queue = rangeQueues.computeIfAbsent(fileId) { id ->
             Channel<RangeRequest>(Channel.CONFLATED).also { channel ->
                 rangeWorkers[id] = scope.launch {
@@ -186,4 +190,15 @@ class TdlibTelegramPlaybackDataSource(
             isDownloadComplete = isDownloadComplete
         )
     }
+}
+
+/**
+ * Faixa de download segura para o TDLib: offset >= 0, tamanho > 0 e, com [size] conhecido (> 0),
+ * dentro do arquivo. Null = nada a pedir (começa no fim ou depois dele, ou tamanho inválido).
+ */
+internal fun clampDownloadRange(offset: Long, length: Long, size: Long?): Pair<Long, Long>? {
+    if (offset < 0L || length <= 0L) return null
+    val known = size?.takeIf { it > 0L } ?: return offset to length
+    if (offset >= known) return null
+    return offset to minOf(length, known - offset)
 }

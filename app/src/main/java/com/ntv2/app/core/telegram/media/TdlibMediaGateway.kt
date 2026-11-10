@@ -29,6 +29,9 @@ data class TelegramVideoMessage(
     /** Logo do título (PNG transparente); os Detalhes usam no lugar do título em texto. */
     val logoPath: String? = null,
     val rating: Double? = null,
+    /** Nota do IMDb (0-10) e Tomatômetro (0-100), via OMDb no backend. */
+    val imdbRating: Double? = null,
+    val rtScore: Int? = null,
     val ageRating: String? = null,
     val country: String? = null,
     val quality: String? = null,

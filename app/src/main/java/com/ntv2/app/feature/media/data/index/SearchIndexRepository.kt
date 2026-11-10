@@ -29,8 +29,15 @@ data class IndexMovie(
     val cast: List<CastMemberMeta>,
     val videoMessageId: Long,
     /** Link do trailer (YouTube) do filme. */
-    val trailerUrl: String? = null
+    val trailerUrl: String? = null,
+    /** Diretor(es) do filme ("A, B"), se o índice trouxer. */
+    val director: String? = null,
+    /** Nota do IMDb (0-10) e Tomatômetro do Rotten Tomatoes (0-100), vindas do OMDb no backend. */
+    val imdbRating: Double? = null,
+    val rtScore: Int? = null
 ) {
+    /** Diretores normalizados (filtro por diretor). */
+    val directorKeys: Set<String> by lazy { directorKeysOf(director) }
     val searchKey: String = normalizeForIndex(listOfNotNull(title, originalTitle).joinToString(" "))
     val searchWords: Set<String> by lazy { wordsOf(searchKey) }
     /** Gêneros já normalizados (o filtro não renormaliza a cada busca). */
@@ -72,8 +79,13 @@ data class IndexSeries(
     val genres: List<String>,
     val seasons: List<IndexSeason>,
     /** Link do trailer (YouTube) da série; os episódios usam este. */
-    val trailerUrl: String? = null
+    val trailerUrl: String? = null,
+    /** Criador(es)/diretor(es) da série, se o índice trouxer. */
+    val director: String? = null,
+    val imdbRating: Double? = null,
+    val rtScore: Int? = null
 ) {
+    val directorKeys: Set<String> by lazy { directorKeysOf(director) }
     /** Ano da série = ano do 1º episódio (menor temporada/episódio) que traz data de exibição. */
     val year: Int? = seasons.asSequence().flatMap { it.episodes.asSequence() }
         .firstNotNullOfOrNull { e -> e.airDate?.take(4)?.toIntOrNull() }
@@ -328,7 +340,10 @@ class SearchIndexRepository(
             genres = genres,
             cast = cast,
             videoMessageId = videoMsg,
-            trailerUrl = o.cleanString("trailer_url")
+            trailerUrl = o.cleanString("trailer_url"),
+            director = o.directorText(),
+            imdbRating = o.imdbRating(),
+            rtScore = o.rtScore()
         )
     }
 
@@ -345,7 +360,10 @@ class SearchIndexRepository(
             overview = o.cleanString("overview"),
             genres = genres,
             seasons = parseSeasons(o.optJSONArray("seasons")),
-            trailerUrl = o.cleanString("trailer_url")
+            trailerUrl = o.cleanString("trailer_url"),
+            director = o.directorText(),
+            imdbRating = o.imdbRating(),
+            rtScore = o.rtScore()
         )
     }
 
@@ -410,6 +428,13 @@ class SearchIndexRepository(
         return idx.channelId == channelId && (idx.movies.isNotEmpty() || idx.series.isNotEmpty())
     }
 
+    /** Filmes do canal, do post mais novo ao mais antigo (grade da biblioteca). Vazio se não cobrir o canal. */
+    suspend fun allMovies(channelId: Long): List<IndexMovie> = withContext(Dispatchers.Default) {
+        val idx = ensureLoaded() ?: return@withContext emptyList()
+        if (idx.channelId != channelId) emptyList()
+        else idx.movies.filter { it.videoMessageId > 0L }.sortedByDescending { it.videoMessageId }
+    }
+
     /** Todas as séries do canal (para montar os cards da biblioteca). Vazio se não cobrir o canal. */
     suspend fun allSeries(channelId: Long): List<IndexSeries> {
         val idx = ensureLoaded() ?: return emptyList()
@@ -439,7 +464,8 @@ class SearchIndexRepository(
         genres: Set<String>,
         years: Set<Int>,
         actor: String? = null,
-        limit: Int = 60
+        limit: Int = 60,
+        attrs: AttrFilter = AttrFilter()
     ): Pair<List<IndexMovie>, List<IndexSeries>> = withContext(Dispatchers.Default) {
         val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext emptyList<IndexMovie>() to emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
@@ -454,13 +480,15 @@ class SearchIndexRepository(
                 .map { it.value }
                 .filter { m ->
                     matchesTokens(m.searchKey, m.searchWords, tokens, fuzzy) && genreOk(m.genreKeys) &&
-                        (years.isEmpty() || m.year?.take(4)?.toIntOrNull() in years)
+                        (years.isEmpty() || m.year?.take(4)?.toIntOrNull() in years) &&
+                        attrs.matches(m.directorKeys, m.imdbRating, m.rtScore)
                 }.cap().toList()
             // Séries não trazem elenco no índice: com filtro de ator não entram.
             val series = (if (actorKey != null) emptySequence() else idx.series.asSequence())
                 .filter { sr ->
                     matchesTokens(sr.searchKey, sr.searchWords, tokens, fuzzy) && genreOk(sr.genreKeys) &&
-                        (years.isEmpty() || sr.year in years)
+                        (years.isEmpty() || sr.year in years) &&
+                        attrs.matches(sr.directorKeys, sr.imdbRating, sr.rtScore)
                 }
                 .cap().toList()
             return movies to series
@@ -468,6 +496,13 @@ class SearchIndexRepository(
         val exact = run(fuzzy = false)
         // Nada casou exato: tenta de novo tolerando erro de digitação (ex.: "eletric" → "electric").
         if (tokens.isEmpty() || exact.first.isNotEmpty() || exact.second.isNotEmpty()) exact else run(fuzzy = true)
+    }
+
+    /** O índice do canal traz nota do IMDb / do Rotten Tomatoes em algum item? */
+    suspend fun ratingsAvailable(channelId: Long): Pair<Boolean, Boolean> = withContext(Dispatchers.Default) {
+        val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext false to false
+        (idx.movies.any { it.imdbRating != null } || idx.series.any { it.imdbRating != null }) to
+            (idx.movies.any { it.rtScore != null } || idx.series.any { it.rtScore != null })
     }
 
     /** Quantos filmes do canal têm [actor] no elenco. */
@@ -627,3 +662,34 @@ internal fun normalizeForIndex(s: String): String =
     Normalizer.normalize(s, Normalizer.Form.NFD)
         .replace(COMBINING_MARKS, "")
         .lowercase()
+
+
+/** Diretores separados por vírgula/"&"/" e ", normalizados. */
+internal fun directorKeysOf(director: String?): Set<String> =
+    director?.split(',', '&', ';')?.flatMap { it.split(" e ") }
+        ?.map { normalizeForIndex(it).trim() }?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+
+/** Diretor: string, lista de strings/objetos {name}, ou dentro de "extra". */
+internal fun JSONObject.directorText(): String? {
+    val src = if (has("director") || has("diretor") || has("directors")) this else optJSONObject("extra") ?: return null
+    src.optJSONArray("directors")?.let { arr ->
+        val names = (0 until arr.length()).mapNotNull { i ->
+            (arr.optJSONObject(i)?.optString("name") ?: arr.optString(i)).trim().ifBlank { null }
+        }
+        if (names.isNotEmpty()) return names.joinToString(", ")
+    }
+    return listOf("director", "diretor").firstNotNullOfOrNull { k ->
+        src.optString(k, "").trim().takeIf { it.isNotEmpty() && it != "null" }
+    }
+}
+
+private fun JSONObject.extraOrSelf(key: String): Any? =
+    opt(key)?.takeIf { it != JSONObject.NULL } ?: optJSONObject("extra")?.opt(key)?.takeIf { it != JSONObject.NULL }
+
+/** Nota IMDb 0-10 ("7.8" ou 7.8). */
+internal fun JSONObject.imdbRating(): Double? =
+    extraOrSelf("imdb_rating")?.toString()?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it in 0.0..10.0 && it > 0.0 }
+
+/** Tomatômetro 0-100 ("87%" ou 87). */
+internal fun JSONObject.rtScore(): Int? =
+    extraOrSelf("rt_score")?.toString()?.trim()?.removeSuffix("%")?.toDoubleOrNull()?.toInt()?.takeIf { it in 0..100 }

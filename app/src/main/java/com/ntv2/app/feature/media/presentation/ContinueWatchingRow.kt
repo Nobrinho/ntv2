@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -74,7 +75,9 @@ internal fun ContinueWatchingRow(
     showCovers: Boolean,
     useTvLayout: Boolean,
     onCardClick: (MediaCardUi) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Requester do card (por mediaId): ao fechar os Detalhes o foco volta a ele, não à grade. */
+    focusRequesterFor: ((String) -> androidx.compose.ui.focus.FocusRequester)? = null
 ) {
     if (items.isEmpty()) return
     val cardWidth = if (useTvLayout) 180.dp else 240.dp
@@ -93,6 +96,7 @@ internal fun ContinueWatchingRow(
                     width = cardWidth,
                     height = cardHeight,
                     useTvLayout = useTvLayout,
+                    focusRequester = focusRequesterFor?.invoke(media.mediaId),
                     onClick = { onCardClick(media) }
                 )
             }
@@ -107,6 +111,7 @@ private fun ContinueCard(
     width: androidx.compose.ui.unit.Dp,
     height: androidx.compose.ui.unit.Dp,
     useTvLayout: Boolean,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -119,6 +124,7 @@ private fun ContinueCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(height)
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .glideTarget(if (useTvLayout) 10.dp else 12.dp)
                 // Foco do protótipo (TV): contorno azul com brilho.
                 .then(
@@ -211,8 +217,9 @@ internal fun PosterTrackRow(
     useTvLayout: Boolean,
     onCardClick: (MediaCardUi) -> Unit,
     modifier: Modifier = Modifier,
-    libraryStyle: Boolean = false
-) = PosterTrackRow(androidx.compose.ui.text.AnnotatedString(label), items, showCovers, useTvLayout, onCardClick, modifier, libraryStyle)
+    libraryStyle: Boolean = false,
+    focusRequesterFor: ((String) -> androidx.compose.ui.focus.FocusRequester)? = null
+) = PosterTrackRow(androidx.compose.ui.text.AnnotatedString(label), items, showCovers, useTvLayout, onCardClick, modifier, libraryStyle, focusRequesterFor)
 
 /** Igual, com título formatado (ex.: "Porque você viu" + título em destaque). */
 @Composable
@@ -223,7 +230,9 @@ internal fun PosterTrackRow(
     useTvLayout: Boolean,
     onCardClick: (MediaCardUi) -> Unit,
     modifier: Modifier = Modifier,
-    libraryStyle: Boolean = false
+    libraryStyle: Boolean = false,
+    /** Requester do pôster (por mediaId): ao fechar os Detalhes o foco volta a ele, não à grade. */
+    focusRequesterFor: ((String) -> androidx.compose.ui.focus.FocusRequester)? = null
 ) {
     if (items.isEmpty()) return
     // Protótipo: celular 112×168 dp; TV 200×300 px → 100×150 dp.
@@ -254,6 +263,7 @@ internal fun PosterTrackRow(
                             width = posterWidth,
                             showBadge = true,
                             radius = if (useTvLayout) 10.dp else 12.dp,
+                            modifier = focusRequesterFor?.let { Modifier.focusRequester(it(media.mediaId)) } ?: Modifier,
                             onClick = { onCardClick(media) }
                         )
                         Text(

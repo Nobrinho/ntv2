@@ -28,7 +28,7 @@ class FallbackCatalogSearchTest {
         override fun supports(query: String, genres: Set<String>, years: Set<Int>, actor: String?) = supported
         override suspend fun search(
             channelId: Long, query: String, genres: Set<String>, years: Set<Int>,
-            actor: String?, kind: CatalogKind, limit: Int
+            actor: String?, kind: CatalogKind, limit: Int, attrs: AttrFilter
         ): Pair<List<IndexMovie>, List<IndexSeries>> {
             calls++
             lastKind = kind

@@ -11,6 +11,16 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** Tipo pedido na busca do catálogo (valores do RPC search_catalog). */
 enum class CatalogKind(val wire: String) { ALL("all"), MOVIE("movie"), SERIES("series") }
 
+/** Filtros extras (diretor e notas mínimas): só o índice local sabe aplicar. */
+data class AttrFilter(val director: String? = null, val minImdb: Double? = null, val minRt: Int? = null) {
+    val isEmpty: Boolean get() = director == null && minImdb == null && minRt == null
+    private val directorKey: String? = director?.let { normalizeForIndex(it).trim() }
+    fun matches(directorKeys: Set<String>, imdb: Double?, rt: Int?): Boolean =
+        (directorKey == null || directorKey in directorKeys) &&
+            (minImdb == null || (imdb != null && imdb >= minImdb)) &&
+            (minRt == null || (rt != null && rt >= minRt))
+}
+
 /** Busca no catálogo: índice local em memória ou backend. Mesmos modelos dos dois lados. */
 interface CatalogSearch {
     /** Esta implementação sabe responder essa combinação de filtros? */
@@ -23,7 +33,8 @@ interface CatalogSearch {
         years: Set<Int>,
         actor: String?,
         kind: CatalogKind = CatalogKind.ALL,
-        limit: Int = 60
+        limit: Int = 60,
+        attrs: AttrFilter = AttrFilter()
     ): Pair<List<IndexMovie>, List<IndexSeries>>
 }
 
@@ -36,8 +47,9 @@ class LocalCatalogSearch(private val index: SearchIndexRepository) : CatalogSear
         years: Set<Int>,
         actor: String?,
         kind: CatalogKind,
-        limit: Int
-    ) = index.searchFiltered(channelId, query, genres, years, actor, limit)
+        limit: Int,
+        attrs: AttrFilter
+    ) = index.searchFiltered(channelId, query, genres, years, actor, limit, attrs)
 }
 
 /**
@@ -64,10 +76,11 @@ class FallbackCatalogSearch(
         years: Set<Int>,
         actor: String?,
         kind: CatalogKind,
-        limit: Int
+        limit: Int,
+        attrs: AttrFilter
     ): Pair<List<IndexMovie>, List<IndexSeries>> {
         val r = remote
-        if (r != null && backendEnabled() && r.supports(query, genres, years, actor)) {
+        if (r != null && attrs.isEmpty && backendEnabled() && r.supports(query, genres, years, actor)) {
             val call = scope.async {
                 if (!remoteEnabled()) null
                 else r.search(channelId, query, genres, years, actor, kind, limit)
@@ -83,6 +96,6 @@ class FallbackCatalogSearch(
             }
             if (result != null && (result.first.isNotEmpty() || result.second.isNotEmpty())) return result
         }
-        return local.search(channelId, query, genres, years, actor, kind, limit)
+        return local.search(channelId, query, genres, years, actor, kind, limit, attrs)
     }
 }

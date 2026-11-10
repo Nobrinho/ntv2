@@ -32,12 +32,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -75,12 +76,14 @@ internal fun trailerErrorMessage(code: String?): String = when (code) {
 }
 
 /**
- * Trailer em tela cheia, com som (botão "Trailer" dos detalhes). Usa o mesmo player oficial da
- * prévia, mas visível desde o início: mostra "Carregando", o vídeo, o fim ou o erro com o código.
+ * Trailer em tela cheia, com som (botão "Trailer" dos detalhes). Sem controles do YouTube: só o
+ * vídeo (e a legenda, quando houver).
  *
- * D-pad: OK pausa/continua (no fim, recomeça), ← → voltam/avançam 10 s, Voltar fecha. O WebView nunca
+ * Se a prévia do fundo já está tocando o mesmo vídeo ([handle] com `handoff`), assume aquele WebView:
+ * o vídeo continua de onde estava e só o som sobe para 100% — sem carregar de novo. Senão, cria um.
+ *
+ * D-pad: OK pausa/continua (no fim, volta para os detalhes), ← → voltam/avançam 10 s, Voltar fecha. O WebView nunca
  * recebe foco: as teclas chegam a esta tela e viram chamadas JS. Toque (celular) pausa/continua.
- * Independe da configuração "Prévia de trailer" e da lista de falhas da sessão.
  */
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
@@ -88,22 +91,33 @@ fun TrailerFullscreen(
     videoId: String,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    handle: TrailerHandle? = null,
 ) {
     BackHandler(enabled = true) { onClose() }
-    var state by remember(videoId) { mutableStateOf<FullscreenState>(FullscreenState.Loading) }
-    var showHint by remember(videoId) { mutableStateOf(false) }
+    // Assume o WebView da prévia só se ela estiver tocando este mesmo vídeo.
+    val takeOver = remember { handle != null && handle.handoff && handle.canHandOff(videoId) }
+    var state by remember(videoId) {
+        mutableStateOf<FullscreenState>(if (takeOver) FullscreenState.Playing else FullscreenState.Loading)
+    }
+    var showHint by remember(videoId) { mutableStateOf(takeOver) }
     var web by remember { mutableStateOf<WebView?>(null) }
     var rendererGone by remember { mutableStateOf(false) }
 
+    val onPlaying = {
+        if (state != FullscreenState.Playing) showHint = true
+        state = FullscreenState.Playing
+    }
+    val onError = { code: String? -> state = FullscreenState.Failed(trailerErrorMessage(code)) }
+    // Fim do trailer: volta direto para os detalhes (sem tela de "Fim do trailer").
+    val closeNow by androidx.compose.runtime.rememberUpdatedState(onClose)
+    val onEnded = {
+        state = FullscreenState.Ended
+        closeNow()
+    }
     val bridge = remember(videoId) {
-        TrailerBridge(
-            onPlaying = {
-                if (state != FullscreenState.Playing) showHint = true
-                state = FullscreenState.Playing
-            },
-            onError = { code -> state = FullscreenState.Failed(trailerErrorMessage(code)) },
-            onEnded = { state = FullscreenState.Ended },
-        )
+        val inherited = if (takeOver) handle?.bridge else null
+        inherited?.also { it.retarget(onPlaying, onError, onEnded) }
+            ?: TrailerBridge(onPlaying = onPlaying, onError = onError, onEnded = onEnded)
     }
     DisposableEffect(bridge) { onDispose { bridge.release() } }
 
@@ -113,29 +127,6 @@ fun TrailerFullscreen(
         if (state == FullscreenState.Loading) {
             Log.w(TRAILER_LOG, "tela cheia: sem 'playing' em 15 s")
             state = FullscreenState.Failed("O trailer não começou em 15 s. Verifique a conexão e tente de novo.")
-        }
-    }
-    // Diagnóstico: ainda carregando depois de 4 s → registra o que o JS da página tem.
-    LaunchedEffect(videoId) {
-        delay(4_000)
-        if (state == FullscreenState.Loading) {
-            web?.evaluateJavascript(
-                "JSON.stringify({yt: typeof YT, loaded: (typeof YT !== 'undefined') ? YT.loaded : null, " +
-                    "player: typeof player, bridge: typeof NtvTrailer, scripts: document.scripts.length, " +
-                    "srcs: Array.prototype.map.call(document.scripts, function (x) { return x.src; }), " +
-                    "iframe: (function (f) { return f ? {src: f.src, w: f.offsetWidth, h: f.offsetHeight} : null; })(document.querySelector('iframe'))})"
-            ) { result -> Log.w(TRAILER_LOG, "tela cheia: ainda carregando; JS=$result") }
-        }
-    }
-    // Diagnóstico: ao começar a tocar, registra o tamanho do iframe (tela preta = iframe sem tamanho
-    // ou aparelho que não desenha o iframe).
-    LaunchedEffect(state == FullscreenState.Playing) {
-        if (state == FullscreenState.Playing) {
-            web?.evaluateJavascript(
-                "(function (f) { return (f ? f.offsetWidth + 'x' + f.offsetHeight + ' id=' + f.id + ' css=' + getComputedStyle(f).height : 'sem iframe') + " +
-                    "' janela=' + window.innerWidth + 'x' + window.innerHeight + ' doc=' + document.documentElement.clientHeight + ' body=' + document.body.offsetHeight + ' inline=' + (f ? f.getAttribute('style') : '') + ' sheets=' + document.styleSheets.length; })" +
-                    "(document.querySelector('iframe'))"
-            ) { result -> Log.i(TRAILER_LOG, "tela cheia: iframe $result; página ${web?.width}x${web?.height}") }
         }
     }
     LaunchedEffect(showHint) {
@@ -167,6 +158,21 @@ fun TrailerFullscreen(
         web?.takeIf { !rendererGone }?.evaluateJavascript(code, null)
     }
 
+    // No lugar: o WebView continua na prévia (não sai da janela, o vídeo não para); só liga o som.
+    // Ao fechar, pausa — a prévia sai e destrói o WebView.
+    if (takeOver) {
+        DisposableEffect(Unit) {
+            val view = handle?.web
+            web = view
+            Log.i(TRAILER_LOG, "tela cheia: usando a prévia de $videoId no lugar (sem recarregar)")
+            view?.evaluateJavascript("ntvSound(100); if (player && player.playVideo) player.playVideo();", null)
+            onDispose {
+                view?.evaluateJavascript("if (player && player.pauseVideo) player.pauseVideo();", null)
+                web = null
+            }
+        }
+    }
+
     fun primaryAction() {
         when (state) {
             FullscreenState.Ended -> {
@@ -185,7 +191,7 @@ fun TrailerFullscreen(
         modifier = modifier
             .fillMaxSize()
             .zIndex(10f)
-            .background(Color.Black)
+            .background(if (takeOver) Color.Transparent else Color.Black)
             .trapFocus()
             .focusRequester(focus)
             .focusable()
@@ -215,8 +221,25 @@ fun TrailerFullscreen(
                 onClick = { primaryAction() },
             ),
     ) {
-        AndroidView(
+        if (!takeOver) AndroidView(
             factory = { ctx ->
+                val inherited: WebView? = null
+                if (inherited != null) {
+                    // Mesmo WebView da prévia: tira do fundo dos detalhes, traz para cá e liga o som.
+                    Log.i(TRAILER_LOG, "tela cheia: assumindo a prévia de $videoId (sem recarregar)")
+                    (inherited.parent as? ViewGroup)?.removeView(inherited)
+                    inherited.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    inherited.setBackgroundColor(AndroidColor.BLACK)
+                    // Tirar o WebView da janela pausa a mídia: depois de anexar aqui, retoma de onde parou
+                    // (de novo após um instante, se o primeiro pedido chegar antes da superfície estar pronta).
+                    val resume = "ntvSound(100); ntvFit(); if (player && player.playVideo) player.playVideo();"
+                    inherited.post { inherited.evaluateJavascript(resume, null) }
+                    inherited.postDelayed({ inherited.evaluateJavascript(resume, null) }, 400)
+                    // `handoff` fica ligado até fechar: a prévia, se sair depois, não destrói este WebView.
+                    handle?.let { it.web = null; it.bridge = null; it.playing = false }
+                    web = inherited
+                    return@AndroidView inherited
+                }
                 val view = try {
                     WebView(ctx)
                 } catch (t: Throwable) {
@@ -250,17 +273,9 @@ fun TrailerFullscreen(
                             bridge.release()
                             state = FullscreenState.Failed("O componente de vídeo parou neste aparelho.")
                         })
-                        webChromeClient = object : android.webkit.WebChromeClient() {
-                            override fun onConsoleMessage(message: android.webkit.ConsoleMessage?): Boolean {
-                                Log.i(TRAILER_LOG, "tela cheia: console ${message?.messageLevel()} ${message?.message()?.take(160)}")
-                                return true
-                            }
-                        }
                         addJavascriptInterface(bridge, "NtvTrailer")
                         Log.i(TRAILER_LOG, "tela cheia: WebView criado para $videoId")
-                        loadDataWithBaseURL(
-                            TrailerHtml.BASE_URL, TrailerHtml.buildFullscreen(videoId), "text/html", "utf-8", null
-                        )
+                        loadDataWithBaseURL(TrailerHtml.BASE_URL, TrailerHtml.build(videoId, volume = 100, captions = true), "text/html", "utf-8", null)
                     }.also { web = it }
                 }
             },
@@ -279,6 +294,15 @@ fun TrailerFullscreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
+        // Degradê em cima/embaixo: trailers com barras embutidas não mostram faixa preta seca.
+        if (!takeOver) Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color.Black, 0.08f to Color.Transparent,
+                    0.92f to Color.Transparent, 1f to Color.Black
+                )
+            )
+        )
 
         when (val s = state) {
             FullscreenState.Loading -> CircularProgressIndicator(
@@ -286,11 +310,9 @@ fun TrailerFullscreen(
                 strokeWidth = 3.dp,
                 modifier = Modifier.align(Alignment.Center).size(48.dp),
             )
-            FullscreenState.Ended -> FullscreenMessage(
-                title = "Fim do trailer",
-                body = "OK para ver de novo · Voltar para fechar",
-                modifier = Modifier.align(Alignment.Center),
-            )
+            // Fundo opaco: cobre o player, para a grade de recomendados do YouTube nunca aparecer.
+            // Só no quadro até a tela fechar: cobre o player (a grade de recomendados nunca aparece).
+            FullscreenState.Ended -> Box(Modifier.fillMaxSize().background(Color.Black))
             is FullscreenState.Failed -> FullscreenMessage(
                 title = "Trailer indisponível",
                 body = s.message + "\nVoltar para fechar",

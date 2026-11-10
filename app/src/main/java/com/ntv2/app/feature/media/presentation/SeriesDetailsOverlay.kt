@@ -126,6 +126,11 @@ internal fun SeriesDetailsOverlay(
     fun watchedIn(season: SeasonSummary?): Int =
         season?.episodes?.count { (episodeProgress[it.mediaId] ?: 0f) >= SERIES_WATCHED_FRACTION } ?: 0
 
+    // Episódio com os detalhes abertos (OK no card abre; Voltar fecha antes de sair da série).
+    var expandedEpisode by remember(series.tmdbId) { mutableStateOf<String?>(null) }
+    BackHandler(enabled = expandedEpisode != null) { expandedEpisode = null }
+    // Prévia do trailer visível (TV): o logo encolhe para sair de cima do vídeo.
+    var trailerShowing by remember(series.tmdbId) { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
     val seasonsFocus = remember { FocusRequester() }
     val hasSeasonRow = seasons.size > 1
@@ -167,7 +172,12 @@ internal fun SeriesDetailsOverlay(
     ) {
         if (isTv) {
             // Fundo: capa em tela cheia com degradê horizontal bg@98% → bg@85% (45%) → bg@60%.
-            SeriesBackdrop(series, showCovers, Modifier.fillMaxSize(), trailerPreviewEnabled = trailerPreviewEnabled && !trailerOpen, animationsEnabled = animationsEnabled)
+            SeriesBackdrop(
+                series, showCovers, Modifier.fillMaxSize(),
+                trailerPreviewEnabled = trailerPreviewEnabled && !trailerOpen,
+                animationsEnabled = animationsEnabled,
+                onTrailerVisible = { trailerShowing = it }
+            )
             // ── TV: duas colunas com handshake de foco entre painéis (→ entra na lista, ← volta) ──
             val listFocus = remember { FocusRequester() }
             val backFocus = remember { FocusRequester() }
@@ -191,13 +201,10 @@ internal fun SeriesDetailsOverlay(
                             .focusRequester(backFocus)
                             .focusProperties { down = playFocus }
                     )
-                    Text(
-                        series.title,
-                        color = SeriesText,
-                        style = NbrType.Hero.copy(fontSize = 36.sp, lineHeight = 37.8.sp, fontWeight = FontWeight.ExtraBold),
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    // Logo da série (como nos filmes); sem logo ou se falhar, o título em texto.
+                    androidx.compose.runtime.CompositionLocalProvider(LocalTrailerShowing provides trailerShowing) {
+                        DetailTitle(series.title, series.logoUrl, tv = true)
+                    }
                     SeriesMeta(series, tv = true, onFilterClick = onFilterClick)
                     nextEpisode?.let { ep ->
                         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -284,7 +291,11 @@ internal fun SeriesDetailsOverlay(
                                         .focusRequester(listFocus)
                                         .focusProperties { if (hasSeasonRow) up = seasonsFocus }
                                 } else Modifier,
-                                onClick = { onPlayEpisode(ep, followingOf(ep)) }
+                                expanded = expandedEpisode == ep.mediaId,
+                                animationsEnabled = animationsEnabled,
+                                onPlay = { onPlayEpisode(ep, followingOf(ep)) },
+                                onRestart = onRestartEpisode?.let { r -> { r(ep, followingOf(ep)) } },
+                                onClick = { expandedEpisode = if (expandedEpisode == ep.mediaId) null else ep.mediaId }
                             )
                         }
                     }
@@ -363,7 +374,11 @@ internal fun SeriesDetailsOverlay(
                         tv = false,
                         modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 10.dp),
                         onLongClick = { optionsFor = ep },
-                        onClick = { onPlayEpisode(ep, followingOf(ep)) }
+                        expanded = expandedEpisode == ep.mediaId,
+                        animationsEnabled = animationsEnabled,
+                        onPlay = { onPlayEpisode(ep, followingOf(ep)) },
+                        onRestart = onRestartEpisode?.let { r -> { r(ep, followingOf(ep)) } },
+                        onClick = { expandedEpisode = if (expandedEpisode == ep.mediaId) null else ep.mediaId }
                     )
                 }
             }
@@ -477,13 +492,7 @@ private fun SeriesHero(
                     .padding(start = 24.dp, top = 40.dp, end = 24.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    series.title,
-                    color = SeriesText,
-                    style = NbrType.Hero,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
+                DetailTitle(series.title, series.logoUrl, tv = false)
                 SeriesMetaLine(series, tv = false, onFilterClick = onFilterClick)
             }
         }
@@ -595,7 +604,8 @@ private fun SeriesBackdrop(
     modifier: Modifier,
     portrait: Boolean = false,
     trailerPreviewEnabled: Boolean = false,
-    animationsEnabled: Boolean = true
+    animationsEnabled: Boolean = true,
+    onTrailerVisible: (Boolean) -> Unit = {}
 ) {
     val hero = (series.backdropUrl ?: series.posterUrl)?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, if (portrait) "w780" else "w1280") }
     var heroLoaded by remember(hero) { mutableStateOf(false) }
@@ -615,7 +625,8 @@ private fun SeriesBackdrop(
                 showCovers = showCovers,
                 imageLoaded = heroLoaded,
                 animationsEnabled = animationsEnabled,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                onVisibleChange = onTrailerVisible
             )
         }
         Box(modifier = Modifier.fillMaxSize().drawWithCache {

@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -171,6 +173,43 @@ internal fun MovieDetailPillButton(
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(15.dp))
         Text(label, color = MovieDetailTextPrimary, style = NbrType.Button.copy(fontSize = 14.sp), maxLines = 1)
+    }
+}
+
+/**
+ * Botão secundário da TV só com ícone (36 dp, redondo); com foco abre em pílula com o rótulo. Mantém a
+ * fileira estreita para não passar por trás da coluna do elenco.
+ */
+@Composable
+internal fun MovieDetailExpandingButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = MovieDetailTextPrimary,
+    animate: Boolean = true
+) {
+    var focused by remember { mutableStateOf(false) }
+    val ring = focused && !glideActive()
+    Row(
+        modifier = modifier
+            .height(36.dp)
+            .widthIn(min = 36.dp)
+            .glideTarget(18.dp)
+            .clip(BrandShapes.Pill)
+            .onFocusChanged { focused = it.isFocused }
+            .clickable(onClick = onClick, onClickLabel = label)
+            .background(if (focused) BrandColors.Border else ChipFill)
+            .border(if (ring) 3.dp else 1.dp, if (ring) BrandColors.Accent else RoundStroke, BrandShapes.Pill)
+            .then(if (animate) Modifier.animateContentSize() else Modifier)
+            .padding(horizontal = if (focused) 16.dp else 10.5.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(15.dp))
+        if (focused) {
+            Text(label, color = MovieDetailTextPrimary, style = NbrType.Button.copy(fontSize = 14.sp), maxLines = 1)
+        }
     }
 }
 

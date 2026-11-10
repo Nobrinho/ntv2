@@ -206,17 +206,45 @@ internal fun TvSearchOverlay(
         }
     }
 
-    // Foco inicial: volta ao resultado que abriu os Detalhes; senão, 1ª tecla.
+    // Voltou dos Detalhes: resultado a refocar. Fica pendente até ele estar na grade (a busca pode
+    // ainda estar recarregando ao reabrir); antes, o foco caía no teclado e era preciso voltar à lista.
+    var pendingRestore by remember { mutableStateOf(restoreFocusMediaId) }
+    LaunchedEffect(pendingRestore, cellIds.size, searchInProgress) {
+        val id = pendingRestore ?: return@LaunchedEffect
+        val index = currentCells.indexOf(id)
+        if (index < 0) {
+            // Busca terminou e o item não voltou nos resultados: desiste (vai para o teclado).
+            if (!searchInProgress && currentCells.isNotEmpty()) {
+                pendingRestore = null
+                focusKeyboard()
+            }
+            return@LaunchedEffect
+        }
+        lastResultIndex = index
+        if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) listState.scrollToItem(index)
+        // O card pode levar alguns quadros para compor/anexar o FocusRequester: tenta até pegar.
+        repeat(12) {
+            withFrameNanos { }
+            if (focusInResults) {
+                pendingRestore = null
+                return@LaunchedEffect
+            }
+            runCatching { resultRequester(id).requestFocus() }
+        }
+        pendingRestore = null
+        if (!focusInResults) focusKeyboard()
+    }
+
+    // Foco inicial: com resultado a restaurar, espera por ele (acima); senão, 1ª tecla.
     LaunchedEffect(Unit) {
-        val index = restoreFocusMediaId?.let { id -> cellIds.indexOf(id) } ?: -1
         onRestoreConsumed()
-        if (index >= 0) {
-            lastResultIndex = index
-            listState.scrollToItem(index)
-            withFrameNanos { }
-            withFrameNanos { }
-            runCatching { resultRequester(cellIds[index]).requestFocus() }
-                .onFailure { focusKeyboard() }
+        if (pendingRestore != null) {
+            // Rede lenta: não deixa a tela sem foco para sempre.
+            kotlinx.coroutines.delay(2500)
+            if (pendingRestore != null && !focusInResults) {
+                pendingRestore = null
+                focusKeyboard()
+            }
         } else if (textEnabled) {
             runCatching { keyRequester(firstKeyId).requestFocus() }
         } else {
@@ -228,7 +256,12 @@ internal fun TvSearchOverlay(
     }
 
     // Nova consulta com o foco na lista: o item focado deixa de existir — devolve ao teclado.
+    val firstQuery = remember { query }
+    var queryChanged by remember { mutableStateOf(false) }
     LaunchedEffect(query) {
+        // A 1ª execução (abrir/reabrir a busca) não é consulta nova: não mexe no foco restaurado.
+        if (!queryChanged && query == firstQuery) return@LaunchedEffect
+        queryChanged = true
         lastResultIndex = 0
         if (focusInResults) focusKeyboard()
     }
@@ -257,7 +290,7 @@ internal fun TvSearchOverlay(
     }
     // Se o foco sair do overlay (ex.: o item focado foi removido da composição), traz de volta.
     LaunchedEffect(overlayHasFocus, textEnabled, hasCells, searchInProgress, showFilters) {
-        if (overlayHasFocus || showFilters) return@LaunchedEffect
+        if (overlayHasFocus || showFilters || pendingRestore != null) return@LaunchedEffect
         withFrameNanos { }
         when {
             textEnabled -> focusKeyboard()
@@ -581,6 +614,9 @@ private fun TvFilterSummary(
         if (filters.type != SearchTypeFilter.ALL) SearchChip(filters.type.label, active = true, tv = true)
         else if (showCategories) SearchChip("Tipo", active = false, tv = true)
         filters.actor?.let { SearchChip(it, active = true, tv = true) }
+        filters.director?.let { SearchChip("Direção: $it", active = true, tv = true) }
+        filters.minImdbLabel?.let { SearchChip(it, active = true, tv = true) }
+        filters.minRtLabel?.let { SearchChip(it, active = true, tv = true) }
         if (filters.genres.isNotEmpty()) filters.genres.forEach { SearchChip(it, active = true, tv = true) }
         else if (showCategories && options.genres.isNotEmpty()) SearchChip("Gênero", active = false, tv = true)
         if (filters.years.isNotEmpty()) filters.years.sortedDescending().forEach { SearchChip(it.toString(), active = true, tv = true) }
@@ -669,14 +705,14 @@ private fun TvFilterPanel(
                 }
             }
             if (options.years.isNotEmpty()) {
-                TvFilterSection("Ano") {
-                    options.years.forEach { y ->
-                        SearchFilterOptionChip(text = y.toString(), selected = y in filters.years, tv = true) {
-                            onChange(filters.copy(years = if (y in filters.years) filters.years - y else filters.years + y))
-                        }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("ANO", color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = NbrType.Overline)
+                    YearAutocompleteFilter(options.years, filters.years.toSet(), tv = true) { y ->
+                        onChange(filters.copy(years = if (y in filters.years) filters.years - y else filters.years + y))
                     }
                 }
             }
+            RatingFilterChips(filters, options, tv = true, onChange = onChange)
         }
     }
 }
@@ -862,6 +898,11 @@ private fun SearchFilterChipsRow(
             val count = if (actorCount == 1) "1 filme" else "$actorCount filmes"
             SearchChip(if (actorCount > 0) "$a · $count" else a, active = true, removable = true) { onChange(filters.copy(actor = null)) }
         }
+        filters.director?.let { d ->
+            SearchChip("Direção: $d", active = true, removable = true) { onChange(filters.copy(director = null)) }
+        }
+        filters.minImdbLabel?.let { SearchChip(it, active = true, removable = true) { onChange(filters.copy(minImdb = null)) } }
+        filters.minRtLabel?.let { SearchChip(it, active = true, removable = true) { onChange(filters.copy(minRt = null)) } }
         if (filters.genres.isNotEmpty()) {
             filters.genres.forEach { g ->
                 SearchChip(g, active = true, removable = true) { onChange(filters.copy(genres = filters.genres - g)) }
@@ -934,14 +975,14 @@ private fun SearchFilterSheet(
                 }
             }
             if (options.years.isNotEmpty()) {
-                FilterSection("Ano") {
-                    options.years.forEach { y ->
-                        SearchFilterOptionChip(y.toString(), y in filters.years) {
-                            onChange(filters.copy(years = if (y in filters.years) filters.years - y else filters.years + y))
-                        }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("ANO", color = com.ntv2.app.core.ui.BrandColors.TextMuted, style = NbrType.Overline)
+                    YearAutocompleteFilter(options.years, filters.years.toSet(), tv = false) { y ->
+                        onChange(filters.copy(years = if (y in filters.years) filters.years - y else filters.years + y))
                     }
                 }
             }
+            RatingFilterChips(filters, options, tv = false, onChange = onChange)
             Box(modifier = Modifier.height(12.dp))
         }
     }

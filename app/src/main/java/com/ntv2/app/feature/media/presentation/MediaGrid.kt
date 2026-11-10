@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -105,27 +106,26 @@ internal fun LoadMoreButton(
     Row(
         modifier = modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .widthIn(min = 320.dp)
-            .height(56.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .height(44.dp)
+            .clip(com.ntv2.app.core.ui.BrandShapes.Pill)
             .onFocusChanged { focused = it.isFocused }
             .clickable(enabled = !loading, onClick = onClick)
-            .background(if (focused) accent else com.ntv2.app.core.ui.BrandColors.BorderSubtle)
+            .background(if (focused) accent else Color(0x14FFFFFF))
             .border(
                 width = if (focused) 2.dp else 1.dp,
-                color = if (focused) accent else com.ntv2.app.core.ui.BrandColors.BorderStrong,
-                shape = RoundedCornerShape(8.dp)
+                color = if (focused) accent else Color(0x33FFFFFF),
+                shape = com.ntv2.app.core.ui.BrandShapes.Pill
             )
-            .padding(horizontal = 28.dp),
+            .padding(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (loading) {
-            CircularProgressIndicator(color = content, strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
-            Text("Carregando…", color = content, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            CircularProgressIndicator(color = content, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+            Text("Carregando…", color = content, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         } else {
-            Icon(NbrIcons.ChevronDown, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
-            Text("Carregar mais", color = content, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Icon(NbrIcons.ChevronDown, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+            Text("Carregar mais", color = content, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -137,6 +137,35 @@ internal fun LoadMoreButton(
 // Colunas pela largura DISPONÍVEL da grade (dp): ~130dp por card. Cards menores no celular
 // (2 no retrato, ~5 na paisagem) e ~6 na TV (teto). Evita card gigante em telas largas.
 internal const val GRID_TARGET_COL_DP = 107f
+/** Folga em volta do card focado ao rolar para mostrá-lo (zoom de 1,07 + afastamento e traço do anel). */
+private val FOCUS_REVEAL_MARGIN = 20.dp
+
+/**
+ * Card focado sempre inteiro na tela (com folga para o zoom e o anel). O "bring into view" do foco
+ * aceitava card parcialmente visível: ao voltar dos Detalhes ele ficava cortado ao meio.
+ */
+private fun kotlinx.coroutines.CoroutineScope.revealGridItem(state: LazyStaggeredGridState, key: Any, marginPx: Float) {
+    launch {
+        // Espera a rolagem do próprio foco ("bring into view", restauração) assentar; só então mede.
+        withFrameNanos { }
+        var waited = 0
+        while (state.isScrollInProgress && waited < 60) {
+            withFrameNanos { }
+            waited++
+        }
+        val info = state.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.key == key } ?: return@launch
+        val top = item.offset.y - marginPx
+        val bottom = item.offset.y + item.size.height + marginPx
+        val delta = when {
+            top < info.viewportStartOffset -> top - info.viewportStartOffset
+            bottom > info.viewportEndOffset -> bottom - info.viewportEndOffset
+            else -> 0f
+        }
+        if (delta != 0f) state.animateScrollBy(delta)
+    }
+}
+
 internal fun columnsForWidthDp(widthDp: Float): Int =
     (widthDp / GRID_TARGET_COL_DP).toInt().coerceIn(2, 6)
 internal val GRID_GAP = 12.dp
@@ -171,6 +200,7 @@ internal fun LazyMediaGrid(
 ) {
     val scope = rememberCoroutineScope()
     val hasHeader = headerContent != null
+    val revealMarginPx = with(androidx.compose.ui.platform.LocalDensity.current) { FOCUS_REVEAL_MARGIN.toPx() }
     // Grade de alturas mistas: a busca espacial padrão do ↑/↓ às vezes pula de coluna.
     // Aqui ↑/↓ seguem a mesma coluna (lane); se o alvo não está visível, rola um card e tenta de novo.
     fun moveInLane(mediaId: String, down: Boolean): Boolean {
@@ -236,7 +266,7 @@ internal fun LazyMediaGrid(
                         .fillMaxWidth()
                         .focusGlideTarget(media.mediaId, glide, radius = CARD_RADIUS, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
                         .focusRequester(requester)
-                        .onFocusChanged { if (it.isFocused) onCardFocused(media.mediaId) }
+                        .onFocusChanged { if (it.isFocused) { onCardFocused(media.mediaId); scope.revealGridItem(state, media.mediaId, revealMarginPx) } }
                         .onPreviewKeyEvent { e ->
                             if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             when (e.key) {
@@ -423,7 +453,7 @@ internal fun MediaCard(
     // o que dava a impressão de a grade tremer.
     val focusFraction by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
-        animationSpec = tween(if (animationsEnabled) 140 else 0),
+        animationSpec = tween(if (animationsEnabled) com.ntv2.app.core.ui.FOCUS_ANIM_MS else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "card-focus"
     )
     Box(
@@ -539,7 +569,8 @@ internal fun MediaCard(
                         .padding(horizontal = 8.dp, vertical = 8.dp)
                 )
             }
-            if (titleBelow) {
+            // Com capa, a própria arte identifica o título: o nome só aparece sem capa.
+            if (titleBelow && (!showCover || media.posterPath == null)) {
                 Text(
                     media.title,
                     color = TEXT_PRIMARY,
@@ -656,6 +687,8 @@ internal fun LazySeriesGrid(
     val screenGlide = LocalFocusGlide.current
     val ownGlide = rememberFocusGlide(animationsEnabled && screenGlide == null)
     val glide = screenGlide ?: ownGlide
+    val scope = rememberCoroutineScope()
+    val revealMarginPx = with(androidx.compose.ui.platform.LocalDensity.current) { FOCUS_REVEAL_MARGIN.toPx() }
     BoxWithConstraints(modifier = modifier.focusGlideHost(ownGlide)) {
         val columns = columnsForWidthDp(maxWidth.value)
         LazyVerticalStaggeredGrid(
@@ -678,7 +711,7 @@ internal fun LazySeriesGrid(
                         .fillMaxWidth()
                         .focusGlideTarget(id, glide, radius = CARD_RADIUS, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
                         .focusRequester(focusRequesterFor(id))
-                        .onFocusChanged { if (it.isFocused) onCardFocused(id) },
+                        .onFocusChanged { if (it.isFocused) { onCardFocused(id); scope.revealGridItem(state, id, revealMarginPx) } },
                     onClick = { onSeriesClick(s) }
                 )
             }
@@ -701,7 +734,7 @@ private fun SeriesGridCard(
     val cover = if (showCover) series.posterUrl?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null
     val focusFraction by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
-        animationSpec = tween(if (animationsEnabled) 140 else 0),
+        animationSpec = tween(if (animationsEnabled) com.ntv2.app.core.ui.FOCUS_ANIM_MS else 0, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "series-card-focus"
     )
     Box(
@@ -748,7 +781,7 @@ private fun SeriesGridCard(
             }
             // Sem capa (opção desligada ou série sem pôster), o nome aparece sob o placeholder,
             // igual ao card de filmes.
-            if (titleBelow) {
+            if (titleBelow && (series.posterUrl == null || !showCover)) {
                 Text(
                     series.title,
                     color = TEXT_PRIMARY,
@@ -756,7 +789,7 @@ private fun SeriesGridCard(
                     overflow = TextOverflow.Ellipsis,
                     style = com.ntv2.app.core.ui.NbrType.Chip
                 )
-            } else if (series.posterUrl == null || !showCover) {
+            } else if (!titleBelow && (series.posterUrl == null || !showCover)) {
                 Text(
                     series.title,
                     color = Color.White,

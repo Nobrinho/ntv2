@@ -301,12 +301,13 @@ class MediaLibraryViewModelTest {
 
     @Test
     fun `load more anexa proxima pagina e atualiza hasMore`() = runTest(dispatcher) {
+        // Páginas cheias (30 filmes visíveis): a carga para em uma página e o "Carregar mais" busca a próxima.
         val media = FakeMediaRepo().apply {
             listPages = { channelId, cursor ->
                 if (cursor == 0L) {
-                    MediaPage(listOf(item("a", channelId, 600, 1)), nextCursor = 100L)
+                    MediaPage((1..30).map { item("a$it", channelId, 600, it) }, nextCursor = 100L)
                 } else {
-                    MediaPage(listOf(item("b", channelId, 600, 2)), nextCursor = 0L)
+                    MediaPage((31..60).map { item("b$it", channelId, 600, it) }, nextCursor = 0L)
                 }
             }
         }
@@ -319,7 +320,31 @@ class MediaLibraryViewModelTest {
         advanceUntilIdle()
 
         val section = vm.uiState.value.sections[0]
-        assertEquals(2, section.items.size)
+        assertEquals(60, section.items.size)
+        assertFalse(section.hasMore)
+    }
+
+    @Test
+    fun `pagina com poucos filmes visiveis continua buscando ate preencher`() = runTest(dispatcher) {
+        // Canal com blocos de episódios (NBRlib): a 1ª página rende 1 filme; a carga busca as seguintes.
+        val requested = mutableListOf<Long>()
+        val media = FakeMediaRepo().apply {
+            listPages = { channelId, cursor ->
+                requested += cursor
+                when (cursor) {
+                    0L -> MediaPage(listOf(item("a", channelId, 600, 1)), nextCursor = 100L)
+                    100L -> MediaPage(listOf(item("b", channelId, 600, 2)), nextCursor = 200L)
+                    else -> MediaPage(listOf(item("c", channelId, 600, 3)), nextCursor = 0L)
+                }
+            }
+        }
+        val vm = buildViewModel(media)
+        channelsFlow.value = listOf(ChannelSummary(1, "C1", null))
+        advanceUntilIdle()
+
+        val section = vm.uiState.value.sections[0]
+        assertEquals(listOf(0L, 100L, 200L), requested)
+        assertEquals(3, section.items.size)
         assertFalse(section.hasMore)
     }
 
@@ -354,5 +379,63 @@ class MediaLibraryViewModelTest {
         val encontrados = vm.uiState.value.searchResults.map { it.title }
         assertTrue("esperava resultado de busca do servidor, veio $encontrados", encontrados.any { it.contains("found-xyz") })
         assertEquals("tlib", vm.uiState.value.sections[0].items[0].title)
+    }
+
+    @Test
+    fun `atualizar desliga o indicador e mantem a grade sem esqueleto`() = runTest(dispatcher) {
+        val media = FakeMediaRepo().apply {
+            listPages = { channelId, _ -> MediaPage(listOf(item("a", channelId, 600, 1)), nextCursor = 0L) }
+        }
+        val vm = buildViewModel(media)
+        channelsFlow.value = listOf(ChannelSummary(1, "C1", null))
+        advanceUntilIdle()
+
+        vm.onAction(MediaLibraryAction.Refresh)
+        assertTrue(vm.uiState.value.isRefreshing)
+        assertFalse(vm.uiState.value.isLoading)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isRefreshing)
+        assertEquals(1, vm.uiState.value.items.size)
+    }
+
+    @Test
+    fun `atualizar com erro tambem desliga o indicador`() = runTest(dispatcher) {
+        var fail = false
+        val media = FakeMediaRepo().apply {
+            listPages = { channelId, _ ->
+                if (fail) error("rede") else MediaPage(listOf(item("a", channelId, 600, 1)), nextCursor = 0L)
+            }
+        }
+        val vm = buildViewModel(media)
+        channelsFlow.value = listOf(ChannelSummary(1, "C1", null))
+        advanceUntilIdle()
+
+        fail = true
+        vm.onAction(MediaLibraryAction.Refresh)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isRefreshing)
+    }
+
+    @Test
+    fun `carregar mais cancelado pelo atualizar libera o botao`() = runTest(dispatcher) {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val media = FakeMediaRepo().apply {
+            listPages = { channelId, cursor ->
+                if (cursor == 0L) MediaPage((1..30).map { item("a$it", channelId, 600, it) }, nextCursor = 100L)
+                else { gate.await(); MediaPage(emptyList(), 0L) }
+            }
+        }
+        val vm = buildViewModel(media)
+        channelsFlow.value = listOf(ChannelSummary(1, "C1", null))
+        advanceUntilIdle()
+
+        vm.onAction(MediaLibraryAction.LoadMore)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.isLoadingMore)
+
+        vm.onAction(MediaLibraryAction.Refresh)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isLoadingMore)
+        assertFalse(vm.uiState.value.isRefreshing)
     }
 }

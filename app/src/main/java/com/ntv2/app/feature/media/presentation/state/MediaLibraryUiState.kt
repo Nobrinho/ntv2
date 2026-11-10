@@ -81,7 +81,7 @@ data class ChannelChipUi(
     val avatarPath: String? = null
 )
 
-enum class SearchFilterKind { GENRE, YEAR, ACTOR }
+enum class SearchFilterKind { GENRE, YEAR, ACTOR, DIRECTOR }
 
 enum class SearchTypeFilter(val label: String) { ALL("Todos"), MOVIES("Filmes"), SERIES("Séries") }
 
@@ -91,15 +91,32 @@ data class SearchFilters(
     val genres: Set<String> = emptySet(),
     val years: Set<Int> = emptySet(),
     /** Ator (nome do elenco do índice); séries não têm elenco no índice, então só filmes casam. */
-    val actor: String? = null
+    val actor: String? = null,
+    /** Diretor (dos Detalhes). */
+    val director: String? = null,
+    /** Nota mínima do IMDb (0-10) e do Rotten Tomatoes (0-100). */
+    val minImdb: Double? = null,
+    val minRt: Int? = null
 ) {
     /** Gênero ou ano ativos: listam mídias mesmo sem texto digitado. */
-    val hasAttribute: Boolean get() = genres.isNotEmpty() || years.isNotEmpty() || actor != null
+    val hasAttribute: Boolean get() = genres.isNotEmpty() || years.isNotEmpty() || actor != null ||
+        director != null || minImdb != null || minRt != null
     val isActive: Boolean get() = hasAttribute || type != SearchTypeFilter.ALL
-    val label: String get() = (listOfNotNull(actor) + genres + years.map { it.toString() }).joinToString(" • ")
+    val label: String get() = (listOfNotNull(actor, director?.let { "Direção: $it" }) + genres + years.map { it.toString() } +
+        listOfNotNull(minImdbLabel, minRtLabel)).joinToString(" • ")
+    val minImdbLabel: String? get() = minImdb?.let { "IMDb ${"%.0f".format(it)}+" }
+    val minRtLabel: String? get() = minRt?.let { "RT $it%+" }
+    val attrs: com.ntv2.app.feature.media.data.index.AttrFilter
+        get() = com.ntv2.app.feature.media.data.index.AttrFilter(director, minImdb, minRt)
 }
 
-data class SearchFilterOptions(val genres: List<String> = emptyList(), val years: List<Int> = emptyList()) {
+data class SearchFilterOptions(
+    val genres: List<String> = emptyList(),
+    val years: List<Int> = emptyList(),
+    /** O índice traz notas do IMDb / Rotten Tomatoes (senão o filtro de nota não aparece). */
+    val hasImdb: Boolean = false,
+    val hasRt: Boolean = false
+) {
     val isAvailable: Boolean get() = genres.isNotEmpty() || years.isNotEmpty()
 }
 
@@ -157,6 +174,10 @@ data class MediaLibraryUiState(
     /** Prévia de trailer nos detalhes: configuração local E flag remota (reavaliada ao abrir os detalhes). */
     val trailerPreviewEnabled: Boolean = true,
     val isLoading: Boolean = false,
+    /** "Puxar para atualizar" em andamento (a grade continua na tela até chegar a nova). */
+    val isRefreshing: Boolean = false,
+    /** Próxima página da grade sendo buscada (botão "Carregar mais" em carregamento). */
+    val isLoadingMore: Boolean = false,
     /** Resolvendo o vídeo (card do índice) antes de abrir o player — feedback no botão Assistir. */
     val isOpeningVideo: Boolean = false,
     /** Falha ao resolver/abrir o vídeo — feedback de erro no botão Assistir. */

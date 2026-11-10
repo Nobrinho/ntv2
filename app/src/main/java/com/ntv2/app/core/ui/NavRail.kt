@@ -117,7 +117,7 @@ fun RailButton(
     val active = focused || highlighted
     val focusScale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (focused && enabled && interactive) BRAND_FOCUS_SCALE else 1f,
-        animationSpec = androidx.compose.animation.core.tween(140),
+        animationSpec = androidx.compose.animation.core.tween(FOCUS_ANIM_MS, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "rail-focus-scale"
     )
     val cta = primary && enabled // botão de ação em destaque

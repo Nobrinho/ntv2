@@ -34,6 +34,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -482,5 +485,99 @@ internal fun TvSearchField(text: String, placeholder: Boolean, modifier: Modifie
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+/**
+ * Filtro de ano com autocomplete: campo numérico + até 8 sugestões (anos do acervo que começam com o
+ * digitado). Anos já selecionados aparecem primeiro (toque remove). Evita a lista gigante de anos.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun YearAutocompleteFilter(
+    years: List<Int>,
+    selected: Set<Int>,
+    tv: Boolean,
+    onToggle: (Int) -> Unit
+) {
+    var typed by remember { mutableStateOf("") }
+    var fieldFocused by remember { mutableStateOf(false) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val matches = remember(years, typed, selected) {
+        years.filter { it !in selected && (typed.isEmpty() || it.toString().startsWith(typed)) }.take(8)
+    }
+    androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+        androidx.compose.foundation.text.BasicTextField(
+            value = typed,
+            onValueChange = { v -> typed = v.filter(Char::isDigit).take(4) },
+            singleLine = true,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                imeAction = androidx.compose.ui.text.input.ImeAction.Done
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                typed.toIntOrNull()?.takeIf { it in years && it !in selected }?.let { onToggle(it); typed = "" }
+            }),
+            textStyle = androidx.compose.ui.text.TextStyle(color = BrandColors.TextPrimary, fontSize = if (tv) 14.sp else 15.sp),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(BrandColors.Accent),
+            modifier = Modifier
+                .onFocusChanged { fieldFocused = it.isFocused }
+                // D-pad: o campo de texto prende ↑/↓; aqui eles saem para as sugestões/seção de cima.
+                .onPreviewKeyEvent { e ->
+                    if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (e.key) {
+                        androidx.compose.ui.input.key.Key.DirectionDown ->
+                            focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down)
+                        androidx.compose.ui.input.key.Key.DirectionUp ->
+                            focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Up)
+                        else -> false
+                    }
+                }
+                .width(if (tv) 200.dp else 220.dp)
+                .height(if (tv) 36.dp else 40.dp)
+                .clip(BrandShapes.Pill)
+                .background(BrandColors.Fill)
+                .border(if (fieldFocused) 2.dp else 1.dp, if (fieldFocused) BrandColors.Accent else BrandColors.BorderSubtle, BrandShapes.Pill)
+                .padding(horizontal = 14.dp, vertical = if (tv) 9.dp else 10.dp),
+            decorationBox = { inner ->
+                if (typed.isEmpty()) Text("Digite o ano (ex.: 1999)", color = BrandColors.TextMuted, fontSize = if (tv) 13.sp else 14.sp)
+                inner()
+            }
+        )
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(if (tv) 10.dp else 8.dp)
+        ) {
+            selected.sortedDescending().forEach { y -> SearchFilterOptionChip(y.toString(), true, tv = tv) { onToggle(y) } }
+            matches.forEach { y -> SearchFilterOptionChip(y.toString(), false, tv = tv) { onToggle(y); typed = "" } }
+        }
+    }
+}
+
+/** Linhas "IMDb ≥" e "Rotten Tomatoes ≥" do painel de filtros (só as que o índice tem dados). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun RatingFilterChips(
+    filters: com.ntv2.app.feature.media.presentation.state.SearchFilters,
+    options: com.ntv2.app.feature.media.presentation.state.SearchFilterOptions,
+    tv: Boolean,
+    onChange: (com.ntv2.app.feature.media.presentation.state.SearchFilters) -> Unit
+) {
+    if (!options.hasImdb && !options.hasRt) return
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("NOTA MÍNIMA", color = BrandColors.TextMuted, style = NbrType.Overline)
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(if (tv) 10.dp else 8.dp)
+        ) {
+            if (options.hasImdb) listOf(6.0, 7.0, 8.0).forEach { v ->
+                val on = filters.minImdb == v
+                SearchFilterOptionChip("IMDb ${v.toInt()}+", on, tv = tv) { onChange(filters.copy(minImdb = if (on) null else v)) }
+            }
+            if (options.hasRt) listOf(60, 75, 90).forEach { v ->
+                val on = filters.minRt == v
+                SearchFilterOptionChip("RT $v%+", on, tv = tv) { onChange(filters.copy(minRt = if (on) null else v)) }
+            }
+        }
     }
 }

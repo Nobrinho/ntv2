@@ -167,10 +167,13 @@ fun MediaLibraryScreen(
             val id = mediaId?.takeIf { wanted -> items.any { it.mediaId == wanted } }
                 ?: items.firstOrNull()?.mediaId
             val index = items.indexOfFirst { it.mediaId == id }
-            if (id != null && index >= 0 &&
-                gridState.layoutInfo.visibleItemsInfo.none { it.index == index }
-            ) {
-                gridState.scrollToItem(index)
+            val visible = gridState.layoutInfo.visibleItemsInfo
+            if (id != null && index >= 0 && visible.none { it.key == id }) {
+                // Índice na grade = índice no catálogo + itens antes dos cards (cabeçalho com as trilhas).
+                val shift = visible.firstNotNullOfOrNull { v ->
+                    items.indexOfFirst { it.mediaId == v.key }.takeIf { it >= 0 }?.let { v.index - it }
+                } ?: 0
+                gridState.scrollToItem(index + shift)
             }
             // Espera o overlay (que prende o foco) sair da árvore antes de pedir o foco.
             withFrameNanos { }
@@ -178,6 +181,27 @@ fun MediaLibraryScreen(
             val ok = id?.let { cardFocusRequesters[it] }
                 ?.let { r -> runCatching { r.requestFocus() }.isSuccess } ?: false
             if (!ok) runCatching { initialActionsFocus.requestFocus() }
+        }
+    }
+
+    // Card das trilhas do topo ("Continuar assistindo"/"Recomendados") que abriu os Detalhes.
+    var detailsReturnTrack by remember { mutableStateOf<String?>(null) }
+    val trackFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+
+    // Devolve o foco ao card da trilha: as trilhas são o cabeçalho da grade (item 0), então rola ao
+    // topo se ele saiu da tela. Se o card sumiu da trilha (ex.: terminou o filme), cai na grade.
+    fun focusTrackCard(trackKey: String, mediaId: String) {
+        scope.launch {
+            if (gridState.layoutInfo.visibleItemsInfo.none { it.key == "library-header" }) {
+                runCatching { gridState.scrollToItem(0) }
+            }
+            var ok = false
+            repeat(6) {
+                if (ok) return@repeat
+                withFrameNanos { }
+                ok = trackFocusRequesters[trackKey]?.let { r -> runCatching { r.requestFocus() }.isSuccess } ?: false
+            }
+            if (!ok) focusCard(mediaId)
         }
     }
 
@@ -489,7 +513,18 @@ fun MediaLibraryScreen(
                     viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
                     viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                     viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
-                    detailsMedia = media
+                    // Cards das trilhas podem não estar carregados na grade (cache de detalhes vazio
+                    // ou só com o básico do histórico): completa pelo índice antes de abrir.
+                    scope.launch {
+                        kotlinx.coroutines.withTimeoutOrNull(1500) { viewModel.ensureDetails(media) }
+                        detailsMedia = media
+                    }
+                }
+                // Abrir pelas trilhas do topo: ao fechar os Detalhes o foco volta ao card da trilha
+                // (antes ia ao mesmo filme na grade, às vezes muitas linhas abaixo).
+                val openFromContinue: (MediaCardUi) -> Unit = { media ->
+                    detailsReturnTrack = "cw_${media.mediaId}"
+                    openDetails(media)
                 }
                 // Recomendação: card de série (mediaId "series_<tmdb>") abre o overlay da série;
                 // os demais abrem os detalhes de filme normalmente.
@@ -502,7 +537,10 @@ fun MediaLibraryScreen(
                         seriesFromSearch = false
                         lastFocusedSeriesId = "series_${series.tmdbId}"
                         openSeriesTmdbId = series.tmdbId
-                    } else openDetails(media)
+                    } else {
+                        detailsReturnTrack = "rec_${media.mediaId}"
+                        openDetails(media)
+                    }
                 }
                 // As trilhas de personalização entram como CABEÇALHO da grade (rolam junto com os
                 // cards), para o D-pad descer da trilha para a grade e a grade nunca ser empurrada
@@ -522,7 +560,8 @@ fun MediaLibraryScreen(
                                     items = state.continueWatching,
                                     showCovers = state.showCovers,
                                     useTvLayout = useTvLayout,
-                                    onCardClick = openDetails
+                                    onCardClick = openFromContinue,
+                                    focusRequesterFor = { id -> trackFocusRequesters.getOrPut("cw_$id") { FocusRequester() } }
                                 )
                             }
                             if (state.recommendations.isNotEmpty()) {
@@ -532,7 +571,8 @@ fun MediaLibraryScreen(
                                     showCovers = state.showCovers,
                                     useTvLayout = useTvLayout,
                                     onCardClick = openRecommendation,
-                                    libraryStyle = true
+                                    libraryStyle = true,
+                                    focusRequesterFor = { id -> trackFocusRequesters.getOrPut("rec_$id") { FocusRequester() } }
                                 )
                             }
                             if (state.items.isNotEmpty()) {
@@ -646,7 +686,7 @@ fun MediaLibraryScreen(
                             animationsEnabled = state.animationsEnabled,
                             lowRamPlaybackWarnings = lowRamPlaybackWarnings,
                             hasMore = state.hasMore,
-                            loadingMore = loadMoreRequested,
+                            loadingMore = state.isLoadingMore,
                             state = gridState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = gridPadding,
@@ -662,7 +702,7 @@ fun MediaLibraryScreen(
                                 // Paginação pelo foco (como na busca): perto do fim já pede a próxima página.
                                 val items = state.items
                                 val focusedIndex = items.indexOfFirst { it.mediaId == id }
-                                if (state.hasMore && !loadMoreRequested &&
+                                if (state.hasMore && !state.isLoadingMore &&
                                     focusedIndex >= items.size - AUTO_LOAD_THRESHOLD
                                 ) {
                                     viewModel.onAction(MediaLibraryAction.LoadMore)
@@ -677,6 +717,7 @@ fun MediaLibraryScreen(
                                 viewModel.onAction(MediaLibraryAction.VideoFocused(media.mediaId))
                                 viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
                                 viewModel.onAction(MediaLibraryAction.DetailsOpened(media))
+                                detailsReturnTrack = null
                                 detailsMedia = media
                             },
                             loadMoreFocus = loadMoreFocus,
@@ -695,7 +736,7 @@ fun MediaLibraryScreen(
                 } else {
                     // Celular: atualizar a listagem puxando a tela para baixo.
                     PullToRefreshBox(
-                        isRefreshing = state.isLoading,
+                        isRefreshing = state.isRefreshing,
                         onRefresh = { viewModel.onAction(MediaLibraryAction.Refresh) },
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     ) { gridContent() }
@@ -792,9 +833,12 @@ fun MediaLibraryScreen(
                     detailsMedia = null
                     viewModel.onAction(MediaLibraryAction.ConsumeReturnToDetails)
                     viewModel.onAction(MediaLibraryAction.DetailsClosed(media.mediaId))
+                    val track = detailsReturnTrack
+                    detailsReturnTrack = null
                     when {
                         searchReturnMediaId != null -> searching = true
                         myListReturnMediaId != null -> showHistory = true
+                        track != null -> focusTrackCard(track, media.mediaId)
                         else -> focusCard(media.mediaId)
                     }
                 },

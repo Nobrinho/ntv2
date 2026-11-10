@@ -15,6 +15,9 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
 import org.json.JSONObject
+import com.ntv2.app.feature.media.data.index.directorText
+import com.ntv2.app.feature.media.data.index.imdbRating
+import com.ntv2.app.feature.media.data.index.rtScore
 import java.util.concurrent.ConcurrentHashMap
 
 /** Uma página do RPC search_catalog (séries ainda sem temporadas). */
@@ -57,7 +60,8 @@ class RemoteCatalogSearch(
         years: Set<Int>,
         actor: String?,
         kind: CatalogKind,
-        limit: Int
+        limit: Int,
+        attrs: com.ntv2.app.feature.media.data.index.AttrFilter
     ): Pair<List<IndexMovie>, List<IndexSeries>> {
         val page = searchPage(query, kind, genres.firstOrNull(), years.firstOrNull(), limit, 0)
         return page.movies to withSeasons(page.series)
@@ -144,7 +148,10 @@ private fun parseCatalogMovie(o: JSONObject) = IndexMovie(
         CastMemberMeta(name = name, photoUrl = c.text("profile_url") ?: c.text("photo_url"))
     },
     videoMessageId = o.optLong("video_message_id", 0L),
-    trailerUrl = o.text("trailer_url")
+    trailerUrl = o.text("trailer_url"),
+    director = o.directorText(),
+    imdbRating = o.imdbRating(),
+    rtScore = o.rtScore()
 )
 
 private fun parseCatalogSeries(o: JSONObject) = IndexSeries(
@@ -157,7 +164,10 @@ private fun parseCatalogSeries(o: JSONObject) = IndexSeries(
     overview = o.text("overview"),
     genres = o.strings("genres"),
     seasons = emptyList(),
-    trailerUrl = o.text("trailer_url")
+    trailerUrl = o.text("trailer_url"),
+    director = o.directorText(),
+    imdbRating = o.imdbRating(),
+    rtScore = o.rtScore()
 )
 
 private fun parseCatalogEpisode(o: JSONObject, seasonNumber: Int) = IndexEpisode(

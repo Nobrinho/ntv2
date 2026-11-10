@@ -30,6 +30,9 @@ data class MediaItemSummary(
     /** Logo do título (PNG transparente); os Detalhes usam no lugar do título em texto. */
     val logoPath: String? = null,
     val rating: Double? = null,
+    /** Nota do IMDb (0-10) e Tomatômetro (0-100), via OMDb no backend. */
+    val imdbRating: Double? = null,
+    val rtScore: Int? = null,
     val ageRating: String? = null,
     val country: String? = null,
     val quality: String? = null,
@@ -77,7 +80,9 @@ data class SeriesSummary(
     /** Ano da série (do 1º episódio com data), se o índice trouxer. */
     val year: Int? = null,
     /** Link do trailer (YouTube) da série, se o índice trouxer. */
-    val trailerUrl: String? = null
+    val trailerUrl: String? = null,
+    /** Logo do título (PNG transparente); os Detalhes usam no lugar do título em texto. */
+    val logoUrl: String? = null
 ) {
     /** Chave de biblioteca da série (favoritar o card da série). */
     val libraryKey: String get() = "tv:$tmdbId"

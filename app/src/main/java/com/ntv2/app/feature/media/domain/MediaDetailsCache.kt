@@ -16,6 +16,9 @@ data class MovieDetails(
     val logoPath: String? = null,
     val durationSeconds: Int = 0,
     val rating: Double? = null,
+    /** Nota do IMDb (0-10) e Tomatômetro (0-100), via OMDb no backend. */
+    val imdbRating: Double? = null,
+    val rtScore: Int? = null,
     val ageRating: String? = null,
     val country: String? = null,
     val quality: String? = null,

@@ -915,6 +915,8 @@ class RealTdlibGateway(
                         backdropPath = backdropPath,
                         logoPath = logoPath,
                         rating = posterMeta?.rating,
+                        imdbRating = posterMeta?.imdbRating,
+                        rtScore = posterMeta?.rtScore,
                         ageRating = posterMeta?.ageRating,
                         country = posterMeta?.country,
                         quality = posterMeta?.quality,

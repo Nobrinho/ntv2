@@ -127,6 +127,8 @@ fun SplashScreen(onFinished: () -> Unit) {
     val outP = { easeOutCubic(seg(t.value, TOTAL - FADE_OUT, TOTAL)) }
     val loadP = { easeInOutSine(seg(t.value, 0f, TOTAL - FADE_OUT)) }
     val tv = rememberAdaptiveLayoutInfo().useTvLayout
+    // Largura da marca na tela: na TV a metade da do celular (ocupava quase metade da tela).
+    val logoFraction = if (tv) 0.21f else 0.42f
 
     Box(
         modifier = Modifier
@@ -149,7 +151,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             val ring = ringP()
             val line = lineP()
             val c = center
-            val side = size.width * 0.42f
+            val side = size.width * logoFraction
             val glowR = side * 1.25f
             drawCircle(
                 brush = Brush.radialGradient(
@@ -183,7 +185,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             contentDescription = "NBR Play",
             contentScale = ContentScale.Fit,
             modifier = Modifier
-                .fillMaxWidth(0.42f)
+                .fillMaxWidth(logoFraction)
                 .aspectRatio(1f)
                 .padding(8.dp)
                 .graphicsLayer {

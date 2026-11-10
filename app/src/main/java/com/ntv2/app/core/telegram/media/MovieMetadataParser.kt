@@ -18,6 +18,9 @@ data class MovieMeta(
     val type: String? = null,
     val durationMin: Int? = null,
     val rating: Double? = null,
+    /** Nota do IMDb (0-10) e Tomatômetro (0-100), via OMDb no backend. */
+    val imdbRating: Double? = null,
+    val rtScore: Int? = null,
     val ageRating: String? = null,
     val category: String? = null,
     val collection: String? = null,

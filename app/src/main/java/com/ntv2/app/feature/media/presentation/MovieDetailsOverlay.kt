@@ -135,6 +135,12 @@ internal fun MovieDetailsOverlay(
         com.ntv2.app.feature.media.presentation.trailer.YouTubeIds.videoId(details?.trailerUrl)
     }
     var trailerOpen by remember(media.mediaId) { mutableStateOf(false) }
+    // WebView do trailer compartilhado: o botão "Trailer" assume a prévia em andamento (sem recarregar).
+    val trailerHandle = remember(media.mediaId) { com.ntv2.app.feature.media.presentation.trailer.TrailerHandle() }
+    // Depois de ver em tela cheia, a prévia não volta a tocar nesta abertura.
+    var trailerWatched by remember(media.mediaId) { mutableStateOf(false) }
+    // Tela cheia usando a própria prévia (TV): a interface dos detalhes some por cima do vídeo.
+    var trailerInPlace by remember(media.mediaId) { mutableStateOf(false) }
     // Ao fechar a tela cheia o foco volta ao botão principal. Pedido um quadro depois: enquanto a
     // tela cheia existe, o foco preso nela recusa o pedido e ia parar no "Voltar".
     var restoreFocusAfterTrailer by remember { mutableStateOf(false) }
@@ -145,7 +151,14 @@ internal fun MovieDetailsOverlay(
             restoreFocusAfterTrailer = false
         }
     }
-    val onTrailerClick: (() -> Unit)? = trailerVideoId?.let { { trailerOpen = true } }
+    val onTrailerClick: (() -> Unit)? = trailerVideoId?.let { id ->
+        {
+            trailerHandle.handoff = trailerHandle.canHandOff(id)
+            trailerInPlace = trailerHandle.handoff
+            trailerWatched = true
+            trailerOpen = true
+        }
+    }
 
     // O fundo é o banner do filme (nunca o pôster): só cai para a capa do card se não houver banner.
     // Com "Capas" desligadas nas configurações, a tela não exibe nenhuma imagem de capa/banner.
@@ -164,6 +177,9 @@ internal fun MovieDetailsOverlay(
                 "elenco=${details?.cast?.count { it.photoUrl != null } ?: 0} fotos"
         )
     }
+    // Prévia do trailer visível na TV: o logo encolhe para sair de cima do vídeo (ver DetailTitle).
+    var trailerShowing by remember(media.mediaId) { mutableStateOf(false) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalTrailerShowing provides trailerShowing) {
     // Rolagem única da coluna de conteúdo: começa sempre no TOPO. Focar o botão "Continuar" arrastava
     // a rolagem para o meio ao abrir; após posicionar o foco, trazemos a rolagem de volta ao topo.
     val contentScroll = rememberScrollState()
@@ -196,11 +212,13 @@ internal fun MovieDetailsOverlay(
                         DetailsTrailerBackdrop(
                             trailerUrl = details?.trailerUrl,
                             // "Assistir" apertado ou trailer em tela cheia: sai a prévia (o WebView é destruído).
-                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading && !trailerOpen,
+                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading &&
+                                (if (trailerOpen) trailerInPlace else !trailerWatched),
                             showCovers = showCovers,
                             imageLoaded = backdropLoaded,
                             animationsEnabled = animationsEnabled,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            handle = trailerHandle
                         )
                     }
                     Box(
@@ -243,11 +261,12 @@ internal fun MovieDetailsOverlay(
             // recomendações na largura toda. O herói deixa o topo das capas aparecendo no rodapé da tela,
             // sinalizando que há mais conteúdo ao rolar.
             val showRecommendations = recommendations.isNotEmpty()
-            val heroMinHeight = if (showRecommendations) screenHeight - RECOMMENDATIONS_PEEK else screenHeight
+            val hideUi = trailerOpen && trailerInPlace
+            val heroMinHeight = if (showRecommendations && !hideUi) screenHeight - RECOMMENDATIONS_PEEK else screenHeight
             val scope = rememberCoroutineScope()
             var heroHeightPx by remember { mutableIntStateOf(0) }
             val density = androidx.compose.ui.platform.LocalDensity.current
-            val cast = details?.cast.orEmpty()
+            val cast = details?.cast.orEmpty().photosFirst()
             // A rolagem por foco padrão da TV reposiciona a tela a cada movimento (mantém o item focado
             // num ponto fixo): andar de Assistir para o botão ao lado já rolava para baixo. Aqui só rola
             // quando o item focado não está inteiro na tela — na prática, ao descer para "Porque você viu".
@@ -270,16 +289,20 @@ internal fun MovieDetailsOverlay(
                         DetailsTrailerBackdrop(
                             trailerUrl = details?.trailerUrl,
                             // "Assistir" apertado ou trailer em tela cheia: sai a prévia (o WebView é destruído).
-                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading && !trailerOpen,
+                            trailerPreviewEnabled = trailerPreviewEnabled && !playLoading &&
+                                (if (trailerOpen) trailerInPlace else !trailerWatched),
                             showCovers = showCovers,
                             imageLoaded = backdropLoaded,
                             animationsEnabled = animationsEnabled,
-                            modifier = Modifier.matchParentSize()
+                            modifier = Modifier.matchParentSize(),
+                            handle = trailerHandle,
+                            fillsScreen = true,
+                            onVisibleChange = { trailerShowing = it }
                         )
                     }
                     // Degradê do protótipo (da esquerda: 98% -> 80% em 45% -> 20%) e um escurecimento no
                     // rodapé para as recomendações. Um nó só, com os degradês em cache.
-                    Box(modifier = Modifier.matchParentSize().drawWithCache {
+                    Box(modifier = Modifier.matchParentSize().graphicsLayer { alpha = if (hideUi) 0f else 1f }.drawWithCache {
                         val h = Brush.horizontalGradient(0f to Color(0xFA090B0F), 0.45f to Color(0xCC090B0F), 1f to Color(0x33090B0F))
                         val v = Brush.verticalGradient(0f to Color(0x00090B0F), 0.7f to Color(0x00090B0F), 1f to Color(0xE6090B0F))
                         onDrawBehind {
@@ -288,7 +311,7 @@ internal fun MovieDetailsOverlay(
                         }
                     })
                     // Pista de que há mais abaixo: some quando a rolagem desce até as recomendações.
-                    if (showRecommendations) {
+                    if (showRecommendations && !hideUi) {
                         Row(
                             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
                                 .graphicsLayer { alpha = (1f - contentScroll.value / 120f).coerceIn(0f, 1f) },
@@ -302,6 +325,7 @@ internal fun MovieDetailsOverlay(
                     // Protótipo 09: padding 72/96 px e 96 px entre a coluna de informações e o elenco.
                     Row(
                         modifier = Modifier.fillMaxWidth().align(Alignment.TopStart)
+                            .graphicsLayer { alpha = if (hideUi) 0f else 1f }
                             .padding(start = 48.dp, end = 48.dp, top = 36.dp, bottom = 44.dp),
                         horizontalArrangement = Arrangement.spacedBy(48.dp)
                     ) {
@@ -337,7 +361,7 @@ internal fun MovieDetailsOverlay(
                         }
                     }
                 }
-                if (showRecommendations) {
+                if (showRecommendations && !hideUi) {
                     PosterTrackRow(
                         label = recommendationsHeading(details?.title ?: media.title),
                         items = recommendations,
@@ -379,7 +403,10 @@ internal fun MovieDetailsOverlay(
         if (trailerOpen && trailerVideoId != null) {
             com.ntv2.app.feature.media.presentation.trailer.TrailerFullscreen(
                 videoId = trailerVideoId,
+                handle = trailerHandle,
                 onClose = {
+                    trailerHandle.handoff = false
+                    trailerInPlace = false
                     trailerOpen = false
                     restoreFocusAfterTrailer = true
                 }
@@ -395,6 +422,7 @@ internal fun MovieDetailsOverlay(
                 }
             )
         }
+    }
     }
     }
 }
@@ -506,11 +534,22 @@ internal fun DetailsInfo(
         }
         if (actionsFirst) actions()
         details?.synopsis?.takeIf { it.isNotBlank() }?.let { SynopsisText(it, tv) }
-        details?.director?.takeIf { it.isNotBlank() }?.let {
-            Text("Diretor: $it", color = BrandColors.TextMuted, style = if (tv) NbrType.Caption else NbrType.Secondary)
+        details?.director?.takeIf { it.isNotBlank() }?.let { dir ->
+            // Cada diretor vira chip: OK/toque lista as obras dele (filtro por diretor).
+            val names = dir.split(',', '&', ';').map { it.trim() }.filter { it.isNotEmpty() }
+            Row(
+                modifier = Modifier.focusGroup().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Direção", color = BrandColors.TextMuted, style = if (tv) NbrType.Caption else NbrType.Secondary)
+                names.forEach { n ->
+                    MovieDetailChip(n, tv = tv) { onFilterClick(SearchFilter(SearchFilterKind.DIRECTOR, n)) }
+                }
+            }
         }
 
-        val cast = details?.cast.orEmpty()
+        val cast = details?.cast.orEmpty().photosFirst()
         if (showCast && cast.isNotEmpty()) {
             Text("Elenco", color = MovieDetailTextPrimary, style = NbrType.Section.copy(fontSize = 18.sp))
             if (showCastPhotos) {
@@ -582,15 +621,36 @@ internal fun DetailsInfo(
     }
 }
 
-/** Foto redonda do ator (ou a inicial sobre a cor do nome, quando não há foto). */
+/** Elenco com foto primeiro (os sem foto vão para o fim, com a inicial). */
+private fun List<com.ntv2.app.core.telegram.media.CastMemberMeta>.photosFirst() =
+    sortedBy { if (it.photoUrl.isNullOrBlank()) 1 else 0 }
+
+/**
+ * Foto redonda do ator. Enquanto carrega o espaço fica vazio (sem círculo) e a foto surge com fade e
+ * leve zoom quando chega; sem foto ou se falhar, a inicial sobre a cor do nome.
+ */
 @Composable
 private fun CastPhoto(name: String, photoUrl: String?, index: Int, size: androidx.compose.ui.unit.Dp) {
-    if (photoUrl != null) {
+    var failed by remember(photoUrl) { mutableStateOf(false) }
+    if (photoUrl != null && !failed) {
         val castTiming = imageTiming("elenco#$index", photoUrl)
+        var loaded by remember(photoUrl) { mutableStateOf(false) }
+        val shown by androidx.compose.animation.core.animateFloatAsState(
+            if (loaded) 1f else 0f, androidx.compose.animation.core.tween(280), label = "castPhoto"
+        )
         AsyncImage(
             model = tmdbAtWidth(photoUrl, "w185"), contentDescription = name, contentScale = ContentScale.Crop,
-            onState = castTiming,
-            modifier = Modifier.size(size).clip(CircleShape).background(colorForTitle(name))
+            onState = {
+                castTiming(it)
+                when (it) {
+                    is coil.compose.AsyncImagePainter.State.Success -> loaded = true
+                    is coil.compose.AsyncImagePainter.State.Error -> failed = true
+                    else -> Unit
+                }
+            },
+            modifier = Modifier.size(size)
+                .graphicsLayer { alpha = shown; val sc = 0.85f + 0.15f * shown; scaleX = sc; scaleY = sc }
+                .clip(CircleShape)
         )
     } else {
         Box(
@@ -732,7 +792,13 @@ private fun RecommendationPoster(media: MediaCardUi, showCovers: Boolean, onClic
  * mesmo peso visual, e o espaço já fica reservado enquanto a imagem carrega.
  */
 @Composable
-private fun DetailTitle(title: String, logo: String?, tv: Boolean) {
+internal fun DetailTitle(title: String, logo: String?, tv: Boolean) {
+    // Prévia do trailer visível: o logo encolhe a partir da base (o topo desce suavemente) para sair
+    // de cima do vídeo, sem mudar o layout nem cobrir a linha de baixo. Volta quando a prévia some.
+    val trailerShowing = LocalTrailerShowing.current
+    val shrink by androidx.compose.animation.core.animateFloatAsState(
+        if (trailerShowing) 0.72f else 1f, androidx.compose.animation.core.tween(700), label = "logoShrink"
+    )
     val url = logo?.takeIf { it.isNotBlank() }?.let { tmdbAtWidth(it, "w500") }
     var failed by remember(url) { mutableStateOf(false) }
     if (url == null || failed) {
@@ -747,8 +813,15 @@ private fun DetailTitle(title: String, logo: String?, tv: Boolean) {
         alignment = Alignment.CenterStart,
         onState = { if (it is coil.compose.AsyncImagePainter.State.Error) failed = true },
         modifier = Modifier.height(if (tv) 76.dp else 64.dp).widthIn(max = 320.dp)
+            .graphicsLayer {
+                scaleX = shrink; scaleY = shrink
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 1f)
+            }
     )
 }
+
+/** A prévia do trailer está visível atrás dos detalhes (o logo se afasta dela). */
+internal val LocalTrailerShowing = androidx.compose.runtime.compositionLocalOf { false }
 
 /**
  * Sinopse (NbrType.Paragraph) com "OK para ler tudo" em accent embaixo, como no protótipo. Toque ou OK
@@ -758,13 +831,16 @@ private fun DetailTitle(title: String, logo: String?, tv: Boolean) {
 internal fun SynopsisText(text: String, tv: Boolean = true) {
     var expanded by remember(text) { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
-    val ring = focused && !glideActive()
+    // Só oferece "ler tudo" quando o texto realmente não cabe nas linhas recolhidas.
+    var overflows by remember(text) { mutableStateOf(false) }
+    val expandable = overflows || expanded
+    val ring = focused && !glideActive() && expandable
     Column(
         modifier = Modifier
             .glideTarget(10.dp)
             .clip(BrandShapes.Sm)
             .onFocusChanged { focused = it.isFocused }
-            .clickable { expanded = !expanded }
+            .then(if (expandable) Modifier.clickable { expanded = !expanded } else Modifier)
             .then(if (ring) Modifier.border(2.dp, BrandColors.Accent, BrandShapes.Sm) else Modifier)
             .then(if (tv) Modifier.padding(horizontal = 6.dp, vertical = 4.dp) else Modifier),
         verticalArrangement = Arrangement.spacedBy(if (tv) 14.dp else 18.dp)
@@ -774,13 +850,16 @@ internal fun SynopsisText(text: String, tv: Boolean = true) {
             color = BrandColors.TextSecondary,
             style = if (tv) NbrType.Paragraph.copy(lineHeight = 21.sp) else NbrType.Paragraph.copy(lineHeight = 21.sp),
             maxLines = if (expanded) Int.MAX_VALUE else if (tv) 3 else 4,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { if (!expanded) overflows = it.hasVisualOverflow }
         )
-        Text(
-            if (expanded) "OK para recolher" else "OK para ler tudo",
-            color = BrandColors.Accent,
-            style = NbrType.Caption.copy(fontWeight = FontWeight.SemiBold, fontSize = if (tv) 11.sp else 12.sp)
-        )
+        if (expandable) {
+            Text(
+                if (expanded) "OK para recolher" else "OK para ler tudo",
+                color = BrandColors.Accent,
+                style = NbrType.Caption.copy(fontWeight = FontWeight.SemiBold, fontSize = if (tv) 11.sp else 12.sp)
+            )
+        }
     }
 }
 
@@ -830,10 +909,11 @@ internal fun DetailsActionRow(
                 loading = playLoading,
                 failed = playFailed && !playLoading
             )
-            if (showRestart) MovieDetailPillButton(NbrIcons.RotateCcw, "Recomeçar", onRestart)
-            if (onTrailerClick != null) MovieDetailPillButton(NbrIcons.Clapperboard, "Trailer", onTrailerClick)
-            MovieDetailPillButton(favoriteIcon, favoriteDescription, onToggleFavorite, tint = favoriteTint)
-            MovieDetailPillButton(NbrIcons.Flag, "Reportar", onReportClick)
+            // Secundários só com ícone (o rótulo aparece no foco): a fileira cabe ao lado do elenco.
+            if (showRestart) MovieDetailExpandingButton(NbrIcons.RotateCcw, "Recomeçar", onRestart)
+            if (onTrailerClick != null) MovieDetailExpandingButton(NbrIcons.Clapperboard, "Trailer", onTrailerClick)
+            MovieDetailExpandingButton(favoriteIcon, favoriteDescription, onToggleFavorite, tint = favoriteTint)
+            MovieDetailExpandingButton(NbrIcons.Flag, "Reportar", onReportClick)
         }
         return
     }
@@ -900,6 +980,13 @@ private fun DetailMetaLine(
                 Text("%.1f".format(rating), color = BRAND_ACCENT, style = style.copy(fontWeight = FontWeight.SemiBold))
             }
         }
+    }
+    details?.imdbRating?.let { imdb ->
+        parts += { RatingBadge("IMDb", "%.1f".format(imdb), Color(0xFFF5C518), Color.Black, style) }
+    }
+    details?.rtScore?.let { rt ->
+        // Tomatômetro: vermelho (fresh, >= 60%) ou verde (rotten), como no site.
+        parts += { RatingBadge("RT", "$rt%", if (rt >= 60) Color(0xFFFA320A) else Color(0xFF0AC855), Color.White, style) }
     }
     details?.year?.let { year ->
         parts += { MetaText(year.toString(), style) { onFilterClick(SearchFilter(SearchFilterKind.YEAR, year.toString())) } }
@@ -994,3 +1081,20 @@ internal fun InListLabel() {
 
 // Regex compilados uma vez (criar a cada chamada custava CPU no Fire TV, em caminhos por item/página).
 private val RX_COMMA_SEP = Regex("\\s*,\\s*")
+
+/** Selo de nota externa: etiqueta colorida ("IMDb"/"RT") + valor. */
+@Composable
+private fun RatingBadge(label: String, value: String, bg: Color, fg: Color, style: androidx.compose.ui.text.TextStyle) {
+    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            color = fg,
+            style = style.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+            modifier = Modifier
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                .background(bg)
+                .padding(horizontal = 4.dp, vertical = 1.dp)
+        )
+        Text(value, color = BrandColors.TextPrimary, style = style.copy(fontWeight = FontWeight.SemiBold))
+    }
+}

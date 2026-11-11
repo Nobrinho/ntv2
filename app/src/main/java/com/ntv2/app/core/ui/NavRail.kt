@@ -68,21 +68,29 @@ fun RailColumn(
                 .background(com.ntv2.app.core.ui.BrandColors.Surface)
                 .then(if (enterFocus != null) Modifier.focusEnterTo(enterFocus) else Modifier)
                 .focusGroup()
-                // Rolável só como salvaguarda em telas muito baixas; nos tamanhos normais tudo cabe sem rolar.
-                .verticalScroll(rememberScrollState())
                 .padding(vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Logo fixo no topo; os itens ficam centralizados na altura que sobra.
             Image(
                 painter = painterResource(R.drawable.ic_brand_logo_small),
                 contentDescription = "NBR Play",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.size(width = 36.dp, height = 28.dp)
             )
-            // Espaço do protótipo entre o logo e o 1º item (20 px + gaps).
             Spacer(Modifier.height(16.dp))
-            content()
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    // Rolável só como salvaguarda em telas muito baixas; nos tamanhos normais tudo cabe.
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    content = content
+                )
+            }
         }
         Box(
             modifier = Modifier

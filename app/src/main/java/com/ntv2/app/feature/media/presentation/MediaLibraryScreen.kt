@@ -521,10 +521,13 @@ fun MediaLibraryScreen(
 
                 // Seletor Filmes/Séries: só aparece quando o canal tem séries no índice.
                 if (state.series.isNotEmpty()) {
-                    LibraryTabSelector(
-                        selected = state.libraryTab,
-                        onSelect = { viewModel.onAction(MediaLibraryAction.SelectTab(it)) }
-                    )
+                    // Centralizado na largura da tela.
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        LibraryTabSelector(
+                            selected = state.libraryTab,
+                            onSelect = { viewModel.onAction(MediaLibraryAction.SelectTab(it)) }
+                        )
+                    }
                 }
 
                 val openDetails: (MediaCardUi) -> Unit = { media ->

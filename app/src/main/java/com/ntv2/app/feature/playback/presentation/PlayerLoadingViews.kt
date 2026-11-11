@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -71,59 +72,26 @@ import com.ntv2.app.core.ui.icons.NbrIcons
 // Telas de espera do player: status de carregamento, capa iluminada e erro.
 
 /**
- * Spinner + estado ("Armazenando em buffer…") + progresso do download. Na TV fica compacto no
- * canto superior direito, sem cobrir o pôster/vídeo; no celular, centralizado.
+ * Só o spinner enquanto o vídeo prepara/armazena em buffer (sem texto nem dados de download). Na TV
+ * fica no canto superior direito, sem cobrir a logo/vídeo; no celular, centralizado — abaixo da logo.
  */
 @Composable
 internal fun BoxScope.LoadingStatus(
-    label: String,
-    progress: DownloadProgress?,
-    hint: String?,
     isTv: Boolean,
     /** Controles abertos: fica abaixo da barra superior (senão cobria os ícones de legenda e opções). */
     belowTopBar: Boolean = false
 ) {
     if (isTv) {
-        Row(
+        Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = if (belowTopBar) 88.dp else 32.dp, end = 40.dp)
-                // 20% menor, ancorado no canto superior direito.
-                .graphicsLayer {
-                    scaleX = 0.8f
-                    scaleY = 0.8f
-                    transformOrigin = TransformOrigin(1f, 0f)
-                }
-                .background(PlayerPanelBg, RoundedCornerShape(16.dp))
-                .border(1.dp, com.ntv2.app.core.ui.BrandColors.BorderSubtle, RoundedCornerShape(16.dp))
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            PlayerSpinner(size = 28.dp, stroke = 3.dp)
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(label, color = com.ntv2.app.core.ui.BrandColors.TextPrimary, style = com.ntv2.app.core.ui.NbrType.BodyStrong)
-                LoadingProgress(progress, hint, TextAlign.End)
-            }
-        }
+        ) { PlayerSpinner(size = 28.dp, stroke = 3.dp) }
     } else {
-        Column(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            // Protótipo 23 (f8SzG): anel accent 64, espaço 16, "Abrindo…" 16/700, apoio 12/400 text-2.
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        // A logo ocupa até 28% da altura no centro (vai até 64% da tela): o spinner fica logo abaixo dela.
+        Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(modifier = Modifier.fillMaxHeight(0.68f))
             PlayerSpinner()
-            Text(label, color = com.ntv2.app.core.ui.BrandColors.TextPrimary, style = com.ntv2.app.core.ui.NbrType.Section.copy(fontSize = 16.sp))
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                LoadingProgress(progress, hint)
-            }
         }
     }
 }
@@ -153,7 +121,14 @@ internal fun vividGlowMatrix(): ColorMatrix {
 }
 
 @Composable
-internal fun AmbientPoster(url: String, title: String, nativeBlur: Boolean, animate: Boolean) {
+internal fun AmbientPoster(
+    url: String,
+    title: String,
+    nativeBlur: Boolean,
+    animate: Boolean,
+    /** Logo do título (PNG transparente): quando há, vai no centro no lugar do pôster nítido. */
+    logoUrl: String? = null
+) {
     val useNativeBlur = nativeBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val glowAlpha = if (animate) {
         val transition = rememberInfiniteTransition(label = "ambient-glow")
@@ -202,63 +177,26 @@ internal fun AmbientPoster(url: String, title: String, nativeBlur: Boolean, anim
                 .fillMaxSize()
                 .background(Brush.radialGradient(0f to Color(0x11000000), 1f to Color(0x99000000)))
         )
-        AsyncImage(
-            model = url,
-            contentDescription = title,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().padding(vertical = 28.dp)
-        )
-        // Leve escurecimento geral para o spinner/rótulo por cima continuarem legíveis.
-        Box(modifier = Modifier.fillMaxSize().background(Color(0x26000000)))
-    }
-}
-
-/** Progresso do download durante a espera: "12,3 MB de 1,4 GB · 850 KB/s" + barra + aviso. */
-@Composable
-internal fun LoadingProgress(progress: DownloadProgress?, hint: String?, hintAlign: TextAlign = TextAlign.Center) {
-    if (progress != null && progress.downloadedBytes > 0L) {
-        val parts = progress.parts
-        val text = buildString {
-            if (parts != null) append("Filme todo: ")
-            append(formatBytes(progress.downloadedBytes))
-            if (progress.expectedBytes > 0L) append(" de ").append(formatBytes(progress.expectedBytes))
-            if (progress.bytesPerSecond > 0L) append(" · ").append(formatBytes(progress.bytesPerSecond)).append("/s")
-        }
-        // Filme dividido: primeiro em que parte está (é o que anda), depois o total do filme.
-        if (parts != null) {
-            Text(
-                PartsTexts.currentPartLine(parts),
-                color = com.ntv2.app.core.ui.BrandColors.TextPrimary,
-                style = com.ntv2.app.core.ui.NbrType.Caption
-            )
-        }
-        Text(text, color = com.ntv2.app.core.ui.BrandColors.TextSecondary, style = com.ntv2.app.core.ui.NbrType.Caption)
-        if (progress.expectedBytes > 0L) {
-            val fraction = (progress.downloadedBytes.toFloat() / progress.expectedBytes).coerceIn(0f, 1f)
-            Box(
-                modifier = Modifier
-                    .width(220.dp)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0x33FFFFFF))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(fraction)
-                        .background(com.ntv2.app.core.ui.BrandColors.Accent)
+        if (logoUrl != null) {
+            // A luz continua com as cores do pôster; no centro, a logo (até 45% da largura e 28% da altura).
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                AsyncImage(
+                    model = logoUrl,
+                    contentDescription = title,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth(0.45f).fillMaxHeight(0.28f)
                 )
             }
+        } else {
+            AsyncImage(
+                model = url,
+                contentDescription = title,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().padding(vertical = 28.dp)
+            )
         }
-    }
-    if (hint != null) {
-        Text(
-            hint,
-            color = com.ntv2.app.core.ui.BrandColors.Warning,
-            style = com.ntv2.app.core.ui.NbrType.Caption,
-            textAlign = hintAlign,
-            modifier = Modifier.widthIn(max = 420.dp)
-        )
+        // Leve escurecimento geral para o spinner/rótulo por cima continuarem legíveis.
+        Box(modifier = Modifier.fillMaxSize().background(Color(0x26000000)))
     }
 }
 

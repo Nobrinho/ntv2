@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -356,7 +357,9 @@ internal fun MovieDetailsOverlay(
                                 showPhotos = showCastPhotos,
                                 animationsEnabled = animationsEnabled,
                                 onFilterClick = onFilterClick,
-                                modifier = Modifier.width(260.dp).heightIn(max = (screenHeight - 120.dp).coerceAtLeast(160.dp))
+                                // Cabe no herói (descontados os paddings 36/44 da linha): elenco longo rola
+                                // por dentro em vez de esticar o herói e esconder as recomendações do rodapé.
+                                modifier = Modifier.width(260.dp).heightIn(max = (heroMinHeight - 36.dp - 44.dp).coerceAtLeast(160.dp))
                             )
                         }
                     }
@@ -673,8 +676,28 @@ private fun MovieDetailCastColumn(
         Text("Elenco", color = MovieDetailTextPrimary, style = NbrType.Section.copy(fontSize = 16.sp))
         var castVisible by remember(cast) { mutableStateOf(false) }
         LaunchedEffect(cast) { castVisible = true }
+        val castScroll = rememberScrollState()
         Column(
-            modifier = Modifier.focusGroup().verticalScroll(rememberScrollState()),
+            modifier = Modifier
+                .focusGroup()
+                // Pista de que o elenco continua: a base da lista some em degradê enquanto há mais abaixo.
+                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    if (castScroll.canScrollForward) {
+                        val fade = 56.dp.toPx().coerceAtMost(size.height / 2f)
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0f to Color.Black, 1f to Color.Transparent,
+                                startY = size.height - fade, endY = size.height
+                            ),
+                            topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - fade),
+                            size = androidx.compose.ui.geometry.Size(size.width, fade),
+                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn
+                        )
+                    }
+                }
+                .verticalScroll(castScroll),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             cast.forEachIndexed { index, c ->

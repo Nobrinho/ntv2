@@ -562,11 +562,9 @@ fun PlaybackScreen(
                     focusRequester = videoFocusRequester,
                     isPlaceholderMode = state.isPlaceholderMode,
                     thumbnailPath = state.thumbnailPath,
+                    logoPath = state.details?.logoPath,
                     title = state.title,
                     playbackState = state.snapshot.state,
-                    statusMessage = state.statusMessage,
-                    downloadProgress = state.downloadProgress,
-                    loadingHint = state.loadingHint,
                     player = { viewModel.player },
                     // Com os controles visíveis a linha do tempo já mostra o alvo; evita sobrepor o play.
                     seekFeedbackMs = if (controlsVisible) 0L else seekFeedbackMs,
@@ -850,11 +848,10 @@ internal fun VideoSurface(
     focusRequester: FocusRequester,
     isPlaceholderMode: Boolean,
     thumbnailPath: String?,
+    /** Logo do título: na espera aparece no centro, no lugar do pôster nítido. */
+    logoPath: String?,
     title: String,
     playbackState: PlaybackState,
-    statusMessage: String,
-    downloadProgress: DownloadProgress?,
-    loadingHint: String?,
     player: () -> Player?,
     seekFeedbackMs: Long,
     animationsEnabled: Boolean,
@@ -932,15 +929,13 @@ internal fun VideoSurface(
             val showPoster = !firstFrameRendered && !thumbnailPath.isNullOrBlank()
             if (animationsEnabled) {
                 AnimatedVisibility(visible = showPoster, enter = fadeIn(), exit = fadeOut(tween(700))) {
-                    AmbientPoster(thumbnailPath.orEmpty(), title, nativeBlurGlow, animationsEnabled)
+                    AmbientPoster(thumbnailPath.orEmpty(), title, nativeBlurGlow, animationsEnabled, logoPath)
                 }
             } else if (showPoster) {
-                AmbientPoster(thumbnailPath.orEmpty(), title, nativeBlurGlow, animationsEnabled)
+                AmbientPoster(thumbnailPath.orEmpty(), title, nativeBlurGlow, animationsEnabled, logoPath)
             }
-            // Spinner + rótulo do estado enquanto prepara/armazena em buffer.
-            loadingLabel(playbackState)?.let { label ->
-                LoadingStatus(label, downloadProgress, loadingHint, isTv, belowTopBar = controlsVisible)
-            }
+            // Só o spinner enquanto prepara/armazena em buffer (sem texto nem dados de download).
+            if (loadingLabel(playbackState) != null) LoadingStatus(isTv, belowTopBar = controlsVisible)
             // Feedback central de seek: seta + segundos acumulados.
             if (seekFeedbackMs != 0L) {
                 val seconds = kotlin.math.abs(seekFeedbackMs) / 1000
@@ -955,9 +950,9 @@ internal fun VideoSurface(
             }
         } else {
             if (!thumbnailPath.isNullOrBlank()) {
-                AmbientPoster(thumbnailPath, title, nativeBlurGlow, animationsEnabled)
+                AmbientPoster(thumbnailPath, title, nativeBlurGlow, animationsEnabled, logoPath)
             }
-            LoadingStatus(statusMessage, downloadProgress, loadingHint, isTv)
+            LoadingStatus(isTv)
         }
     }
 }

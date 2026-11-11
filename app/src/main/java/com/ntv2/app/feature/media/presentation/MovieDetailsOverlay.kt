@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.media.presentation
 
+import com.ntv2.app.core.ui.initialKeyFocus
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -184,10 +185,7 @@ internal fun MovieDetailsOverlay(
     // Rolagem única da coluna de conteúdo: começa sempre no TOPO. Focar o botão "Continuar" arrastava
     // a rolagem para o meio ao abrir; após posicionar o foco, trazemos a rolagem de volta ao topo.
     val contentScroll = rememberScrollState()
-    // Aberto por toque com controle conectado: sai do modo toque para o foco inicial pegar.
-    val prepareKeyFocus = com.ntv2.app.core.ui.rememberKeyNavFocusPrep()
     LaunchedEffect(Unit) {
-        prepareKeyFocus()
         runCatching { playFocus.requestFocus() }
         withFrameNanos { }
         withFrameNanos { }
@@ -196,7 +194,12 @@ internal fun MovieDetailsOverlay(
 
     // trapFocus: a grade continua composta por trás — o foco não pode escapar para ela.
     FocusGlideScope(Modifier.fillMaxSize()) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(BrandColors.Background).trapFocus()) {
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().background(BrandColors.Background)
+            // Aberto por toque: a 1ª tecla do D-pad leva o foco ao Assistir (sem anel durante o toque).
+            .initialKeyFocus(playFocus)
+            .trapFocus()
+    ) {
         val portrait = maxHeight > maxWidth
         val compactLandscape = !portrait && maxHeight < 520.dp
         // Capturado aqui porque dentro do Column o receiver implícito passa a ser o ColumnScope.

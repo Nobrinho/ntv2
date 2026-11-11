@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.media.presentation
 
+import com.ntv2.app.core.ui.initialKeyFocus
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -117,6 +118,8 @@ internal fun MyListHistoryOverlay(
             .background(BrandColors.Background)
             .statusBarsPadding()
             .navigationBarsPadding()
+            // Aberto por toque: a 1ª tecla do D-pad leva o foco à aba atual (sem anel durante o toque).
+            .initialKeyFocus(tabFocus.getValue(tab))
             .trapFocus()
             .padding(
                 horizontal = if (useTvLayout) adaptive.tvSafeHorizontal else 16.dp,

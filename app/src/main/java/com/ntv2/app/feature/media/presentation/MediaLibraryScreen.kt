@@ -606,7 +606,8 @@ fun MediaLibraryScreen(
                 // Grade: na TV mantém a folga para o foco crescer; no celular segue a margem do protótipo
                 // (gaps 10/14) e reserva embaixo o espaço da tab bar, rolando por trás dela.
                 val navReserve = if (useTvLayout) 0.dp else com.ntv2.app.core.ui.mainBottomNavReserve()
-                val gridPadding = if (useTvLayout) PaddingValues(horizontal = 10.dp, vertical = 12.dp)
+                // TV: folga maior embaixo para o "Carregar mais" (44 dp + anel de foco) não ser cortado.
+                val gridPadding = if (useTvLayout) PaddingValues(start = 10.dp, end = 10.dp, top = 12.dp, bottom = 32.dp)
                     else PaddingValues(top = 0.dp, bottom = navReserve + 12.dp)
                 val gridHGap = if (useTvLayout) GRID_GAP else 10.dp
                 val gridVGap = if (useTvLayout) GRID_GAP else 14.dp

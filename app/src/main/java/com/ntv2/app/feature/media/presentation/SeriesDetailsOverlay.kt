@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.media.presentation
 
+import com.ntv2.app.core.ui.initialKeyFocus
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -139,12 +140,8 @@ internal fun SeriesDetailsOverlay(
     val seasonsFocus = remember { FocusRequester() }
     val hasSeasonRow = seasons.size > 1
     // TV: o botão pode não estar anexado no 1º frame; tenta por alguns frames até pegar.
-    // Aberto por toque com controle conectado: sai do modo toque, senão o pedido é recusado e o D-pad
-    // ia para a biblioteca escondida por baixo.
-    val prepareKeyFocus = com.ntv2.app.core.ui.rememberKeyNavFocusPrep()
     LaunchedEffect(series.tmdbId) {
         repeat(10) {
-            prepareKeyFocus()
             if (runCatching { playFocus.requestFocus() }.isSuccess) return@LaunchedEffect
             withFrameNanos { }
         }
@@ -191,6 +188,8 @@ internal fun SeriesDetailsOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(BrandColors.Background)
+            // Aberto por toque: a 1ª tecla do D-pad leva o foco ao Assistir (sem anel durante o toque).
+            .initialKeyFocus(playFocus)
             // A biblioteca continua composta por trás: o foco não pode escapar para ela.
             .trapFocus()
     ) {

@@ -87,9 +87,28 @@ internal fun MyListHistoryOverlay(
         }
         runCatching { tabFocus.getValue(tab).requestFocus() }
     }
-    // Ao remover o último item do histórico, a linha focada some e o foco se perde: volta para a aba.
-    LaunchedEffect(entries.isEmpty()) {
-        if (entries.isEmpty() && tab == ShelfTab.History) runCatching { tabFocus.getValue(tab).requestFocus() }
+    // Ao remover do histórico, a linha focada some e o foco se perdia (o D-pad ia parar no menu
+    // lateral, por baixo). O foco passa para o "remover" da linha vizinha (a de baixo; senão a de cima);
+    // sem linhas, volta para a aba.
+    val removeFocus = remember { mutableMapOf<String, FocusRequester>() }
+    var pendingRemoveFocus by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(entries) {
+        if (entries.isEmpty()) {
+            pendingRemoveFocus = null
+            if (tab == ShelfTab.History) runCatching { tabFocus.getValue(tab).requestFocus() }
+            return@LaunchedEffect
+        }
+        val target = pendingRemoveFocus ?: return@LaunchedEffect
+        pendingRemoveFocus = null
+        withFrameNanos { }
+        runCatching { removeFocus[target]?.requestFocus() }
+    }
+    val removeEntry: (String) -> Unit = { id ->
+        // Mesma ordem da tela (agrupada por dia).
+        val order = entries.groupBy { dayBucket(it.updatedAt) }.values.flatten().map { it.card.mediaId }
+        val i = order.indexOf(id)
+        pendingRemoveFocus = order.getOrNull(i + 1) ?: order.getOrNull(i - 1)
+        onRemove(id)
     }
 
     Box(
@@ -159,7 +178,8 @@ internal fun MyListHistoryOverlay(
                                 entry = entry,
                                 showCovers = showCovers,
                                 onContinue = { onContinue(entry.card) },
-                                onRemove = { onRemove(entry.card.mediaId) }
+                                removeFocus = removeFocus.getOrPut(entry.card.mediaId) { FocusRequester() },
+                                onRemove = { removeEntry(entry.card.mediaId) }
                             )
                         }
                     }
@@ -236,6 +256,7 @@ private fun HistoryRow(
     entry: HistoryEntryUi,
     showCovers: Boolean,
     onContinue: () -> Unit,
+    removeFocus: FocusRequester,
     onRemove: () -> Unit
 ) {
     MyStuffMediaRow(
@@ -260,7 +281,13 @@ private fun HistoryRow(
                 onClick = onContinue
             )
         }
-        MyStuffCircleButton(icon = NbrIcons.X, description = "Remover do histórico", useTvLayout = true, onClick = onRemove)
+        MyStuffCircleButton(
+            icon = NbrIcons.X,
+            description = "Remover do histórico",
+            useTvLayout = true,
+            onClick = onRemove,
+            modifier = Modifier.focusRequester(removeFocus)
+        )
     }
 }
 

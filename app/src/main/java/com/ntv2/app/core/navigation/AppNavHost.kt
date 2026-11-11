@@ -5,6 +5,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
@@ -218,20 +219,37 @@ fun AppNavHost(
   val profileFocus = remember { androidx.compose.ui.focus.FocusRequester() }
   var profileHasFocus by remember { mutableStateOf(false) }
   // Abre já com o 1º perfil focado e recupera o foco se a tela de baixo o tomar ao carregar.
-  // Em modo toque o Android recusa foco programático; se há teclas físicas (controle/teclado, ou
-  // aparelho sem toque, como TV), sai do modo toque para o foco aparecer sem precisar de uma tecla.
-  val rootView = androidx.compose.ui.platform.LocalView.current
-  val hasHardwareKeys = rememberAdaptiveLayoutInfo().hasKeyNavigation
+  // Em modo toque o Android recusa foco programático; com teclas físicas sai do modo toque antes.
+  val prepareKeyFocus = com.ntv2.app.core.ui.rememberKeyNavFocusPrep()
   androidx.compose.runtime.LaunchedEffect(profileScreen != null, profileHasFocus) {
       if (profileScreen == null || profileHasFocus) return@LaunchedEffect
       repeat(10) {
           kotlinx.coroutines.delay(80)
           if (profileHasFocus) return@LaunchedEffect
-          if (hasHardwareKeys && rootView.isInTouchMode) rootView.requestFocusFromTouch()
+          prepareKeyFocus()
           runCatching { profileFocus.requestFocus() }
       }
   }
-  Box(modifier = Modifier.fillMaxSize().onPreviewKeyEvent { e ->
+  // Controle/teclado conectado num aparelho com toque (tablet): cada toque põe a janela em "modo toque",
+  // e nele o Android recusa o foco que as telas pedem ao abrir (overlay aberto por toque ficava sem foco
+  // e o D-pad agia na tela de baixo). Ao soltar o toque, sai do modo toque: os pedidos de foco valem.
+  val touchModeView = androidx.compose.ui.platform.LocalView.current
+  val exitTouchModeOnRelease = com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo().let { it.hasKeyNavigation && !it.isTv }
+  Box(modifier = Modifier.fillMaxSize()
+      .then(
+          if (!exitTouchModeOnRelease) Modifier
+          else Modifier.pointerInput(Unit) {
+              awaitPointerEventScope {
+                  while (true) {
+                      val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
+                      if (ev.type == androidx.compose.ui.input.pointer.PointerEventType.Release) {
+                          touchModeView.post { if (touchModeView.isInTouchMode) touchModeView.requestFocusFromTouch() }
+                      }
+                  }
+              }
+          }
+      )
+      .onPreviewKeyEvent { e ->
       if (profileScreen == null || profileHasFocus || e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
       val nav = when (e.key) {
           Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight,
@@ -554,7 +572,8 @@ fun AppNavHost(
     )
 
     if (showOnboarding) {
-        BackHandler(enabled = replayOnboarding) { showOnboarding = false; replayOnboarding = false }
+        // Fechar pelo Voltar também devolve o foco à tela de baixo (senão caía no menu lateral).
+        BackHandler(enabled = replayOnboarding) { showOnboarding = false; replayOnboarding = false; focusRestoreSignal++ }
         com.ntv2.app.feature.onboarding.presentation.OnboardingScreen(
             onFinished = {
                 showOnboarding = false

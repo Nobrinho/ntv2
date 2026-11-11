@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -245,7 +246,13 @@ internal fun SeriesEpisodeCard(
     animationsEnabled: Boolean = true,
     onPlay: () -> Unit = {},
     onRestart: (() -> Unit)? = null,
-    /** OK/toque no card: abre ou fecha os detalhes (não toca direto). */
+    /**
+     * Navegação por teclas (TV / controle): o card abre ao receber o foco ([onFocusIn]) e o OK reproduz.
+     * Sem isso (toque), o OK/toque abre ou fecha os detalhes.
+     */
+    focusMode: Boolean = false,
+    onFocusIn: () -> Unit = {},
+    /** OK/toque no card (fora do [focusMode]): abre ou fecha os detalhes (não toca direto). */
     onClick: () -> Unit
 ) {
     val state = seriesEpisodeState(progress)
@@ -265,19 +272,36 @@ internal fun SeriesEpisodeCard(
         tv && current -> 1.dp to BrandColors.Accent.copy(alpha = 0.4f)
         else -> 1.dp to BrandColors.BorderSubtle
     }
+    // Ao abrir, traz o card INTEIRO para a área visível: a rolagem por foco só garante o cabeçalho, e o
+    // card que cresce para baixo (último da lista) ficava cortado no rodapé.
+    val bringIntoView = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+    androidx.compose.runtime.LaunchedEffect(expanded) {
+        if (!expanded) return@LaunchedEffect
+        if (animationsEnabled) kotlinx.coroutines.delay(240) else androidx.compose.runtime.withFrameNanos { }
+        runCatching { bringIntoView.bringIntoView() }
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .bringIntoViewRequester(bringIntoView)
+            .onFocusChanged { if (focusMode && it.hasFocus) onFocusIn() }
+            // TV: o card INTEIRO é o alvo de foco (anel e clique). No cabeçalho, o anel deslizante ficava
+            // só em volta da linha de cima e não acompanhava os detalhes abertos.
+            .then(if (tv) Modifier.glideTarget(radius).onFocusChanged { focused = it.isFocused } else Modifier)
             .clip(shape)
+            .then(if (tv) Modifier.combinedClickable(onClick = if (focusMode) onPlay else onClick, onLongClick = onLongClick) else Modifier)
             .background(if (expanded) BrandColors.SurfaceAlt else bg)
             .border(borderW, borderC, shape)
     ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (tv) Modifier.heightIn(min = 77.dp).glideTarget(radius) else Modifier)
-            .onFocusChanged { focused = it.isFocused }
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .then(
+                if (tv) Modifier.heightIn(min = 77.dp)
+                else Modifier
+                    .onFocusChanged { focused = it.isFocused }
+                    .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            )
             .padding(if (tv) 7.dp else 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -329,7 +353,7 @@ internal fun SeriesEpisodeCard(
         exit = if (animationsEnabled) androidx.compose.animation.shrinkVertically(tween(180)) + fadeOut(tween(180))
             else androidx.compose.animation.ExitTransition.None
     ) {
-        SeriesEpisodeDetails(episode, progress, tv, onPlay, onRestart)
+        SeriesEpisodeDetails(episode, progress, tv, onPlay, onRestart, focusMode)
     }
     }
 }
@@ -350,10 +374,13 @@ private fun SeriesEpisodeDetails(
     progress: Float,
     tv: Boolean,
     onPlay: () -> Unit,
-    onRestart: (() -> Unit)?
+    onRestart: (() -> Unit)?,
+    /** Aberto pelo foco: o OK do cabeçalho já reproduz, então o foco fica no cabeçalho e sem "Assistir". */
+    focusMode: Boolean = false
 ) {
     val playFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     androidx.compose.runtime.LaunchedEffect(episode.mediaId) {
+        if (focusMode) return@LaunchedEffect
         // O botão entra junto com a animação: tenta por alguns quadros até pegar o foco.
         repeat(10) {
             if (runCatching { playFocus.requestFocus() }.isSuccess) return@LaunchedEffect
@@ -375,8 +402,8 @@ private fun SeriesEpisodeDetails(
                 color = BrandColors.TextSecondary
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            com.ntv2.app.core.ui.BrandButton(
+        if (!focusMode || (started && onRestart != null)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!focusMode) com.ntv2.app.core.ui.BrandButton(
                 onClick = onPlay,
                 modifier = Modifier.focusRequester(playFocus)
             ) {

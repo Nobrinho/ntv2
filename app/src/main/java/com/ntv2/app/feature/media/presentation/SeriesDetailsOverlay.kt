@@ -75,6 +75,7 @@ import com.ntv2.app.core.ui.glideTarget
 import com.ntv2.app.core.ui.icons.NbrIcons
 import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.ui.trapFocus
+import androidx.compose.ui.graphics.graphicsLayer
 import com.ntv2.app.feature.media.domain.MediaItemSummary
 import com.ntv2.app.feature.media.domain.SeasonSummary
 import com.ntv2.app.feature.media.domain.SeriesSummary
@@ -109,7 +110,10 @@ internal fun SeriesDetailsOverlay(
     animationsEnabled: Boolean = true
 ) {
     BackHandler(enabled = true) { onClose() }
-    val isTv = rememberAdaptiveLayoutInfo().useTvLayout
+    val adaptiveInfo = rememberAdaptiveLayoutInfo()
+    val isTv = adaptiveInfo.useTvLayout
+    // Com controle/teclado: o episódio abre ao receber o foco e o OK reproduz.
+    val episodeFocusMode = isTv && adaptiveInfo.hasKeyNavigation
 
     val seasons = series.seasons.filter { it.episodes.isNotEmpty() }
     var selectedSeason by remember(series.tmdbId) { mutableStateOf(seasons.firstOrNull()?.number ?: 0) }
@@ -128,15 +132,19 @@ internal fun SeriesDetailsOverlay(
 
     // Episódio com os detalhes abertos (OK no card abre; Voltar fecha antes de sair da série).
     var expandedEpisode by remember(series.tmdbId) { mutableStateOf<String?>(null) }
-    BackHandler(enabled = expandedEpisode != null) { expandedEpisode = null }
+    BackHandler(enabled = expandedEpisode != null && !episodeFocusMode) { expandedEpisode = null }
     // Prévia do trailer visível (TV): o logo encolhe para sair de cima do vídeo.
     var trailerShowing by remember(series.tmdbId) { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
     val seasonsFocus = remember { FocusRequester() }
     val hasSeasonRow = seasons.size > 1
     // TV: o botão pode não estar anexado no 1º frame; tenta por alguns frames até pegar.
+    // Aberto por toque com controle conectado: sai do modo toque, senão o pedido é recusado e o D-pad
+    // ia para a biblioteca escondida por baixo.
+    val prepareKeyFocus = com.ntv2.app.core.ui.rememberKeyNavFocusPrep()
     LaunchedEffect(series.tmdbId) {
         repeat(10) {
+            prepareKeyFocus()
             if (runCatching { playFocus.requestFocus() }.isSuccess) return@LaunchedEffect
             withFrameNanos { }
         }
@@ -151,6 +159,22 @@ internal fun SeriesDetailsOverlay(
         com.ntv2.app.feature.media.presentation.trailer.YouTubeIds.videoId(series.trailerUrl)
     }
     var trailerOpen by remember(series.tmdbId) { mutableStateOf(false) }
+    // Igual aos detalhes do filme: o botão "Trailer" assume a prévia em andamento (mesmo WebView, sem
+    // recarregar nem voltar ao início) e a tela cheia acontece no lugar, com a interface sumindo.
+    val trailerHandle = remember(series.tmdbId) { com.ntv2.app.feature.media.presentation.trailer.TrailerHandle() }
+    // Depois de ver em tela cheia, a prévia não volta a tocar nesta abertura.
+    var trailerWatched by remember(series.tmdbId) { mutableStateOf(false) }
+    var trailerInPlace by remember(series.tmdbId) { mutableStateOf(false) }
+    val openTrailer: () -> Unit = {
+        trailerVideoId?.let { id ->
+            trailerHandle.handoff = trailerHandle.canHandOff(id)
+            trailerInPlace = trailerHandle.handoff
+            trailerWatched = true
+            trailerOpen = true
+        }
+    }
+    val hideUi = trailerOpen && trailerInPlace
+    val previewOn = trailerPreviewEnabled && (if (trailerOpen) trailerInPlace else !trailerWatched)
     // Ao fechar a tela cheia o foco volta ao botão principal. Pedido um quadro depois: enquanto a
     // tela cheia existe, o foco preso nela recusa o pedido e ia parar no "Voltar".
     var restoreFocusAfterTrailer by remember { mutableStateOf(false) }
@@ -174,9 +198,11 @@ internal fun SeriesDetailsOverlay(
             // Fundo: capa em tela cheia com degradê horizontal bg@98% → bg@85% (45%) → bg@60%.
             SeriesBackdrop(
                 series, showCovers, Modifier.fillMaxSize(),
-                trailerPreviewEnabled = trailerPreviewEnabled && !trailerOpen,
+                trailerPreviewEnabled = previewOn,
                 animationsEnabled = animationsEnabled,
-                onTrailerVisible = { trailerShowing = it }
+                onTrailerVisible = { trailerShowing = it },
+                trailerHandle = trailerHandle,
+                hideScrim = hideUi
             )
             // ── TV: duas colunas com handshake de foco entre painéis (→ entra na lista, ← volta) ──
             val listFocus = remember { FocusRequester() }
@@ -185,6 +211,8 @@ internal fun SeriesDetailsOverlay(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
+                    // Tela cheia no lugar: a interface some por cima do vídeo (continua composta).
+                    .graphicsLayer { alpha = if (hideUi) 0f else 1f }
                     .padding(horizontal = 40.dp, vertical = 32.dp),
                 horizontalArrangement = Arrangement.spacedBy(36.dp)
             ) {
@@ -230,7 +258,7 @@ internal fun SeriesDetailsOverlay(
                             )
                             if (trailerVideoId != null) {
                                 BrandButton(
-                                    onClick = { trailerOpen = true },
+                                    onClick = openTrailer,
                                     style = BrandButtonStyle.Secondary,
                                     modifier = Modifier
                                         .width(260.dp)
@@ -275,7 +303,9 @@ internal fun SeriesDetailsOverlay(
                     }
                     SeriesSeasonProgress(watchedIn(current), episodes.size, tv = true)
                     LazyColumn(
-                        modifier = Modifier.weight(1f, fill = false),
+                        // Saindo da lista (← para o Assistir, ↑ para as temporadas): fecha o episódio aberto pelo foco.
+                        modifier = Modifier.weight(1f, fill = false)
+                            .onFocusChanged { if (episodeFocusMode && !it.hasFocus) expandedEpisode = null },
                         contentPadding = PaddingValues(vertical = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
@@ -295,6 +325,8 @@ internal fun SeriesDetailsOverlay(
                                 animationsEnabled = animationsEnabled,
                                 onPlay = { onPlayEpisode(ep, followingOf(ep)) },
                                 onRestart = onRestartEpisode?.let { r -> { r(ep, followingOf(ep)) } },
+                                focusMode = episodeFocusMode,
+                                onFocusIn = { expandedEpisode = ep.mediaId },
                                 onClick = { expandedEpisode = if (expandedEpisode == ep.mediaId) null else ep.mediaId }
                             )
                         }
@@ -309,7 +341,7 @@ internal fun SeriesDetailsOverlay(
                 contentPadding = PaddingValues(bottom = navBottom + 24.dp)
             ) {
                 item(key = "hero") {
-                    SeriesHero(series, showCovers, onClose, onFilterClick, trailerPreviewEnabled && !trailerOpen, animationsEnabled)
+                    SeriesHero(series, showCovers, onClose, onFilterClick, trailerPreviewEnabled && !trailerOpen && !trailerWatched, animationsEnabled)
                 }
                 item(key = "content") {
                     Column(
@@ -337,7 +369,7 @@ internal fun SeriesDetailsOverlay(
                                 )
                                 if (trailerVideoId != null) {
                                     BrandButton(
-                                        onClick = { trailerOpen = true },
+                                        onClick = openTrailer,
                                         style = BrandButtonStyle.Secondary,
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
@@ -430,7 +462,10 @@ internal fun SeriesDetailsOverlay(
         if (trailerOpen && trailerVideoId != null) {
             com.ntv2.app.feature.media.presentation.trailer.TrailerFullscreen(
                 videoId = trailerVideoId,
+                handle = trailerHandle,
                 onClose = {
+                    trailerHandle.handoff = false
+                    trailerInPlace = false
                     trailerOpen = false
                     restoreFocusAfterTrailer = true
                 }
@@ -605,7 +640,11 @@ private fun SeriesBackdrop(
     portrait: Boolean = false,
     trailerPreviewEnabled: Boolean = false,
     animationsEnabled: Boolean = true,
-    onTrailerVisible: (Boolean) -> Unit = {}
+    onTrailerVisible: (Boolean) -> Unit = {},
+    /** WebView da prévia compartilhado com o botão "Trailer" (só TV, onde a prévia cobre a tela). */
+    trailerHandle: com.ntv2.app.feature.media.presentation.trailer.TrailerHandle? = null,
+    /** Tela cheia no lugar: sem o degradê por cima do vídeo. */
+    hideScrim: Boolean = false
 ) {
     val hero = (series.backdropUrl ?: series.posterUrl)?.let { com.ntv2.app.core.ui.tmdbAtWidth(it, if (portrait) "w780" else "w1280") }
     var heroLoaded by remember(hero) { mutableStateOf(false) }
@@ -626,10 +665,12 @@ private fun SeriesBackdrop(
                 imageLoaded = heroLoaded,
                 animationsEnabled = animationsEnabled,
                 modifier = Modifier.fillMaxSize(),
+                handle = trailerHandle,
+                fillsScreen = trailerHandle != null,
                 onVisibleChange = onTrailerVisible
             )
         }
-        Box(modifier = Modifier.fillMaxSize().drawWithCache {
+        Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (hideScrim) 0f else 1f }.drawWithCache {
             val bg = BrandColors.Background
             val v = Brush.verticalGradient(
                 0f to bg.copy(alpha = 0.33f),

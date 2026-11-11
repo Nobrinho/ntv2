@@ -184,7 +184,10 @@ internal fun MovieDetailsOverlay(
     // Rolagem única da coluna de conteúdo: começa sempre no TOPO. Focar o botão "Continuar" arrastava
     // a rolagem para o meio ao abrir; após posicionar o foco, trazemos a rolagem de volta ao topo.
     val contentScroll = rememberScrollState()
+    // Aberto por toque com controle conectado: sai do modo toque para o foco inicial pegar.
+    val prepareKeyFocus = com.ntv2.app.core.ui.rememberKeyNavFocusPrep()
     LaunchedEffect(Unit) {
+        prepareKeyFocus()
         runCatching { playFocus.requestFocus() }
         withFrameNanos { }
         withFrameNanos { }

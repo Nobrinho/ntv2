@@ -145,8 +145,12 @@ fun SettingsScreen(
         .onFocusChanged { if (it.isFocused) lastFocusIndex = index }
     val anyModal = showPrivacy || confirmLogout || showCardLoadingPicker || showConnectionTest ||
         showDeviceLink || showPremium || showDurationPicker
-    LaunchedEffect(anyModal) {
+    // Também ao fechar algo aberto por cima do app inteiro (ex.: "Ver introdução novamente"), que
+    // avisa pelo sinal de restauração de foco.
+    val restoreSignal = com.ntv2.app.core.ui.LocalFocusRestoreSignal.current
+    LaunchedEffect(anyModal, restoreSignal) {
         if (adaptive.useTvLayout && !anyModal) {
+            androidx.compose.runtime.withFrameNanos { }
             runCatching { itemFocus[lastFocusIndex].requestFocus() }
         }
     }

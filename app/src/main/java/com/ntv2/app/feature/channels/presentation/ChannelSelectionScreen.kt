@@ -1,5 +1,7 @@
 package com.ntv2.app.feature.channels.presentation
 
+import com.ntv2.app.core.ui.focusEnterTo
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -336,8 +338,14 @@ private fun ChannelSelectionTv(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Topo: título 32/800 + secundários (Voltar, Sair, Atualizar 120).
+        // Entrando na linha pelo D-pad (↑ da grade), o foco vai para o "Voltar" — nunca direto no
+        // "Sair", que fica acima da 1ª coluna e desconectaria a conta num OK sem olhar.
+        val backFocus = remember { FocusRequester() }
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier
+                .fillMaxWidth()
+                .focusEnterTo { if (showBack) backFocus else refreshFocus }
+                .focusGroup(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -349,7 +357,7 @@ private fun ChannelSelectionTv(
                 modifier = Modifier.weight(1f)
             )
             if (showBack) {
-                TvSecondaryButton("Voltar", onClick = onBack)
+                TvSecondaryButton("Voltar", modifier = Modifier.focusRequester(backFocus), onClick = onBack)
             }
             TvSecondaryButton("Sair", modifier = Modifier.focusRequester(logoutFocus), onClick = onLogout)
             TvSecondaryButton(

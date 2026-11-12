@@ -1,12 +1,13 @@
 # Roadmap do NBR Play
 
-Atualizado em 09/11/2026, na versão **0.9.2**. Legenda: ✅ entregue · 🧪 entregue, falta validar em aparelho real ·
+Atualizado em 11/11/2026, na versão **0.10.0**. Legenda: ✅ entregue · 🧪 entregue, falta validar em aparelho real ·
 ⏳ em aberto.
 
 ## Entregue
 
 | Versão | Data | Destaques |
 |---|---|---|
+| 0.10.0 | 11/11/2026 | D-pad na tela de séries com trailer contínuo e foco preservado. Menu lateral e seletor Filmes/Séries centralizados. Recomendações sempre visíveis nos detalhes, logo na espera do player. Tipo de aparelho explícito e foco correto em Perfis. Tablet deitado respeita a barra de tarefas. Sem anel de foco no uso por toque, "Carregar mais" inteiro na grade. Menos trabalho por quadro na biblioteca |
 | 0.9.2 | 09/11/2026 | Trailer na TV: prévia em tela cheia no lugar com som, legenda só na tela cheia, sem tela final do YouTube. Filtros por diretor e notas (IMDb/RT), ano com autocompletar. Episódio abre detalhes antes de tocar. Logo da série. Grade do NBRlib pelo índice. Atualizar e "Carregar mais" sem travar. Um único anel de foco entre telas. O foco volta à origem (busca, trilhas, grade) com o card inteiro na tela. "Continuar assistindo" abre detalhes completos. Fim do filme volta aos detalhes. Logo de entrada menor na TV |
 | 0.9.1 | 05/11/2026 | Cache de 5 min das páginas do `search_catalog`; cores de marca centralizadas no `BrandColors` |
 | 0.9.0 | 04/11/2026 | Prévia de trailer no fundo dos detalhes e botão Trailer (backend e bot publicados, backfill de 2.583 filmes) |
@@ -42,12 +43,16 @@ não tiver esses dados. Falta:
   diretores no painel.
 
 ### 3. Segurança e custo do backend ⏳
-Fases 0 e 1 do `PLANO-SEGURANCA-CUSTO.md`:
-- spend cap e alertas;
-- serviços não usados desligados;
-- `statement_timeout`;
-- rate limit;
-- Play Integrity.
+Detalhes em `ntv2-backend/PLANO-SEGURANCA-CUSTO.md`. Já feito: plano Free com Spend Cap ligado (conferido em
+05/11/2026), GraphQL/Realtime/Storage desligados, `statement_timeout`, `max_rows` 500, rate limit no
+`db-pre-request`, alerta de saúde e de abuso no Telegram, limpezas no `pg_cron`. Play Integrity descartado (APK
+fora da loja e Fire TV). Falta:
+- restringir a rede do banco ao IP do admin (hoje `0.0.0.0/0`);
+- documentar a rotação das chaves;
+- CAPTCHA (Turnstile) no cadastro anônimo do celular;
+- ao ligar o Premium: migrar para o Pro no mesmo dia (backup diário + PITR) com Spend Cap;
+- mais adiante: Upstash nas Edge Functions quando houver volume, staging separado da produção, vincular conta
+  (e-mail/Google).
 
 Pré-requisito do Premium e de qualquer serviço pago novo.
 
@@ -74,8 +79,8 @@ Lugar provável: `api/` (NestJS) do `ntv2-backend`. Definir o escopo antes de co
 - **Cores:** ~56 cores literais `0xFF…` fora do `BrandColors` (principalmente avatares).
 - **Cron `ntv2-import-index`:** pausado desde a migração. Decidir se volta ou se sai.
 - **TDLib:** abort `PartsManager` mitigado com limite de faixa no download; causa não confirmada.
-- **Foco por toque:** se a busca é aberta por toque (modo toque), o foco fica na biblioteca por trás e o anel
-  aparece sobre a busca. Com o controle não acontece.
+- **Foco por toque:** 🧪 o anel que aparecia sobre a busca aberta por toque foi tirado na 0.10.0 (sem anel no
+  uso por toque). Conferir no celular.
 - **Trailer de Portugal:** trailers com legenda gravada em português de Portugal. Escolher outro vídeo no bot quando
   houver versão pt-BR.
 
@@ -89,5 +94,8 @@ Combinado em 18/10/2026: validar em aparelhos reais e, depois, Premium e adminis
 
 Sugerido em 09/11/2026: encaixar diretor e notas logo após a validação, porque o app já está pronto para eles.
 Segurança e custo vêm antes do Premium, porque são pré-requisito dele.
+
+11/11/2026: item 3 revisto contra o `PLANO-SEGURANCA-CUSTO.md`; Fases 0 e 1 essencialmente feitas, restam os
+itens listados nele.
 
 Itens novos entram aqui com data.

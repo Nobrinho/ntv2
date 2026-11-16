@@ -54,8 +54,10 @@ class ApkVerifier(private val context: Context) {
                     .getPackageInfo(BuildConfig.APPLICATION_ID, legacy)
                     .signingDigests(useLegacy = true)
             }
-            if (!signaturesCompatible(archiveDigests, installedDigests)) {
-                throw SignatureMismatchException()
+            when (signatureDecision(archiveDigests, installedDigests)) {
+                SignatureDecision.UPDATE -> Unit
+                SignatureDecision.SWITCH_TO_OFFICIAL -> throw SignatureMismatchException()
+                SignatureDecision.REJECT -> throw IllegalArgumentException("O APK não foi assinado pela chave oficial do NTV")
             }
         }
     }
@@ -96,3 +98,28 @@ class ApkVerifier(private val context: Context) {
  */
 internal fun signaturesCompatible(archive: Set<String>, installed: Set<String>): Boolean =
     archive.isEmpty() || installed.isEmpty() || archive.intersect(installed).isNotEmpty()
+
+/**
+ * SHA-256 do certificado da chave de release oficial (`apksigner verify --print-certs`). Fixo no app:
+ * o SHA-256 do APK vem do mesmo `update.json`, então não prova sozinho quem assinou.
+ */
+internal const val OFFICIAL_CERT_SHA256 = "afbfff51820312fa105e93955cf69d3b6e2fbfb8a83ec34c9e4e021b13beac18"
+
+internal enum class SignatureDecision {
+    /** Mesma chave do app instalado: o sistema atualiza por cima. */
+    UPDATE,
+    /** App instalado com outra chave (ex.: debug) e o APK é o oficial: oferece desinstalar e trocar. */
+    SWITCH_TO_OFFICIAL,
+    /** Chave diferente e não oficial: recusa (quem controlasse o manifesto trocaria o app por outro). */
+    REJECT
+}
+
+internal fun signatureDecision(
+    archive: Set<String>,
+    installed: Set<String>,
+    official: String = OFFICIAL_CERT_SHA256
+): SignatureDecision = when {
+    signaturesCompatible(archive, installed) -> SignatureDecision.UPDATE
+    official.lowercase() in archive -> SignatureDecision.SWITCH_TO_OFFICIAL
+    else -> SignatureDecision.REJECT
+}

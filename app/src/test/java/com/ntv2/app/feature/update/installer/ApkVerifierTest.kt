@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.update.installer
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,5 +29,13 @@ class ApkVerifierTest {
     @Test
     fun `certificado ilegivel no app instalado nao acusa divergencia`() {
         assertTrue(signaturesCompatible(setOf("aa"), emptySet()))
+    }
+
+    @Test
+    fun `troca de chave so e oferecida para o certificado oficial`() {
+        assertEquals(SignatureDecision.UPDATE, signatureDecision(setOf("aa"), setOf("aa"), official = "of"))
+        assertEquals(SignatureDecision.SWITCH_TO_OFFICIAL, signatureDecision(setOf("of"), setOf("debug"), official = "of"))
+        assertEquals(SignatureDecision.REJECT, signatureDecision(setOf("intruso"), setOf("of"), official = "of"))
+        assertEquals(SignatureDecision.REJECT, signatureDecision(setOf("intruso"), setOf("debug"), official = "of"))
     }
 }

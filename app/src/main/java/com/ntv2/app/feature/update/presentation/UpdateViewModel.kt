@@ -135,7 +135,13 @@ class UpdateViewModel(
     fun install() {
         val update = _state.value.update ?: return
         viewModelScope.launch {
-            runCatching { installer.launch(downloader.fileFor(update.versionCode)) }
+            runCatching {
+                val file = downloader.fileFor(update.versionCode)
+                // Confere de novo na hora de instalar: a pasta de download é externa e, até o Android 10,
+                // outro app com acesso ao armazenamento pode trocar o arquivo depois da 1ª verificação.
+                verifier.verify(file, update).getOrThrow()
+                installer.launch(file)
+            }
                 .onSuccess { result ->
                     if (result == InstallLaunchResult.PERMISSION_REQUIRED) {
                         _state.update {
@@ -154,6 +160,13 @@ class UpdateViewModel(
         val update = _state.value.update ?: return
         viewModelScope.launch {
             runCatching {
+                val file = downloader.fileFor(update.versionCode)
+                // Só troca pelo APK oficial: a verificação precisa terminar em SignatureMismatchException
+                // (outra chave, certificado oficial). Qualquer outro resultado não é uma troca legítima.
+                val check = verifier.verify(file, update).exceptionOrNull()
+                require(check is com.ntv2.app.feature.update.installer.SignatureMismatchException) {
+                    check?.message ?: "O app instalado já usa a chave oficial"
+                }
                 val name = withContext(Dispatchers.IO) {
                     replacer.exportToDownloads(downloader.fileFor(update.versionCode), update.versionName)
                 }

@@ -584,6 +584,14 @@ class DefaultPlaybackCoordinator(
         stopInternal(closeSession = false)
     }
 
+    /** Ligado por [stopForCast]; a próxima parada não salva a posição local (consumido em [stopInternal]). */
+    private var castOwnsProgress = false
+
+    override fun stopForCast() {
+        stopInternal(closeSession = false)
+        castOwnsProgress = true
+    }
+
     override fun onAppStop() {
         wasPlayingBeforeStop = exoPlayer?.isPlaying == true
         pause()
@@ -837,8 +845,10 @@ class DefaultPlaybackCoordinator(
         freezeJob = null
 
         val media = currentMedia
+        val skipSave = castOwnsProgress
+        castOwnsProgress = false
         // Captura a posição ANTES de parar o player (currentPosition zera após stop) e salva.
-        if (media != null) {
+        if (media != null && !skipSave) {
             val positionMs = exoPlayer?.currentPosition ?: 0L
             val durationMs = exoPlayer?.duration?.takeIf { it > 0L } ?: media.durationMs
             scope.launch { progressStore.onProgress(media.mediaId, positionMs, durationMs) }

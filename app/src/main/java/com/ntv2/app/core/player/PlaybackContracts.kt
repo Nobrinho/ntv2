@@ -112,6 +112,13 @@ interface PlaybackCoordinator {
     /** Prepara de novo o vídeo atual a partir de [positionMs] (ex.: volta do Chromecast). */
     fun retryAt(positionMs: Long)
     fun stop()
+
+    /**
+     * Para o player local porque o vídeo foi para o Chromecast. Salva a posição de agora e, a partir
+     * daí, o progresso é do Chromecast: a próxima parada local (sair do player ou voltar do Cast) não
+     * grava a posição velha do player parado por cima.
+     */
+    fun stopForCast() = stop()
     fun onAppStop()
     fun onAppResume()
     fun release()

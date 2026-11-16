@@ -168,7 +168,7 @@ class DefaultPlaybackController(
 
     override fun discardMedia(fileId: Int) = coordinator.discardMedia(fileId)
 
-    override fun suspendForCast() = coordinator.stop()
+    override fun suspendForCast() = coordinator.stopForCast()
 
     override fun resumeLocalAt(positionMs: Long) = coordinator.retryAt(positionMs)
 

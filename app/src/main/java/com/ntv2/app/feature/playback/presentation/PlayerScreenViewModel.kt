@@ -150,6 +150,7 @@ class PlayerScreenViewModel(
     // Transmitindo: o player local fica parado e o estado exibido vem do Chromecast.
     private val casting = MutableStateFlow(false)
     private var castMediaId: String? = null
+    private var lastCastPositionMs = 0L
     private var castFileName: String? = null
     private var lastCastSaveAt = 0L
 
@@ -202,6 +203,7 @@ class PlayerScreenViewModel(
             viewModelScope.launch {
                 remote.collect { r ->
                     if (!casting.value) return@collect
+                    if (r.positionMs > 0L) lastCastPositionMs = r.positionMs
                     if (r.positionMs > 0L || r.isPlaying) _uiState.update { it.copy(castConnecting = false) }
                     if (r.ended) _uiState.update { it.copy(castEnded = true) }
                     r.error?.let { msg -> _uiState.update { it.copy(castMessage = msg) } }
@@ -291,7 +293,10 @@ class PlayerScreenViewModel(
     }
 
     private fun stopCasting() {
-        val position = castManager?.remote?.value?.positionMs ?: 0L
+        // Última posição válida do Chromecast: no fim da sessão o CastManager zera o `remote` antes
+        // de mudar o status, e ler dele aqui fazia o vídeo local recomeçar do zero.
+        val position = castManager?.remote?.value?.positionMs?.takeIf { it > 0L } ?: lastCastPositionMs
+        lastCastPositionMs = 0L
         casting.value = false
         castMediaId = null
         streamServer?.stop()
@@ -395,14 +400,15 @@ class PlayerScreenViewModel(
         if (casting.value) {
             val mediaId = castMediaId
             val r = castManager?.remote?.value
-            if (mediaId != null && r != null && r.positionMs > 0L) {
-                val duration = r.durationMs.takeIf { it > 0L } ?: uiState.value.durationSeconds * 1_000L
+            val positionMs = r?.positionMs?.takeIf { it > 0L } ?: lastCastPositionMs
+            if (mediaId != null && positionMs > 0L) {
+                val duration = r?.durationMs?.takeIf { it > 0L } ?: uiState.value.durationSeconds * 1_000L
                 // Fora da Main e sem bloquear: o viewModelScope já foi cancelado aqui, e runBlocking
                 // na Main (duas gravações no Room) era risco de ANR.
                 val store = progressStore
                 @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
                 kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                    runCatching { store?.onProgress(mediaId, r.positionMs, duration) }
+                    runCatching { store?.onProgress(mediaId, positionMs, duration) }
                 }
             }
             casting.value = false

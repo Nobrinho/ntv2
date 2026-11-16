@@ -4,9 +4,11 @@
     <cloud-backup>
         <exclude domain="file" path="tdlib/" />
         <exclude domain="sharedpref" path="tdlib_db_key.xml" />
+        <exclude domain="file" path="datastore/backend_session.preferences_pb" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="tdlib/" />
         <exclude domain="sharedpref" path="tdlib_db_key.xml" />
+        <exclude domain="file" path="datastore/backend_session.preferences_pb" />
     </device-transfer>
 </data-extraction-rules>

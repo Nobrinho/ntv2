@@ -10,7 +10,10 @@ sealed interface TdAuthorizationState {
     data object Unknown : TdAuthorizationState
     data object WaitTdlibParameters : TdAuthorizationState
     data object WaitPhoneNumber : TdAuthorizationState
-    data class WaitQrCode(val qrPayload: String) : TdAuthorizationState
+    data class WaitQrCode(val qrPayload: String) : TdAuthorizationState {
+        // O payload é um token de login (tg://login?token=...): fora dos logs, que são coletados no Fire TV.
+        override fun toString(): String = "WaitQrCode"
+    }
     data object WaitCode : TdAuthorizationState
     data object WaitPassword : TdAuthorizationState
     data class Ready(val userId: Long, val displayName: String?) : TdAuthorizationState

@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Backup (Android 6–11). O banco do TDLib (sessão do Telegram) e a chave dele NÃO vão para o
+<!-- Backup (Android 6–11). A sessão do backend (backend_session) também fica fora: restaurada em
+     outro aparelho, clonaria a identidade (conta, Premium, bloqueio). O banco do TDLib (sessão do Telegram) e a chave dele NÃO vão para o
      backup: restaurados em outro aparelho, levariam a sessão junto (e a chave do Keystore não
      existe lá). Também evita copiar o cache de vídeos. -->
 <full-backup-content>
     <exclude domain="file" path="tdlib/" />
     <exclude domain="sharedpref" path="tdlib_db_key.xml" />
+    <exclude domain="file" path="datastore/backend_session.preferences_pb" />
 </full-backup-content>

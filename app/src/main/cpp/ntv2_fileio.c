@@ -16,6 +16,8 @@ Java_com_ntv2_app_core_player_io_NativeFileIo_punchHole(JNIEnv *env, jobject thi
     (void) env;
     (void) thiz;
     if (fd < 0 || offset < 0 || length <= 0) return -EINVAL;
-    int result = fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, (off_t) offset, (off_t) length);
+    // fallocate64: no armeabi-v7a o off_t tem 32 bits. Com fallocate, offsets acima de 2 GB viravam
+    // negativos (falha) e acima de 4 GB davam a volta e apagavam o início do arquivo (cabeçalho).
+    int result = fallocate64(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, (off64_t) offset, (off64_t) length);
     return result == 0 ? 0 : -errno;
 }

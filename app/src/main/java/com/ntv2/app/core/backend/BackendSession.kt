@@ -69,10 +69,16 @@ class BackendSession(
     init {
         client.tokenProvider = { accessToken() }
         client.onUnauthorized = { invalidate() }
+        client.onTokenRejected = { expireAccessToken() }
     }
 
     /** Esquece a sessão atual; a próxima chamada cria uma sessão anônima nova. */
     suspend fun invalidate() = mutex.withLock { store.clear() }
+
+    /** O servidor recusou o access token: a próxima chamada renova pelo refresh token (mesmo usuário). */
+    suspend fun expireAccessToken() = mutex.withLock {
+        store.load()?.let { store.save(it.copy(expiresAtMs = 0L)) }
+    }
 
     val enabled: Boolean get() = client.config.enabled
 
@@ -94,8 +100,9 @@ class BackendSession(
         val body = JSONObject().put("refresh_token", saved.refreshToken).toString()
         parse(client.auth("token?grant_type=refresh_token", body))
     } catch (e: BackendException) {
-        // Refresh recusado (ex.: banco resetado): começa uma sessão anônima nova.
-        if (e.code in 400..499) signUp() else throw e
+        // Refresh recusado (ex.: banco resetado): começa uma sessão anônima nova. 429 (limite do
+        // Auth) e 5xx são passageiros: trocar de usuário aí tirava o aparelho da conta e do Premium.
+        if (e.code in 400..499 && e.code != 429) signUp() else throw e
     }
 
     internal fun parse(body: String): BackendTokens {

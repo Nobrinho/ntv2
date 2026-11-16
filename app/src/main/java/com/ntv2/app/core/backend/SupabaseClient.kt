@@ -26,6 +26,9 @@ class BackendException(val code: Int, message: String) : Exception(message) {
 
     /** 403 BLOCKED: o administrador bloqueou este aparelho (painel de admin). */
     val isBlocked: Boolean get() = code == 403 && message.orEmpty().contains("BLOCKED")
+
+    /** 401 USER_GONE: o usuário anônimo não existe mais no servidor (limpeza/reset). */
+    val isUserGone: Boolean get() = code == 401 && message.orEmpty().contains("USER_GONE")
 }
 
 /** Transporte HTTP trocável nos testes. */
@@ -84,6 +87,12 @@ class SupabaseClient(
      */
     var onUnauthorized: suspend () -> Unit = {}
 
+    /**
+     * 401 sem `USER_GONE` (ex.: JWT vencido que o relógio do aparelho achava válido): só renova o
+     * token, sem trocar de usuário. Descartar a sessão aqui tirava o aparelho da conta e do Premium.
+     */
+    var onTokenRejected: suspend () -> Unit = {}
+
     /** authenticated = false: leitura pública (ex.: app_config) sem criar a sessão anônima. */
     suspend fun get(path: String, authenticated: Boolean = true): String =
         send("GET", "/rest/v1/$path", null, authenticated = authenticated)
@@ -120,7 +129,7 @@ class SupabaseClient(
             return execute(method, path, route, body, prefer, token)
         } catch (e: BackendException) {
             if (e.code != 401 || token == null) throw e
-            onUnauthorized()
+            if (e.isUserGone) onUnauthorized() else onTokenRejected()
             val fresh = tokenProvider() ?: throw e
             return execute(method, path, route, body, prefer, fresh)
         }

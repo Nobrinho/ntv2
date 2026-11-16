@@ -144,6 +144,32 @@ class SupabaseClientTest {
     }
 
     @Test
+    fun `401 sem USER_GONE renova o token e mantem o usuario`() = runTest {
+        val store = MemoryStore(BackendTokens("u1", "a-velho", "r-velho", expiresAtMs = 3_600_000))
+        val transport = FakeTransport(
+            BackendResponse(401, """{"message":"JWT expired"}"""),
+            BackendResponse(200, authBody("u1", "a-novo")),
+            BackendResponse(200, "ok")
+        )
+        val client = SupabaseClient(config, transport)
+        val session = BackendSession(client, store, now = { 0L })
+        assertEquals("ok", client.rpc("log_events", "[]"))
+        assertTrue(transport.requests[1].url.contains("grant_type=refresh_token"))
+        assertEquals("Bearer a-novo", transport.requests[2].headers["Authorization"])
+        assertEquals("u1", session.userId())
+    }
+
+    @Test
+    fun `refresh com 429 nao troca de usuario`() = runTest {
+        val store = MemoryStore(BackendTokens("u1", "old", "r-old", expiresAtMs = 10_000))
+        val transport = FakeTransport(BackendResponse(429, "limite", retryAfterSeconds = 30))
+        val session = BackendSession(SupabaseClient(config, transport), store, now = { 0L })
+        try { session.accessToken(); fail() } catch (e: BackendException) { assertTrue(e.isRateLimited) }
+        assertEquals(1, transport.requests.size)
+        assertEquals("u1", store.tokens?.userId)
+    }
+
+    @Test
     fun `401 sem token de usuario nao entra em loop`() = runTest {
         val transport = FakeTransport(BackendResponse(401, "x"), BackendResponse(200, "nao deveria"))
         try { SupabaseClient(config, transport).get("app_config", authenticated = false); fail() }

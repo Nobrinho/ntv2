@@ -4,9 +4,12 @@
 'use strict';
 
 // Para testar com o Supabase local: admin/?url=http://127.0.0.1:54321&key=<publishable key local>
+// Só vale com a página aberta localmente: no site publicado, um link com ?url= mandaria e-mail,
+// senha e código 2FA do administrador para outro servidor.
 const params = new URLSearchParams(location.search);
-const SUPABASE_URL = params.get('url') || 'https://bqslneydlhhpzhejovod.supabase.co';
-const SUPABASE_KEY = params.get('key') || 'sb_publishable__6SDB_CFQf-Jw-iE_1FkAw_j8HHL_KQ';
+const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+const SUPABASE_URL = (LOCAL && params.get('url')) || 'https://bqslneydlhhpzhejovod.supabase.co';
+const SUPABASE_KEY = (LOCAL && params.get('key')) || 'sb_publishable__6SDB_CFQf-Jw-iE_1FkAw_j8HHL_KQ';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, storageKey: 'nbr-admin' } });
 
 const app = document.getElementById('app');

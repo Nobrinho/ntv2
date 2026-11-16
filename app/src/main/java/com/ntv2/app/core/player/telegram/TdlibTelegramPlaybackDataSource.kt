@@ -108,8 +108,21 @@ class TdlibTelegramPlaybackDataSource(
 
     override fun scheduleEviction(fileId: Int, start: Long, end: Long) {
         val path = resolvePath(fileId)?.takeIf { it.isNotEmpty() } ?: return
-        evictor.submit(fileId, path, start, end) { evictingEnd ->
-            evictedEnds.merge(fileId, evictingEnd) { old, new -> maxOf(old, new) }
+        // Valor de antes do bloco em andamento: volta para ele se o punch falhar. Só a thread do
+        // evictor mexe nesta variável (os blocos de um submit rodam em sequência).
+        var beforeBlock = 0L
+        evictor.submit(
+            fileId, path, start, end,
+            onFailed = { attemptedEnd ->
+                evictedEnds.computeIfPresent(fileId) { _, current ->
+                    if (current == attemptedEnd) beforeBlock else current
+                }
+            }
+        ) { evictingEnd ->
+            evictedEnds.compute(fileId) { _, old ->
+                beforeBlock = old ?: 0L
+                maxOf(beforeBlock, evictingEnd)
+            }
         }
     }
 

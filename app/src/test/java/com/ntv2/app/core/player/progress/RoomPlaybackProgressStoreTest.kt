@@ -51,6 +51,21 @@ class RoomPlaybackProgressStoreTest {
     }
 
     @Test
+    fun `fracao assistida usa a duracao e concluido vale 1`() = runTest {
+        val hist = InMemoryHistoryDao()
+        val store = RoomPlaybackProgressStore(InMemoryProgressDao(), hist)
+        store.recordOpened(meta("ep1", durationSeconds = 2700))
+        store.recordOpened(meta("ep2", durationSeconds = 2700))
+        store.onProgress("ep1", positionMs = 2_700_000L - 2_000L, durationMs = 2_700_000L)
+        store.onProgress("ep2", positionMs = 900_000L, durationMs = 2_700_000L)
+
+        val f = store.watchedFractions(listOf("ep1", "ep2", "ep3"))
+        assertEquals(1f, f["ep1"])
+        assertEquals(1f / 3f, f.getValue("ep2"), 0.001f)
+        assertNull(f["ep3"])
+    }
+
+    @Test
     fun `recordOpened cria a linha e progresso na janela util vira continuar assistindo`() = runTest {
         val hist = InMemoryHistoryDao()
         val store = RoomPlaybackProgressStore(RecordingDao(emptyMap()), hist)

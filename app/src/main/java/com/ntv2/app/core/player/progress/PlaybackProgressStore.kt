@@ -51,6 +51,14 @@ interface PlaybackProgressStore {
     /** Posição salva (ms) por mídia, apenas para os ids com progresso. Para exibir nos cards. */
     suspend fun savedPositions(mediaIds: List<String>): Map<String, Long>
 
+    /**
+     * Quanto de cada mídia foi assistido (0..1), só para os ids com algo salvo. Assistido até o fim
+     * vale 1 (o progresso é apagado no fim, mas o histórico guarda `completed`). Padrão: só sabe
+     * "começou" (0,01), para implementações sem duração.
+     */
+    suspend fun watchedFractions(mediaIds: List<String>): Map<String, Float> =
+        savedPositions(mediaIds).filterValues { it > 0L }.mapValues { 0.01f }
+
     /** Emite o mediaId a cada gravação/limpeza — para a UI (ex.: Detalhes) refletir o progresso. */
     val changes: Flow<String> get() = emptyFlow()
 
@@ -134,6 +142,30 @@ class RoomPlaybackProgressStore(
             .filter { it.mediaId in wanted }
             .associate { it.mediaId to it.positionMs }
     }
+
+    override suspend fun watchedFractions(mediaIds: List<String>): Map<String, Float> {
+        if (mediaIds.isEmpty()) return emptyMap()
+        val wanted = mediaIds.toHashSet()
+        val result = HashMap<String, Float>()
+        historyDao?.getAll()?.forEach { h ->
+            if (h.mediaId !in wanted) return@forEach
+            val fraction = when {
+                h.completed -> 1f
+                h.durationMs > 0L && h.lastPositionMs > 0L -> fraction(h.lastPositionMs, h.durationMs)
+                else -> return@forEach
+            }
+            result[h.mediaId] = fraction
+        }
+        // Progresso salvo vale mais que o histórico (é a posição de retomar), menos para quem já terminou.
+        dao.getAll().forEach { p ->
+            if (p.mediaId !in wanted || p.positionMs <= 0L || result[p.mediaId] == 1f) return@forEach
+            result[p.mediaId] = if (p.durationMs > 0L) fraction(p.positionMs, p.durationMs) else 0.01f
+        }
+        return result
+    }
+
+    private fun fraction(positionMs: Long, durationMs: Long): Float =
+        (positionMs.toFloat() / durationMs).coerceIn(0.01f, 1f)
 
     // ---- Histórico / Continuar assistindo ----
 

@@ -369,8 +369,8 @@ class MediaLibraryViewModel(
                 refreshTrailerPreviewEnabled()
                 val ids = action.series.seasons.flatMap { s -> s.episodes.map { it.mediaId } }
                 viewModelScope.launch {
-                    val saved = withContext(ioDispatcher) { progressStore.savedPositions(ids) }
-                    val progress = ids.associateWith { if ((saved[it] ?: 0L) > 0L) 0.01f else 0f }
+                    val watched = withContext(ioDispatcher) { progressStore.watchedFractions(ids) }
+                    val progress = ids.associateWith { watched[it] ?: 0f }
                     _uiState.update { it.copy(episodeProgress = it.episodeProgress + progress) }
                 }
             }
@@ -964,11 +964,11 @@ class MediaLibraryViewModel(
             Triple(sums, ser, ser.flatMap { s -> s.seasons.flatMap { it.episodes.map { e -> e.mediaId } } })
         }
         val saved = withContext(ioDispatcher) {
-            progressStore.savedPositions(summaries.map { it.mediaId } + episodeIds)
+            progressStore.savedPositions(summaries.map { it.mediaId })
         }
+        val watched = withContext(ioDispatcher) { progressStore.watchedFractions(episodeIds) }
         val (epProgress, cards) = withContext(computeDispatcher) {
-            // saved traz posição em ms; sem duração aqui, tratamos >0 como "iniciado".
-            episodeIds.associateWith { id -> if ((saved[id] ?: 0L) > 0L) 0.01f else 0f } to
+            episodeIds.associateWith { id -> watched[id] ?: 0f } to
                 summaries.map { it.toCard(saved[it.mediaId] ?: 0L) }
         }
         var stored = false
@@ -1024,14 +1024,15 @@ class MediaLibraryViewModel(
     ): Pair<List<MediaCardUi>, Map<String, Float>> {
         val episodeIds = series.flatMap { s -> s.seasons.flatMap { it.episodes.map { e -> e.mediaId } } }
         if (cards.isEmpty() && episodeIds.isEmpty()) return cards to emptyMap()
-        val saved = withContext(ioDispatcher) { progressStore.savedPositions(cards.map { it.mediaId } + episodeIds) }
+        val saved = withContext(ioDispatcher) { progressStore.savedPositions(cards.map { it.mediaId }) }
+        val watched = withContext(ioDispatcher) { progressStore.watchedFractions(episodeIds) }
         return withContext(computeDispatcher) {
             val fresh = cards.map { card ->
                 val total = card.durationSeconds * 1_000L
                 val pos = saved[card.mediaId] ?: 0L
                 card.copy(progress = if (total > 0L && pos > 0L) (pos.toFloat() / total).coerceIn(0f, 1f) else 0f)
             }
-            fresh to episodeIds.associateWith { id -> if ((saved[id] ?: 0L) > 0L) 0.01f else 0f }
+            fresh to episodeIds.associateWith { id -> watched[id] ?: 0f }
         }
     }
 
@@ -1443,6 +1444,12 @@ class MediaLibraryViewModel(
                     runCatching { progressStore.savedPositions(listOf(mediaId))[mediaId] }.getOrNull()
                 } ?: 0L
                 val progress = if (totalMs > 0L && savedMs > 0L) (savedMs.toFloat() / totalMs).coerceIn(0f, 1f) else 0f
+                // Episódio de uma série já aberta: atualiza o "assistido"/"Faltam" ao voltar do player.
+                val episodeFraction = if (mediaId in s.episodeProgress) {
+                    withContext(ioDispatcher) {
+                        runCatching { progressStore.watchedFractions(listOf(mediaId))[mediaId] }.getOrNull()
+                    } ?: 0f
+                } else null
                 // Só o card que mudou: reprojetar a grade inteira (até 1000 cards + leitura de todo o
                 // progresso) a cada gravação pesava na Main do Fire TV.
                 _uiState.update { st ->
@@ -1451,6 +1458,8 @@ class MediaLibraryViewModel(
                         else map { if (it.mediaId == mediaId) it.copy(progress = progress) else it }
                     st.copy(
                         progressOverrides = st.progressOverrides + (mediaId to progress),
+                        episodeProgress = if (episodeFraction == null) st.episodeProgress
+                        else st.episodeProgress + (mediaId to episodeFraction),
                         items = st.items.patched(),
                         sections = st.sections.map { sec ->
                             val p = sec.items.patched()

@@ -99,6 +99,8 @@ private const val MAX_PAGES_PER_LOAD = 6
 
 /** Espera antes de recalcular as recomendações (agrupa disparos seguidos). */
 private const val RECOMMEND_DEBOUNCE_MS = 250L
+private const val UP_NEXT_EAGER = 2
+private const val UP_NEXT_REST_DELAY_MS = 60_000L
 
 class MediaLibraryViewModel(
     private val mediaRepository: MediaRepository,
@@ -824,7 +826,13 @@ class MediaLibraryViewModel(
             return
         }
         upNextJob = viewModelScope.launch {
-            queue.registerChain(currentMediaId, following) { resolveUpNext(it) }
+            // Os 2 próximos já; o resto da série depois de 1 min, com o player já tocando (eram ~80
+            // chamadas ao TDLib em sequência na abertura de um episódio de série longa).
+            queue.registerChain(
+                currentMediaId, following,
+                eager = UP_NEXT_EAGER,
+                beforeRest = { kotlinx.coroutines.delay(UP_NEXT_REST_DELAY_MS) }
+            ) { resolveUpNext(it) }
         }
     }
 

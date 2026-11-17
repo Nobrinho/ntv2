@@ -33,14 +33,20 @@ class UpNextQueue {
      * Encadeia a série a partir de [currentMediaId]: cada episódio de [following] (em ordem) vira o
      * próximo do anterior, para o autoplay seguir até o fim. Para no primeiro que [resolve] não
      * conseguir; o último resolvido fica sem próximo.
+     *
+     * Os [eager] primeiros saem na hora; antes do resto roda [beforeRest] (ex.: uma pausa), para não
+     * resolver a série inteira no TDLib justo enquanto o player começa a tocar.
      */
     suspend fun <T> registerChain(
         currentMediaId: String,
         following: List<T>,
+        eager: Int = Int.MAX_VALUE,
+        beforeRest: suspend () -> Unit = {},
         resolve: suspend (T) -> UpNextEpisode?
     ) {
         var after = currentMediaId
-        for (item in following) {
+        for ((i, item) in following.withIndex()) {
+            if (i == eager) beforeRest()
             val episode = resolve(item) ?: return
             put(after, episode)
             after = episode.mediaId

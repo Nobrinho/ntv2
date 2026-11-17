@@ -41,4 +41,18 @@ class UpNextQueueTest {
         assertEquals("e2", queue.nextAfter("e1")?.mediaId)
         assertNull(queue.nextAfter("e2"))
     }
+
+    @Test
+    fun `resolve os primeiros na hora e o resto depois da pausa`() = runBlocking {
+        val queue = UpNextQueue()
+        val order = mutableListOf<String>()
+        queue.registerChain(
+            "e1", listOf("e2", "e3", "e4"),
+            eager = 2,
+            beforeRest = { order += "pausa" }
+        ) { order += it; ep(it) }
+
+        assertEquals(listOf("e2", "e3", "pausa", "e4"), order)
+        assertEquals("e4", queue.nextAfter("e3")?.mediaId)
+    }
 }

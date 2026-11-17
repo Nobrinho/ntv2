@@ -50,6 +50,7 @@ object IndexCatalogSeed {
             .putOpt("video_message_id", m.videoMessageId.takeIf { it > 0 })
             .putOpt("chat_id", chatId)
             .putOpt("trailer_url", m.trailerUrl)
+            .putOpt("extra", extraOf(m.director, m.imdbRating, m.rtScore))
         return CatalogMerge.rowOf(KIND_MOVIE, NtvIds.movie(m.tmdbId), null, d)
     }
 
@@ -65,7 +66,14 @@ object IndexCatalogSeed {
             .putOpt("overview", s.overview)
             .put("genres", JSONArray(s.genres))
             .putOpt("trailer_url", s.trailerUrl)
+            .putOpt("extra", extraOf(s.director, s.imdbRating, s.rtScore))
         return CatalogMerge.rowOf(KIND_SERIES, NtvIds.series(s.tmdbId), null, d)
+    }
+
+    /** Diretor e notas no mesmo lugar do backend (`extra`), para o catálogo local não perdê-los. */
+    private fun extraOf(director: String?, imdb: Double?, rt: Int?): JSONObject? {
+        if (director == null && imdb == null && rt == null) return null
+        return JSONObject().putOpt("director", director).putOpt("imdb_rating", imdb).putOpt("rt_score", rt)
     }
 
     internal fun episodeRow(seriesTmdbId: Long, e: IndexEpisode, chatId: Long?): CatalogRow {

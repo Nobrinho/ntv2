@@ -75,6 +75,19 @@ class CatalogIndexSnapshotTest {
     }
 
     @Test
+    fun `diretor e notas passam pelo catalogo local`() = runTest {
+        val m = movie(5, "Duna", "2021", emptyList(), emptyList(), 50)
+            .copy(director = "Denis Villeneuve", imdbRating = 8.0, rtScore = 83)
+        val store = InMemoryCatalogStore().apply {
+            apply(CatalogBatch(upserts = IndexCatalogSeed.from(IndexSnapshot(chat, listOf(m), emptyList(), 1L)).rows))
+        }
+        val got = CatalogIndexSnapshot.load(store)!!.movies.single()
+        assertEquals("Denis Villeneuve", got.director)
+        assertEquals(8.0, got.imdbRating!!, 0.001)
+        assertEquals(83, got.rtScore)
+    }
+
+    @Test
     fun `trailer do filme do indice passa pelo catalogo local e None vira null`() = runTest {
         val com = movie(7, "Com", "2001", emptyList(), emptyList(), 70).copy(trailerUrl = "https://youtu.be/abcdefghijk")
         val sem = movie(8, "Sem", "2002", emptyList(), emptyList(), 80)

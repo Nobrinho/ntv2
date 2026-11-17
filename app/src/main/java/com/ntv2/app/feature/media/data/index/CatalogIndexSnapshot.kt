@@ -66,7 +66,10 @@ object CatalogIndexSnapshot {
                     overview = d.text("overview"),
                     genres = d.strings("genres"),
                     seasons = seasons,
-                    trailerUrl = d.text("trailer_url")
+                    trailerUrl = d.text("trailer_url"),
+                    director = d.directorText(),
+                    imdbRating = d.imdbRating(),
+                    rtScore = d.rtScore()
                 )
             }
             // Mesma ordem do index.json (gerar_indice.py: título em minúsculas).
@@ -98,7 +101,12 @@ object CatalogIndexSnapshot {
                 genres = d.strings("genres"),
                 cast = cast,
                 videoMessageId = d.optLong("video_message_id", 0L),
-                trailerUrl = d.text("trailer_url")
+                trailerUrl = d.text("trailer_url"),
+                // Diretor e notas (em `extra` no backend e no seed): sem eles, com o catálogo local os
+                // filtros de diretor e nota mínima não achavam nada e os de nota sumiam.
+                director = d.directorText(),
+                imdbRating = d.imdbRating(),
+                rtScore = d.rtScore()
             )
         }
 

@@ -11,6 +11,7 @@ import com.ntv2.app.feature.channels.presentation.state.ChannelSelectionUiState
 import com.ntv2.app.feature.channels.presentation.state.toUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -183,8 +184,17 @@ class ChannelSelectionViewModel(
             return false
         }
 
+        // Lista não carregou (falha de rede): continuar gravaria uma seleção vazia e apagaria os canais salvos.
+        if (allChannels.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Não foi possível carregar os canais. Tente de novo.") }
+            return false
+        }
         viewModelScope.launch {
-            val selectedChannels = allChannels.filter { selectedIds.contains(it.id) }
+            val loaded = allChannels.filter { selectedIds.contains(it.id) }
+            // Canal salvo que não veio nesta lista (o listChats pode vir incompleto) continua selecionado.
+            val kept = runCatching { channelRepository.observeSelectedChannels().first() }.getOrDefault(emptyList())
+                .filter { saved -> saved.id in selectedIds && loaded.none { it.id == saved.id } }
+            val selectedChannels = loaded + kept
             runCatching {
                 channelRepository.persistSelectedChannels(selectedChannels)
             }.onSuccess {

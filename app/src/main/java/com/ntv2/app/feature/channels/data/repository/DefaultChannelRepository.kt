@@ -36,7 +36,12 @@ class DefaultChannelRepository(
     }
 
     override suspend fun persistSelectedChannels(selectedChannels: List<ChannelSummary>) {
-        selectedChannelDao.clearAll()
+        // Grava antes e só depois remove o que saiu: apagar tudo primeiro fazia o Flow emitir "sem
+        // canais" no meio (e perdia a seleção se o processo morresse ali).
+        if (selectedChannels.isEmpty()) {
+            selectedChannelDao.clearAll()
+            return
+        }
         selectedChannelDao.upsertAll(
             selectedChannels.map { channel ->
                 SelectedChannelEntity(
@@ -46,6 +51,7 @@ class DefaultChannelRepository(
                 )
             }
         )
+        selectedChannelDao.deleteAllExcept(selectedChannels.map { it.id })
     }
 
     override suspend fun clearSelectedChannels() {

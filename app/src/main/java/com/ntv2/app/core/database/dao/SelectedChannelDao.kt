@@ -17,4 +17,7 @@ interface SelectedChannelDao {
 
     @Query("DELETE FROM selected_channels")
     suspend fun clearAll()
+
+    @Query("DELETE FROM selected_channels WHERE channelId NOT IN (:keep)")
+    suspend fun deleteAllExcept(keep: List<Long>)
 }

@@ -164,4 +164,14 @@ class MovieMetadataParserTest {
         assertNull(meta.title)
         assertNull(meta.synopsis)
     }
+
+    @Test
+    fun `duracao em horas e minutos`() {
+        assertEquals(135, parseDurationMinutes("135 min"))
+        assertEquals(135, parseDurationMinutes("2h 15min"))
+        assertEquals(135, parseDurationMinutes("2 h 15"))
+        assertEquals(135, parseDurationMinutes("2h15"))
+        assertEquals(120, parseDurationMinutes("2h"))
+        assertNull(parseDurationMinutes("sem número"))
+    }
 }

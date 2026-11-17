@@ -200,7 +200,7 @@ object MovieMetadataParser {
             genres = get(GENRE_KEYS),
             originalTitle = get(ORIGINAL_KEYS),
             type = get(TYPE_KEYS),
-            durationMin = get(DURATION_KEYS)?.let { RX_DIGITS.find(it)?.value?.toIntOrNull() },
+            durationMin = get(DURATION_KEYS)?.let(::parseDurationMinutes),
             rating = get(RATING_KEYS)?.replace(',', '.')?.let { RX_DECIMAL.find(it)?.value?.toDoubleOrNull() },
             ageRating = get(AGE_KEYS),
             category = get(CATEGORY_KEYS),
@@ -325,6 +325,19 @@ internal fun stripAccentsInternal(s: String): String =
 private val RX_COMBINING_MARKS = Regex("\\p{Mn}+")
 private val RX_DECIMAL = Regex("\\d+(\\.\\d+)?")
 private val RX_DIGITS = Regex("\\d+")
+private val RX_HOURS = Regex("(\\d+)\\s*h", RegexOption.IGNORE_CASE)
+private val RX_MINUTES_AFTER_HOURS = Regex("h\\D*?(\\d+)", RegexOption.IGNORE_CASE)
+
+/**
+ * "135 min" → 135; "2h 15min", "2 h 15", "2h15" → 135; "2h" → 120. Antes "2h 15min" virava 2 minutos
+ * (só o primeiro número), e o MKV sem duração própria mostrava "2 min" no card.
+ */
+internal fun parseDurationMinutes(text: String): Int? {
+    val hours = RX_HOURS.find(text)?.groupValues?.get(1)?.toIntOrNull()
+        ?: return RX_DIGITS.find(text)?.value?.toIntOrNull()
+    val minutes = RX_MINUTES_AFTER_HOURS.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+    return hours * 60 + minutes
+}
 private val RX_WHITESPACE = Regex("\\s+")
 private val RX_YEAR4 = Regex("\\d{4}")
 private val RX_NTV_ID = Regex("[a-z]_[A-Za-z0-9_-]+")

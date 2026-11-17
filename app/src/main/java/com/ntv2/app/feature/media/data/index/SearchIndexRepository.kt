@@ -186,11 +186,13 @@ class SearchIndexRepository(
     private suspend fun ensureLoaded(): LoadedIndex? {
         val now = System.currentTimeMillis()
         cached?.let { if (now - loadedAt < ttlMillis) return it }
-        if (cached == null && now - lastFailureAt < FAILURE_BACKOFF_MS) return null
+        // Falha recente: não tenta a rede de novo (segurando o mutex) a cada busca; serve a cópia antiga
+        // se houver. Antes isso só valia sem cópia, e sem rede cada tecla esperava o timeout.
+        if (now - lastFailureAt < FAILURE_BACKOFF_MS) return cached
         return mutex.withLock {
             val fresh = cached
             if (fresh != null && System.currentTimeMillis() - loadedAt < ttlMillis) return fresh
-            if (fresh == null && System.currentTimeMillis() - lastFailureAt < FAILURE_BACKOFF_MS) return null
+            if (System.currentTimeMillis() - lastFailureAt < FAILURE_BACKOFF_MS) return fresh
             val loaded = loadLocal() ?: runCatching { fetch() }.getOrNull()
             if (loaded != null) store(loaded) else lastFailureAt = System.currentTimeMillis()
             loaded ?: cached // se falhar o fetch, mantém o que tiver

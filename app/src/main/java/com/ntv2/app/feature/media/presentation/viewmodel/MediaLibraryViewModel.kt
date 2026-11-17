@@ -1860,7 +1860,10 @@ class MediaLibraryViewModel(
         } else {
             0f
         }
-        // Popula o cache de detalhes para a tela de reprodução ler por mediaId.
+        // Popula o cache de detalhes para a tela de reprodução ler por mediaId. Logo e trailer achados
+        // depois (pelo índice, ao abrir os Detalhes) são mantidos: regravar sem eles fazia o logo e o
+        // botão Trailer sumirem na segunda abertura, e o índice não era consultado de novo.
+        val previous = mediaDetailsCache.get(mediaId)
         mediaDetailsCache.put(
             mediaId,
             MovieDetails(
@@ -1873,7 +1876,7 @@ class MediaLibraryViewModel(
                 genres = genres,
                 originalTitle = originalTitle,
                 backdropPath = backdropPath,
-                logoPath = logoPath,
+                logoPath = logoPath ?: previous?.logoPath,
                 durationSeconds = durationSeconds,
                 rating = rating,
                 imdbRating = imdbRating,
@@ -1883,7 +1886,7 @@ class MediaLibraryViewModel(
                 quality = quality,
                 studio = studio,
                 cast = cast,
-                trailerUrl = trailerUrl,
+                trailerUrl = trailerUrl ?: previous?.trailerUrl,
                 category = category,
                 collection = collection
             )

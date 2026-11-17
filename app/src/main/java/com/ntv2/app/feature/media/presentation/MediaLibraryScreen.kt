@@ -975,13 +975,16 @@ fun MediaLibraryScreen(
                     filters = state.searchFilters,
                     filterOptions = state.searchFilterOptions,
                     onFiltersChange = { viewModel.onAction(MediaLibraryAction.SetSearchFilters(it)) },
+                    // Lê o estado atual do ViewModel, não o capturado na composição: duas teclas antes da
+                    // recomposição (Fire TV lento, repetição do Apagar) faziam a segunda apagar a primeira.
                     onKey = { c ->
-                        if (state.searchFilters.actor == null) {
-                            viewModel.onAction(MediaLibraryAction.SearchChanged(state.searchQuery + c))
+                        val now = viewModel.uiState.value
+                        if (now.searchFilters.actor == null) {
+                            viewModel.onAction(MediaLibraryAction.SearchChanged(now.searchQuery + c))
                         }
                     },
                     onBackspace = {
-                        val q = state.searchQuery
+                        val q = viewModel.uiState.value.searchQuery
                         if (q.isNotEmpty() && state.searchFilters.actor == null) {
                             viewModel.onAction(MediaLibraryAction.SearchChanged(q.dropLast(1)))
                         }

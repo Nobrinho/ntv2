@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -61,6 +62,7 @@ class RealTdlibGateway(
         private const val TAG = "RealTdlibGateway"
         private const val SMALL_FILE_TIMEOUT_MS = 8_000L
         private const val CLOSE_TIMEOUT_MS = 20_000L
+        private const val PAGE_CONCURRENCY = 8
 
         // Trecho inicial baixado ao abrir um arquivo (suficiente para começar; o resto vem pela
         // janela deslizante durante a reprodução).
@@ -802,9 +804,12 @@ class RealTdlibGateway(
             // filme (só casava a palavra na SINOPSE de outro). Vídeos diretos + o vídeo adjacente de
             // cada pôster/texto que casou.
             val result = search(null) ?: return TelegramVideoPage(emptyList(), 0L)
+            // Até PAGE_CONCURRENCY por vez: sem teto, uma página de 50 disparava mais de 200 pedidos
+            // ao TDLib juntos (histórico vizinho, parte 1, pôster, catálogo e download de cada item).
+            val nearPermits = kotlinx.coroutines.sync.Semaphore(PAGE_CONCURRENCY)
             videoMessages = coroutineScope {
                 result.messages.orEmpty().filterNotNull().map { msg ->
-                    async {
+                    async { nearPermits.withPermit {
                         // Parte de filme dividido → a parte 1 (o card é do filme, não da parte).
                         when {
                             isVideoMessage(msg.content) -> firstPartMessage(msg)
@@ -812,7 +817,7 @@ class RealTdlibGateway(
                                 findVideoNearPoster(chatId, msg.id)?.let { firstPartMessage(it) }
                             else -> null
                         }
-                    }
+                    } }
                 }.awaitAll().filterNotNull().distinctBy { it.id }
             }
             nextFromMessageId = result.nextFromMessageId
@@ -820,10 +825,11 @@ class RealTdlibGateway(
 
         // Monta os itens em paralelo: cada um baixa sua miniatura (arquivo pequeno) para termos
         // um caminho local — sem isso thumbnail.file.local.path fica vazio e o card fica cinza.
+        val itemPermits = kotlinx.coroutines.sync.Semaphore(PAGE_CONCURRENCY)
         val items = coroutineScope {
             videoMessages.mapNotNull { msg ->
                 val video = videoFileOf(msg.content) ?: return@mapNotNull null
-                async {
+                async { itemPermits.withPermit {
                     val videoCaption = video.caption
                     val videoMeta = MovieMetadataParser.parse(videoCaption)
                     // Catálogo local: pelo ntv_id da legenda v3, senão pelo (chat, mensagem) do vídeo.
@@ -967,7 +973,7 @@ class RealTdlibGateway(
                         airDate = epMeta?.airDate,
                         partCount = video.part?.total ?: 1
                     )
-                }
+                } }
             }.awaitAll()
         }
         // O SearchChatMessages do TDLib faz busca de TEXTO em toda a legenda/sinopse do vídeo — por

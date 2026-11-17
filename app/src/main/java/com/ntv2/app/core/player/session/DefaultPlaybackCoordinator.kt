@@ -659,7 +659,13 @@ class DefaultPlaybackCoordinator(
 
     override fun discardMedia(fileId: Int) {
         if (fileId <= 0 || isActiveFile(fileId)) return
-        scope.launch { partsLookup.allFileIds(fileId).forEach { playbackDataSource.deleteFile(it) } }
+        // Encadeado no cleanupJob, que o próximo prepare espera: solto, o deleteFile podia rodar depois
+        // de o mesmo vídeo ser reaberto e apagar o arquivo novo ("Arquivo não encontrado").
+        val previous = cleanupJob
+        cleanupJob = scope.launch {
+            previous?.join()
+            partsLookup.allFileIds(fileId).forEach { playbackDataSource.deleteFile(it) }
+        }
     }
 
     override fun release() {
@@ -881,7 +887,9 @@ class DefaultPlaybackCoordinator(
         if (closeSession && media != null) {
             // Filme dividido: todas as partes (as já descartadas na emenda não custam nada).
             val fileIds = partsLookup.allFileIds(media.fileId)
+            val previous = cleanupJob
             cleanupJob = scope.launch {
+                previous?.join()
                 // Ao sair da reprodução, remove o arquivo do TDLib para não acumular no
                 // armazenamento (o Fire TV tem pouco espaço). Nas demais paradas, apenas fecha.
                 fileIds.forEach { fileId ->

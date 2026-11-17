@@ -177,7 +177,10 @@ private class GrowingFileDataSource(
             return
         }
         readAheadBytes = profile.aheadWindowBytes
-        diskWindow = if (profile.diskWindowEnabled) {
+        // Arquivo com trechos já liberados mantém a política mesmo se o perfil novo desligar a janela
+        // (sobrou espaço entre um preparo e outro): sem ela, voltar para um buraco lia zeros como vídeo.
+        val hasHoles = partialFileAccessor.evictedEnd(fileId) > 0L
+        diskWindow = if (profile.diskWindowEnabled || hasHoles) {
             defaultDiskWindow?.copy(keepBehindBytes = profile.keepBehindBytes)
         } else {
             null

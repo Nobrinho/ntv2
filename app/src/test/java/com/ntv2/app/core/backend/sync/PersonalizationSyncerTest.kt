@@ -77,20 +77,45 @@ class PersonalizationSyncerTest {
                         if (saved != null && ms(row) < ms(saved)) continue
                         val merged = saved?.let { JSONObject(it.toString()) } ?: JSONObject()
                         row.keys().forEach { k -> merged.put(k, row.get(k)) }
+                        // synced_at: hora do servidor em toda escrita aceita (sempre crescente).
+                        merged.put("synced_at", SyncTime.toIso(SERVER_EPOCH + ++serverTick))
                         store[id] = merged
                     }
                     BackendResponse(201, "")
                 }
                 else -> {
-                    val gt = SyncTime.toEpochMs(query.getValue("updated_at").removePrefix("gt."))!!
                     val limit = query.getValue("limit").toInt()
+                    val or = query["or"]
+                    if (or != null) {
+                        if (!hasSyncedAt) return BackendResponse(400, """{"code":"42703","message":"column favorites.synced_at does not exist"}""")
+                        val m = Regex("""synced_at\.gt\."([^"]*)".*media_id\.gt\."([^"]*)"""").find(or)!!
+                        val at = SyncTime.toEpochMs(m.groupValues[1])!!
+                        val after = m.groupValues[2]
+                        val page = store.values
+                            .filter { synced(it) > at || (synced(it) == at && it.getString("media_id") > after) }
+                            .sortedWith(compareBy({ synced(it) }, { it.getString("media_id") }))
+                            .take(limit)
+                        return BackendResponse(200, JSONArray(page).toString())
+                    }
+                    val gt = SyncTime.toEpochMs(query.getValue("updated_at").removePrefix("gt."))!!
                     val page = store.values.filter { ms(it) > gt }.sortedBy { ms(it) }.take(limit)
                     BackendResponse(200, JSONArray(page).toString())
                 }
             }
         }
 
+        /** false = backend antigo, sem a coluna synced_at (o app cai no pull por updated_at). */
+        var hasSyncedAt = true
+        private var serverTick = 0L
+
         private fun ms(row: JSONObject) = SyncTime.toEpochMs(row.getString("updated_at"))!!
+        private fun synced(row: JSONObject) =
+            SyncTime.toEpochMs(row.optString("synced_at").ifEmpty { row.getString("updated_at") })!!
+
+        companion object {
+            /** Hora do servidor falso: bem depois de qualquer relógio dos aparelhos do teste. */
+            const val SERVER_EPOCH = 1_900_000_000_000L
+        }
     }
 
     private class MemoryTokens : BackendTokenStore {
@@ -125,7 +150,8 @@ class PersonalizationSyncerTest {
         val syncer = PersonalizationSyncer(
             client, session, favorites, progress, history, marks,
             syncFlag = AppConfigSyncFlag(client, ttlMs = 0L),
-            pageSize = pageSize
+            pageSize = pageSize,
+            now = { clock }
         )
     }
 
@@ -277,8 +303,36 @@ class PersonalizationSyncerTest {
     }
 
     @Test
-    fun `pull usa o updated_at do servidor como marca e codifica na url`() = runTest {
+    fun `linha que chega depois com data antiga ainda desce para o outro aparelho`() = runTest {
         val server = FakeServer()
+        val tokens = MemoryTokens()
+        val tv = Device(server, tokens, clock = 5_000_000L)
+        val phone = Device(server, tokens, clock = 1_000_000L)
+        tv.library.add(fav("novo"))
+        tv.syncer.sync()
+        phone.syncer.sync()
+        // O celular estava offline: a alteração dele tem data anterior à marca da TV.
+        phone.clock += 1_000
+        phone.library.add(fav("offline"))
+        phone.syncer.sync()
+        tv.syncer.sync()
+        assertTrue(tv.favorites.rows.containsKey("offline"))
+    }
+
+    @Test
+    fun `backend sem synced_at cai no pull por updated_at`() = runTest {
+        val server = FakeServer().apply { hasSyncedAt = false }
+        val tokens = MemoryTokens()
+        val phone = Device(server, tokens)
+        val tv = Device(server, tokens)
+        phone.library.add(fav("a"))
+        phone.syncer.sync()
+        assertEquals(1, tv.syncer.sync().pulled[PersonalizationSyncer.FAVORITES])
+    }
+
+    @Test
+    fun `pull usa o updated_at do servidor como marca e codifica na url`() = runTest {
+        val server = FakeServer().apply { hasSyncedAt = false }
         val tokens = MemoryTokens()
         val tv = Device(server, tokens)
         server.tables["favorites"] = linkedMapOf(
@@ -382,5 +436,32 @@ class PersonalizationSyncerTest {
         tv.library.add(fav("-100_1"))
         assertEquals("sem Premium", syncer.sync().skipped)
         assertTrue(server.requests.none { it.url.contains("/favorites") })
+    }
+
+    @Test
+    fun `sincronizar agora (forceFull) sobe e baixa tudo de novo mesmo com as marcas em dia`() = runTest {
+        val server = FakeServer()
+        val tokens = MemoryTokens()
+        val phone = Device(server, tokens)
+        val tv = Device(server, tokens)
+
+        phone.library.add(fav("-100_7"))
+        phone.syncer.sync()
+        tv.syncer.sync()
+        assertTrue(tv.library.isFavorite("-100_7"))
+
+        // A TV perdeu a linha local (aparelho divergente) e o servidor perdeu a cópia do celular.
+        tv.favorites.rows.clear()
+        server.tables.getValue("favorites").clear()
+
+        // Rodada normal: as marcas dizem que está tudo em dia, nada se move.
+        assertEquals(0, phone.syncer.sync().pushed.getValue("favorites"))
+        assertEquals(0, tv.syncer.sync().pulled.getValue("favorites"))
+        assertFalse(tv.library.isFavorite("-100_7"))
+
+        // Forçada: o celular sobe de novo e a TV baixa de novo.
+        assertEquals(1, phone.syncer.sync(forceFull = true).pushed.getValue("favorites"))
+        assertEquals(1, tv.syncer.sync(forceFull = true).pulled.getValue("favorites"))
+        assertTrue(tv.library.isFavorite("-100_7"))
     }
 }

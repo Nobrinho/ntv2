@@ -121,6 +121,8 @@ fun SettingsScreen(
     runConnectionTest: (() -> kotlinx.coroutines.flow.Flow<com.ntv2.app.core.network.ConnectionReport>)? = null,
     // Vincular aparelhos (null = backend desligado: o item não aparece).
     deviceLink: com.ntv2.app.core.backend.link.DeviceLinkRepository? = null,
+    // Estado do sync e "Sincronizar agora" (dentro de Conectar aparelhos).
+    syncRunner: com.ntv2.app.core.backend.sync.SyncRunner? = null,
     // NBR Play Premium por Pix (null = backend desligado: o item não aparece).
     premium: com.ntv2.app.core.backend.premium.PremiumRepository? = null
 ) {
@@ -401,6 +403,9 @@ fun SettingsScreen(
             DeviceLinkOverlay(
                 repository = deviceLink,
                 isTv = adaptive.useTvLayout,
+                // Só TV de verdade (controle remoto): tablet deitado usa o layout de TV, mas digita por toque.
+                useKeypad = adaptive.isTv,
+                syncRunner = syncRunner,
                 onClose = { showDeviceLink = false },
                 onOpenPremium = premium?.let { { showDeviceLink = false; showPremium = true } }
             )

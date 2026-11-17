@@ -473,6 +473,7 @@ fun AppNavHost(
                     ).run()
                 },
                 deviceLink = appContainer.deviceLinkRepository,
+                syncRunner = appContainer.syncRunner,
                 premium = appContainer.premiumRepository
             )
         }

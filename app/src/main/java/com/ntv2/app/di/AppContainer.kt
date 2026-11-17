@@ -113,6 +113,9 @@ interface AppContainer {
     /** Sincronização da personalização; null com o backend desligado (o app fica só no Room). */
     val personalizationSync: com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler?
 
+    /** Estado do sync e o "Sincronizar agora"; null com o backend desligado. */
+    val syncRunner: com.ntv2.app.core.backend.sync.SyncRunner?
+
     /** NBR Play Premium por Pix; null com o backend desligado. */
     val premiumRepository: com.ntv2.app.core.backend.premium.PremiumRepository?
 
@@ -413,7 +416,7 @@ class DefaultAppContainer(
         )
     }
 
-    override val personalizationSync: com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler? by lazy {
+    override val syncRunner: com.ntv2.app.core.backend.sync.SyncRunner? by lazy {
         if (!backendClient.config.enabled) return@lazy null
         val syncer = com.ntv2.app.core.backend.sync.PersonalizationSyncer(
             client = backendClient,
@@ -424,9 +427,19 @@ class DefaultAppContainer(
             marks = com.ntv2.app.core.backend.sync.DataStoreSyncMarks(appContext),
             premiumCheck = { premiumRepository?.syncAllowed() ?: true }
         )
+        val prefs = appContext.getSharedPreferences("sync_status", Context.MODE_PRIVATE)
+        com.ntv2.app.core.backend.sync.SyncRunner(
+            run = { forceFull -> syncer.sync(forceFull) },
+            loadLastSuccess = { prefs.getLong("last_success", 0L) },
+            saveLastSuccess = { prefs.edit().putLong("last_success", it).apply() }
+        )
+    }
+
+    override val personalizationSync: com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler? by lazy {
+        val runner = syncRunner ?: return@lazy null
         com.ntv2.app.core.backend.sync.PersonalizationSyncScheduler(
             scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO),
-            runSync = { syncer.sync() },
+            runSync = { runner.auto() },
             onError = { android.util.Log.w("NtvSync", "sincronização falhou: ${it.message}") }
         )
     }
@@ -448,7 +461,10 @@ class DefaultAppContainer(
             session = backendSession,
             deviceName = { deviceDisplayName() },
             // Entrou ou saiu de uma conta: a sincronização sobe e baixa tudo da conta nova.
-            onAccountChanged = { personalizationSync?.requestNow() }
+            onAccountChanged = {
+                syncRunner?.requestFullNext()
+                personalizationSync?.requestNow()
+            }
         )
     }
 

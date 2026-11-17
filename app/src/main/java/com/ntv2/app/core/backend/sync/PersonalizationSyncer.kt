@@ -40,41 +40,48 @@ class PersonalizationSyncer(
     private val syncFlag: SyncFlag = AppConfigSyncFlag(client),
     // Sincronizar entre aparelhos é Premium (a conta inteira; ver PremiumRepository).
     private val premiumCheck: suspend () -> Boolean = { true },
-    private val pageSize: Int = PAGE_SIZE
+    private val pageSize: Int = PAGE_SIZE,
+    private val now: () -> Long = System::currentTimeMillis
 ) {
     private val mutex = Mutex()
 
     /** Usuário com que a última passada começou (só lido dentro do [mutex]). */
     private var runUserId: String? = null
 
-    suspend fun sync(): SyncResult = mutex.withLock {
+    /**
+     * [forceFull] ("Sincronizar agora"): zera as marcas antes da rodada, então sobe e baixa tudo de
+     * novo. Conserta um aparelho que ficou divergente; o last-write-wins dos dois lados evita regressão.
+     */
+    suspend fun sync(forceFull: Boolean = false): SyncResult = mutex.withLock {
         runUserId = null
-        val first = syncOnce()
+        val first = syncOnce(forceFull)
         // Um 401 no meio (usuário apagado no servidor) recriou a sessão: refaz já com o usuário novo,
         // que sobe tudo de novo, em vez de esperar o próximo disparo.
         val started = runUserId
         if (started != null && session.userId() != started) syncOnce() else first
     }
 
-    private suspend fun syncOnce(): SyncResult {
-        if (!client.config.enabled) return SyncResult(skipped = "backend desligado")
-        if (!syncFlag.isEnabled()) return SyncResult(skipped = "flag sync=false")
-        if (!premiumCheck()) return SyncResult(skipped = "sem Premium")
-        val userId = session.userId() ?: return SyncResult(skipped = "sem sessão")
+    private suspend fun syncOnce(forceFull: Boolean = false): SyncResult {
+        if (!client.config.enabled) return SyncResult(skipped = SKIP_BACKEND_OFF)
+        if (!syncFlag.isEnabled()) return SyncResult(skipped = SKIP_FLAG_OFF)
+        if (!premiumCheck()) return SyncResult(skipped = SKIP_NO_PREMIUM)
+        val userId = session.userId() ?: return SyncResult(skipped = SKIP_NO_SESSION)
         runUserId = userId
         // Dono das linhas: a conta (aparelhos vinculados compartilham uma). Sem vínculo, é o próprio usuário.
         val owner = currentAccount(userId)
         // Conta nova (vínculo, saída ou sessão anônima nova): sobe tudo e baixa tudo de novo.
-        if (marks.userId() != owner) marks.reset(owner)
+        if (forceFull || marks.userId() != owner) marks.reset(owner)
 
+        // Relógio deste aparelho no início da rodada: vira a marca de push (ver [push]).
+        val roundStart = now()
         val pushed = linkedMapOf<String, Int>()
-        pushed[FAVORITES] = push(FAVORITES, favoriteDao.changedSince(marks.pushedUpTo(FAVORITES)), { it.updatedAt }) {
+        pushed[FAVORITES] = push(FAVORITES, favoriteDao.changedSince(marks.pushedUpTo(FAVORITES)), roundStart, { it.updatedAt }) {
             favoriteToJson(it, owner)
         }
-        pushed[HISTORY] = push(HISTORY, historyDao.changedSince(marks.pushedUpTo(HISTORY)), { it.updatedAt }) {
+        pushed[HISTORY] = push(HISTORY, historyDao.changedSince(marks.pushedUpTo(HISTORY)), roundStart, { it.updatedAt }) {
             historyToJson(it, owner)
         }
-        pushed[PROGRESS] = push(PROGRESS, progressDao.changedSince(marks.pushedUpTo(PROGRESS)), { it.updatedAt }) {
+        pushed[PROGRESS] = push(PROGRESS, progressDao.changedSince(marks.pushedUpTo(PROGRESS)), roundStart, { it.updatedAt }) {
             progressToJson(it, owner)
         }
 
@@ -99,14 +106,28 @@ class PersonalizationSyncer(
         if (e.code == 404) userId else throw e
     }
 
-    private suspend fun <T> push(table: String, rows: List<T>, updatedAt: (T) -> Long, toJson: (T) -> JSONObject): Int {
-        if (rows.isEmpty()) return 0
-        rows.chunked(pageSize).forEach { chunk ->
+    /**
+     * Sobe o que mudou desde a marca. A marca é o relógio deste aparelho no início da rodada, não o
+     * maior `updatedAt` enviado: linhas baixadas de outro aparelho trazem a data DELE, e com o relógio
+     * daqui atrasado a marca ficava à frente de toda alteração local seguinte, que nunca subia.
+     * Linhas com data à frente do relógio daqui só podem ter vindo do servidor: ficam para depois.
+     */
+    private suspend fun <T> push(
+        table: String,
+        rows: List<T>,
+        roundStart: Long,
+        updatedAt: (T) -> Long,
+        toJson: (T) -> JSONObject
+    ): Int {
+        val eligible = rows.filter { updatedAt(it) <= roundStart }
+        eligible.chunked(pageSize).forEach { chunk ->
             val body = JSONArray().apply { chunk.forEach { put(toJson(it)) } }.toString()
             client.post("$table?on_conflict=user_id,media_id", body, prefer = "resolution=merge-duplicates,return=minimal")
-            marks.setPushedUpTo(table, chunk.maxOf(updatedAt))
+            marks.setPushedUpTo(table, minOf(chunk.maxOf(updatedAt), roundStart))
         }
-        return rows.size
+        // Inclusive quando a marca antiga estava no futuro (versões anteriores): volta para agora.
+        marks.setPushedUpTo(table, roundStart)
+        return eligible.size
     }
 
     /**
@@ -120,27 +141,84 @@ class PersonalizationSyncer(
         localChangedSince: suspend (Long) -> List<Pair<String, Long>>
     ): Int {
         val applied = hashMapOf<String, Long>()
+        val cursorReady = syncedAtSupported != false && try {
+            pullBySyncedAt(table, apply, applied)
+            syncedAtSupported = true
+            true
+        } catch (e: com.ntv2.app.core.backend.BackendException) {
+            // Backend sem a coluna (migration 20261116000100 ainda não aplicada): pull antigo.
+            if (e.code != 400 || !e.message.orEmpty().contains(SYNCED_AT)) throw e
+            syncedAtSupported = false
+            false
+        }
+        if (!cursorReady) pullByUpdatedAt(table, apply, applied)
+        if (applied.isNotEmpty()) {
+            val pending = localChangedSince(marks.pushedUpTo(table))
+            if (pending.isNotEmpty() && pending.all { (id, at) -> applied[id] == at }) {
+                marks.setPushedUpTo(table, minOf(pending.maxOf { it.second }, now()))
+            }
+        }
+        return applied.size
+    }
+
+    /** null = ainda não sabe se o backend tem `synced_at`; false = backend antigo (pull por updated_at). */
+    @Volatile
+    private var syncedAtSupported: Boolean? = null
+
+    /**
+     * Pull pela hora do servidor: (synced_at, media_id) > cursor. Cada rodada recomeça
+     * [PULL_OVERLAP_MS] antes do cursor salvo, para pegar escritas de transações que terminaram fora
+     * de ordem; o que já foi aplicado volta e o last-write-wins ignora. A marca é gravada uma vez por
+     * página (antes era uma escrita no DataStore por linha).
+     */
+    private suspend fun pullBySyncedAt(
+        table: String,
+        apply: suspend (JSONObject, Long) -> Boolean,
+        applied: MutableMap<String, Long>
+    ) {
+        val markKey = table + CURSOR_SUFFIX
+        val savedAt = marks.pulledUpTo(markKey)?.substringBefore(CURSOR_SEPARATOR)
+        var at = savedAt?.let(SyncTime::toEpochMs)?.let { SyncTime.toIso(it - PULL_OVERLAP_MS) } ?: EPOCH_ISO
+        var afterId = ""
+        while (true) {
+            val filter = "(synced_at.gt.\"$at\",and(synced_at.eq.\"$at\",media_id.gt.\"$afterId\"))"
+            val path = "$table?or=${URLEncoder.encode(filter, "UTF-8")}" +
+                "&order=synced_at.asc,media_id.asc&limit=$pageSize"
+            val page = JSONArray(client.get(path))
+            for (i in 0 until page.length()) {
+                val row = page.getJSONObject(i)
+                val remoteMs = SyncTime.toEpochMs(row.getString("updated_at"))
+                if (remoteMs != null && apply(row, remoteMs)) applied[row.getString("media_id")] = remoteMs
+                at = row.getString(SYNCED_AT)
+                afterId = row.getString("media_id")
+            }
+            if (page.length() > 0) marks.setPulledUpTo(markKey, at + CURSOR_SEPARATOR + afterId)
+            if (page.length() < pageSize) break
+        }
+    }
+
+    /** Pull antigo, por `updated_at` (backend sem `synced_at`). */
+    private suspend fun pullByUpdatedAt(
+        table: String,
+        apply: suspend (JSONObject, Long) -> Boolean,
+        applied: MutableMap<String, Long>
+    ) {
         while (true) {
             val since = marks.pulledUpTo(table) ?: EPOCH_ISO
             val path = "$table?updated_at=gt.${URLEncoder.encode(since, "UTF-8")}" +
                 "&order=updated_at.asc&limit=$pageSize"
             val page = JSONArray(client.get(path))
+            var last: String? = null
             for (i in 0 until page.length()) {
                 val row = page.getJSONObject(i)
                 val iso = row.getString("updated_at")
                 val remoteMs = SyncTime.toEpochMs(iso)
                 if (remoteMs != null && apply(row, remoteMs)) applied[row.getString("media_id")] = remoteMs
-                marks.setPulledUpTo(table, iso)
+                last = iso
             }
+            last?.let { marks.setPulledUpTo(table, it) }
             if (page.length() < pageSize) break
         }
-        if (applied.isNotEmpty()) {
-            val pending = localChangedSince(marks.pushedUpTo(table))
-            if (pending.isNotEmpty() && pending.all { (id, at) -> applied[id] == at }) {
-                marks.setPushedUpTo(table, pending.maxOf { it.second })
-            }
-        }
-        return applied.size
     }
 
     // ---- Favoritos ----
@@ -248,7 +326,17 @@ class PersonalizationSyncer(
         const val PROGRESS = "playback_progress"
         const val HISTORY = "watch_history"
         const val PAGE_SIZE = 500
+        const val SKIP_BACKEND_OFF = "backend desligado"
+        const val SKIP_FLAG_OFF = "flag sync=false"
+        const val SKIP_NO_PREMIUM = "sem Premium"
+        const val SKIP_NO_SESSION = "sem sessão"
         private const val EPOCH_ISO = "1970-01-01T00:00:00Z"
+        private const val SYNCED_AT = "synced_at"
+        /** Marca do pull por synced_at fica numa chave própria: "<synced_at>|<media_id>". */
+        private const val CURSOR_SUFFIX = "@synced"
+        private const val CURSOR_SEPARATOR = "|"
+        /** Folga para transações que gravaram antes mas terminaram depois da última leitura. */
+        const val PULL_OVERLAP_MS = 60_000L
 
         /** "chatId_messageId" → chatId; cartões de série ("series_<tmdbId>") não têm canal: 0. */
         internal fun channelIdOf(mediaId: String): Long = mediaId.substringBefore('_').toLongOrNull() ?: 0L

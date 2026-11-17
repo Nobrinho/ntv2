@@ -29,6 +29,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -47,6 +49,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +67,8 @@ import com.ntv2.app.core.backend.link.DeviceLinkRepository
 import com.ntv2.app.core.backend.link.LinkCode
 import com.ntv2.app.core.backend.link.LinkStatus
 import com.ntv2.app.core.backend.link.LinkedDevice
+import com.ntv2.app.core.backend.sync.SyncOutcome
+import com.ntv2.app.core.backend.sync.SyncRunner
 import com.ntv2.app.core.ui.BrandColors
 import com.ntv2.app.core.ui.trapFocus
 import kotlinx.coroutines.delay
@@ -81,6 +86,10 @@ internal fun DeviceLinkOverlay(
     repository: DeviceLinkRepository,
     isTv: Boolean,
     onClose: () -> Unit,
+    // TV com controle remoto: o código é digitado num teclado próprio, sem abrir o teclado do sistema.
+    useKeypad: Boolean = false,
+    // Estado do sync e "Sincronizar agora" (null = sem backend).
+    syncRunner: SyncRunner? = null,
     // Conectar aparelhos é Premium: abre a tela de assinatura (null = sem pagamentos no app).
     onOpenPremium: (() -> Unit)? = null
 ) {
@@ -93,12 +102,13 @@ internal fun DeviceLinkOverlay(
             LinkMode.MENU -> LinkMenu(
                 repository = repository,
                 isTv = isTv,
+                syncRunner = syncRunner,
                 onShowCode = { mode = LinkMode.SHOW_CODE },
                 onEnterCode = { mode = LinkMode.ENTER_CODE },
                 onClose = onClose
             )
             LinkMode.SHOW_CODE -> ShowCode(repository, isTv, onDone = { mode = LinkMode.MENU })
-            LinkMode.ENTER_CODE -> EnterCode(repository, isTv, onDone = { mode = LinkMode.MENU }, onOpenPremium = onOpenPremium)
+            LinkMode.ENTER_CODE -> EnterCode(repository, isTv, useKeypad, onDone = { mode = LinkMode.MENU }, onOpenPremium = onOpenPremium)
         }
     }
     if (isTv) {
@@ -127,6 +137,7 @@ internal fun DeviceLinkOverlay(
 private fun LinkMenu(
     repository: DeviceLinkRepository,
     isTv: Boolean,
+    syncRunner: SyncRunner?,
     onShowCode: () -> Unit,
     onEnterCode: () -> Unit,
     onClose: () -> Unit
@@ -190,6 +201,7 @@ private fun LinkMenu(
         enter(bw(isTv).focusRequester(firstFocus), true)
         show(bw(isTv), false)
     }
+    if (linked && syncRunner != null) SyncNow(syncRunner, isTv)
     if (linked) {
         if (!confirmLeave) {
             TestButton(icon = NbrIcons.Unlink, label = "Desconectar este aparelho",
@@ -369,17 +381,28 @@ private fun CodeCard(code: String, expires: String, tv: Boolean, modifier: Modif
 }
 
 @Composable
-private fun EnterCode(repository: DeviceLinkRepository, tv: Boolean, onDone: () -> Unit, onOpenPremium: (() -> Unit)? = null) {
+private fun EnterCode(
+    repository: DeviceLinkRepository,
+    tv: Boolean,
+    useKeypad: Boolean,
+    onDone: () -> Unit,
+    onOpenPremium: (() -> Unit)? = null
+) {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ClaimResult?>(null) }
     val fieldFocus = remember { FocusRequester() }
     var fieldFocused by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
+    val keyboard = LocalSoftwareKeyboardController.current
+    // Com o teclado próprio (TV) nenhum campo de texto recebe foco: o teclado do sistema nunca abre.
+    LaunchedEffect(Unit) { if (!useKeypad) runCatching { fieldFocus.requestFocus() } }
+    // Saiu desta tela (Voltar, conectou, fechou): o teclado do sistema não pode ficar aberto por cima.
+    DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
 
     fun submit() {
         if (sending || text.length != DeviceLinkRepository.CODE_LENGTH) return
+        keyboard?.hide()
         sending = true
         scope.launch {
             result = repository.claim(text)
@@ -404,7 +427,18 @@ private fun EnterCode(repository: DeviceLinkRepository, tv: Boolean, onDone: () 
     }
 
     Text("Digite o código que aparece na outra tela:", color = BrandColors.TextSecondary, style = NbrType.Secondary)
-    BasicTextField(
+    if (useKeypad) {
+        CodeKeypad(
+            code = text,
+            enabled = !sending,
+            onChange = { next ->
+                text = next
+                result = null
+                // Sexto caractere: conecta sozinho (o botão "Conectar" continua valendo).
+                if (next.length == DeviceLinkRepository.CODE_LENGTH) submit()
+            }
+        )
+    } else BasicTextField(
         value = text,
         onValueChange = { text = DeviceLinkRepository.normalizeCode(it); result = null },
         singleLine = true,
@@ -416,7 +450,8 @@ private fun EnterCode(repository: DeviceLinkRepository, tv: Boolean, onDone: () 
             autoCorrectEnabled = false,
             imeAction = ImeAction.Done
         ),
-        keyboardActions = KeyboardActions(onDone = { submit() }),
+        // O onDone próprio substitui o fechar padrão: fecha o teclado sempre, mesmo com código incompleto.
+        keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); submit() }),
         modifier = bw(tv)
             .focusRequester(fieldFocus)
             .onFocusChanged { fieldFocused = it.isFocused }
@@ -455,6 +490,115 @@ private fun EnterCode(repository: DeviceLinkRepository, tv: Boolean, onDone: () 
         onClick = { submit() }
     )
     TestButton(icon = NbrIcons.X, label = "Voltar", modifier = bw(tv), onClick = onDone)
+}
+
+/** Acrescentar e apagar no código do teclado próprio (mesmas regras do campo de texto). */
+internal object CodeKeypadLogic {
+    /** Linhas do teclado: o alfabeto do servidor, 8 teclas por linha. */
+    val ROWS: List<String> = DeviceLinkRepository.ALPHABET.chunked(8)
+
+    fun append(code: String, key: Char): String = DeviceLinkRepository.normalizeCode(code + key)
+
+    fun backspace(code: String): String = code.dropLast(1)
+}
+
+/**
+ * Teclado do código para o controle remoto: as letras e números válidos numa grade, sem o teclado do
+ * sistema (na TV ele abria por cima e não fechava mais). O código aparece em 6 caixas acima das teclas.
+ */
+@Composable
+private fun CodeKeypad(code: String, enabled: Boolean, onChange: (String) -> Unit) {
+    val firstKey = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        runCatching { firstKey.requestFocus() }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (i in 0 until DeviceLinkRepository.CODE_LENGTH) {
+            val current = i == code.length
+            val shape = RoundedCornerShape(10.dp)
+            Box(
+                Modifier
+                    .size(width = 40.dp, height = 48.dp)
+                    .clip(shape)
+                    .background(BrandColors.Surface)
+                    .border(if (current) 2.dp else 1.dp, if (current) BrandColors.Accent else BrandColors.Border, shape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(code.getOrNull(i)?.toString() ?: "", color = SettingsText, fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold, style = NbrType.Section)
+            }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        CodeKeypadLogic.ROWS.forEachIndexed { r, row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEachIndexed { c, key ->
+                    KeypadKey(
+                        label = key.toString(),
+                        enabled = enabled,
+                        modifier = if (r == 0 && c == 0) Modifier.focusRequester(firstKey) else Modifier,
+                        onClick = { onChange(CodeKeypadLogic.append(code, key)) }
+                    )
+                }
+                if (r == CodeKeypadLogic.ROWS.lastIndex) {
+                    KeypadKey(label = "Apagar", enabled = enabled && code.isNotEmpty(), wide = true,
+                        onClick = { onChange(CodeKeypadLogic.backspace(code)) })
+                }
+            }
+        }
+    }
+}
+
+/** Tecla 44x40 (a de "Apagar" é larga): fill, contorno azul e fundo azul@20% em foco. */
+@Composable
+private fun KeypadKey(label: String, enabled: Boolean, modifier: Modifier = Modifier, wide: Boolean = false, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        modifier
+            .then(if (wide) Modifier.widthIn(min = 94.dp) else Modifier.width(44.dp))
+            .heightIn(min = 40.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .clip(shape)
+            .background(if (focused) BrandColors.Accent.copy(alpha = 0.20f) else BrandColors.Fill)
+            .border(if (focused) 2.dp else 1.dp, if (focused) BrandColors.Accent else BrandColors.Border, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, color = SettingsText.copy(alpha = if (enabled) 1f else 0.4f), fontSize = if (wide) 13.sp else 16.sp,
+            fontWeight = FontWeight.Bold, style = NbrType.BodyStrong, maxLines = 1)
+    }
+}
+
+/** "Sincronizar agora": refaz a sincronização na hora e mostra o resultado e a última vez que deu certo. */
+@Composable
+private fun SyncNow(runner: SyncRunner, tv: Boolean) {
+    val scope = rememberCoroutineScope()
+    val status by runner.status.collectAsState()
+    var outcome by remember { mutableStateOf<SyncOutcome?>(null) }
+    // Relógio da linha "há N min" (anda sozinho enquanto a tela está aberta).
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(status.lastSuccessAtMs) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(30_000L)
+        }
+    }
+    TestButton(
+        icon = NbrIcons.RefreshCw,
+        label = if (status.running) "Sincronizando…" else "Sincronizar agora",
+        enabled = !status.running,
+        modifier = bw(tv),
+        onClick = { scope.launch { outcome = runner.syncNow() } }
+    )
+    val last = SyncRunner.lastSyncText(status.lastSuccessAtMs, now)
+    val line = listOfNotNull(outcome?.let(SyncRunner::message), last).joinToString(" ")
+    if (line.isNotEmpty()) {
+        Text(line, color = if (outcome != null && outcome !is SyncOutcome.Done) BrandColors.Warning else BrandColors.TextMuted,
+            style = NbrType.Caption)
+    }
 }
 
 /** Sucesso (30): faixa verde@10% com borda verde, raio 14, texto 13 text-2. */

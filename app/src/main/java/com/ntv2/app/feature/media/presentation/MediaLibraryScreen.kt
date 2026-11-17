@@ -389,17 +389,20 @@ fun MediaLibraryScreen(
 
     LaunchedEffect(state.focusRestoreNonce, state.lastFocusedMediaId) {
         // Voltando do player os Detalhes reabrem (e focam o Assistir): não disputa o foco.
-        if (returnToSettingsButton || detailsMedia != null || state.returnToDetailsMediaId != null) {
+        // Overlay aberto (Minha lista, histórico, canais, busca, série): o foco não vai para a grade
+        // escondida, onde o D-pad passava a agir num card invisível.
+        if (returnToSettingsButton || detailsMedia != null || state.returnToDetailsMediaId != null ||
+            showHistory || showMyStuff || channelPicker || searching || openSeriesTmdbId >= 0L
+        ) {
             return@LaunchedEffect
         }
         val mediaId = state.lastFocusedMediaId ?: return@LaunchedEffect
         val index = state.items.indexOfFirst { it.mediaId == mediaId }
-        if (index >= 0) {
-            gridState.scrollToItem(index)
-            withFrameNanos { }
-            withFrameNanos { }
-        }
-        cardFocusRequesters[mediaId]?.requestFocus()
+        if (index < 0) return@LaunchedEffect // card de outro canal: o requester está desanexado
+        gridState.scrollToItem(index)
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching { cardFocusRequesters[mediaId]?.requestFocus() }
     }
 
     // Saiu do player: reabre os Detalhes de onde ele foi aberto (o player só é acessível por eles).
@@ -639,7 +642,8 @@ fun MediaLibraryScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    state.errorMessage != null -> LibraryStatusPanel(
+                    // Só com a grade vazia: falha no "carregar mais" não troca a grade já carregada pelo painel.
+                    state.errorMessage != null && state.items.isEmpty() -> LibraryStatusPanel(
                         title = "Não foi possível carregar a biblioteca",
                         lines = listOf(state.errorMessage.orEmpty()),
                         primaryLabel = "Tentar novamente",
@@ -838,6 +842,8 @@ fun MediaLibraryScreen(
                     value = viewModel.recommendationsFor(media.mediaId, limit = 20)
                 }.value,
                 onRecommendationClick = { rec ->
+                    // Troca de Detalhes: fecha o atual, senão o pré-download dele seguia disputando banda.
+                    viewModel.onAction(MediaLibraryAction.DetailsClosed(media.mediaId))
                     viewModel.onAction(MediaLibraryAction.DetailsOpened(rec))
                     detailsMedia = rec
                 },

@@ -36,6 +36,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 sealed interface MediaLibraryAction {
@@ -160,6 +162,8 @@ class MediaLibraryViewModel(
     private val resolvedVideos = mutableMapOf<String, MediaItemSummary>()
     // Resolução da cadeia de autoplay da série aberta; trocada ao abrir outro episódio.
     private var upNextJob: Job? = null
+    private var searchJob: Job? = null
+    private var searchMoreJob: Job? = null
     private var detailsOpenMediaId: String? = null
     // Resolução do fileId (card do índice) em andamento; cancelada se os Detalhes fecharem antes.
     private var openVideoJob: Job? = null
@@ -1103,7 +1107,11 @@ class MediaLibraryViewModel(
             return
         }
         publishedSearchKey = null
-        viewModelScope.launch {
+        // Busca nova cancela a anterior (e o "carregar mais" dela): antes as duas seguiam até a próxima
+        // checagem do termo, gastando TDLib/backend e podendo misturar o cursor com o mesmo termo.
+        searchJob?.cancel()
+        searchMoreJob?.cancel()
+        searchJob = viewModelScope.launch {
             searchItems.clear()
             searchCursor = 0L
             searchLoadingMore = false
@@ -1130,6 +1138,7 @@ class MediaLibraryViewModel(
                     catalog.search(activeId, query, filters.genres, filters.years, filters.actor, kind, attrs = filters.attrs)
                 }.getOrDefault(emptyList<com.ntv2.app.feature.media.data.index.IndexMovie>() to
                     emptyList<com.ntv2.app.feature.media.data.index.IndexSeries>())
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 val movies = if (filters.type == com.ntv2.app.feature.media.presentation.state.SearchTypeFilter.SERIES) emptyList() else allMovies
                 val seriesHits = if (filters.type == com.ntv2.app.feature.media.presentation.state.SearchTypeFilter.MOVIES) emptyList() else allSeries
                 val actorCount = filters.actor?.let { runCatching { idx.countByActor(activeId, it) }.getOrDefault(0) } ?: 0
@@ -1159,6 +1168,7 @@ class MediaLibraryViewModel(
                 } while (dedupByKey(searchItems).isEmpty() && searchCursor != 0L && pages < MAX_SEARCH_AUTO_PAGES)
                 publishSearchResults(query, searchCursor != 0L)
             } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _uiState.update { current ->
                     if (current.searchQuery.trim() != query) current
                     else current.copy(isSearchLoading = false, searchResults = emptyList())
@@ -1177,11 +1187,12 @@ class MediaLibraryViewModel(
         val title = channelTitles[activeId] ?: state.activeChannelName
         searchLoadingMore = true
         _uiState.update { it.copy(isSearchLoadingMore = true) }
-        viewModelScope.launch {
+        searchMoreJob = viewModelScope.launch {
             runCatching {
                 withContext(ioDispatcher) { fetchPage(activeId, title, query, fromMessageId = searchCursor, limit = searchPageSize) }
             }.onSuccess { page ->
-                if (_uiState.value.searchQuery.trim() != query) { searchLoadingMore = false; return@launch }
+                // Cancelado por uma busca nova: não mistura esta página nos itens dela.
+                if (!isActive || _uiState.value.searchQuery.trim() != query) { searchLoadingMore = false; return@launch }
                 searchItems += page.items
                 searchCursor = page.nextCursor
                 searchLoadingMore = false

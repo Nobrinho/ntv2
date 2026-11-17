@@ -33,12 +33,22 @@ data class MovieDetails(
  * Cache em memória (singleton) de detalhes por mediaId. A Biblioteca popula ao montar os cards;
  * a tela de reprodução lê por mediaId — evita passar sinopse longa na rota de navegação.
  */
-class MediaDetailsCache {
-    private val map = java.util.concurrent.ConcurrentHashMap<String, MovieDetails>()
-
-    fun put(mediaId: String, details: MovieDetails) {
-        map[mediaId] = details
+class MediaDetailsCache(private val maxEntries: Int = DEFAULT_MAX) {
+    /**
+     * LRU com teto: sem ele, a busca só por filtro (catálogo inteiro) deixava milhares de detalhes com
+     * elenco no heap pelo resto da sessão (192 MB no Fire TV). O teto cobre a grade (até 1.000 cards).
+     */
+    private val map = object : LinkedHashMap<String, MovieDetails>(256, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MovieDetails>?) = size > maxEntries
     }
 
-    fun get(mediaId: String): MovieDetails? = map[mediaId]
+    fun put(mediaId: String, details: MovieDetails) {
+        synchronized(map) { map[mediaId] = details }
+    }
+
+    fun get(mediaId: String): MovieDetails? = synchronized(map) { map[mediaId] }
+
+    private companion object {
+        const val DEFAULT_MAX = 1_500
+    }
 }

@@ -206,6 +206,8 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     implementation(libs.coil.compose)
+    // Usado direto (capas e índice de busca); antes vinha só como dependência do Coil.
+    implementation(libs.okhttp)
     implementation(libs.zxing.core)
     // Instala o baseline profile (src/main/baseline-prof.txt + perfis das libs) também em
     // instalação por sideload, para o ART pré-compilar o código quente e evitar JIT na reprodução.

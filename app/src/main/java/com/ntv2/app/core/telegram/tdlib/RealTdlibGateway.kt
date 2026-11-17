@@ -59,6 +59,8 @@ class RealTdlibGateway(
 ) : TdlibAuthGateway, TdlibChannelsGateway, TdlibMediaGateway, TdlibPlaybackGateway, TdlibStorageGateway {
     companion object {
         private const val TAG = "RealTdlibGateway"
+        private const val SMALL_FILE_TIMEOUT_MS = 8_000L
+        private const val CLOSE_TIMEOUT_MS = 20_000L
 
         // Trecho inicial baixado ao abrir um arquivo (suficiente para começar; o resto vem pela
         // janela deslizante durante a reprodução).
@@ -153,7 +155,10 @@ class RealTdlibGateway(
             cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: android.net.Network) = refreshNetwork()
                 override fun onLost(network: android.net.Network) {
-                    client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeNone()), null)
+                    // Na troca de rede (Wi-Fi → cabo) o onLost da antiga pode chegar depois do onAvailable
+                    // da nova: só avisa "sem rede" se não houver outra ativa.
+                    if (cm.activeNetwork == null) client?.send(TdApi.SetNetworkType(TdApi.NetworkTypeNone()), null)
+                    else refreshNetwork()
                 }
             })
         }.onFailure { Log.w(TAG, "Sem callback de rede", it) }
@@ -264,9 +269,18 @@ class RealTdlibGateway(
 
     /** Espera o fechamento REAL do cliente (Closed sem motivo); o "Closing" também vira Closed(motivo). */
     private suspend fun awaitRealClose(): Boolean =
-        withTimeoutOrNull(5_000L) {
+        withTimeoutOrNull(CLOSE_TIMEOUT_MS) {
             auth.first { it is TdAuthorizationState.Closed && it.reason == null }
         } != null
+
+    /**
+     * Abrir outro cliente no mesmo banco com o antigo ainda fechando trava o td.binlog (o TDLib aborta o
+     * processo ou corrompe o banco). Sem o Closed no prazo, não recria: mostra erro para tentar de novo.
+     */
+    private fun closeTimedOut(step: String) {
+        Log.w(TAG, "auth: $step sem Closed em ${CLOSE_TIMEOUT_MS}ms; cliente antigo mantido")
+        auth.value = TdAuthorizationState.Error("O Telegram está demorando para responder. Tente de novo.")
+    }
 
     /**
      * Sai de um passo de login em andamento (QR, código, senha) de volta a WaitPhoneNumber. Fechar e
@@ -278,7 +292,8 @@ class RealTdlibGateway(
         Log.i(TAG, "auth: reiniciando login do zero (gen=$clientGeneration, estado=${auth.value})")
         runCatching { send(TdApi.Close()) }
         val closed = awaitRealClose()
-        Log.i(TAG, "auth: cliente ${if (closed) "fechado" else "NÃO confirmou o fechamento (timeout)"}; apagando banco não autenticado")
+        if (!closed) return closeTimedOut("reinício do login")
+        Log.i(TAG, "auth: cliente fechado; apagando banco não autenticado")
         client = null
         runCatching { tdlibDbDir.deleteRecursively() }
             .onFailure { Log.w(TAG, "auth: não apagou o banco: ${it.message}") }
@@ -331,7 +346,8 @@ class RealTdlibGateway(
             // (LogOut → Closed), zeramos o cliente e criamos um novo, que fluirá para WaitPhoneNumber
             // via updates — momento em que a UI pede o QR. Sem isso, o re-login não gerava QR.
             val closed = awaitRealClose()
-            Log.i(TAG, "auth: logout() Closed ${if (closed) "recebido" else "NÃO recebido (timeout 5s)"}; recriando cliente (gen=$clientGeneration)")
+            if (!closed) return closeTimedOut("logout")
+            Log.i(TAG, "auth: logout() Closed recebido; recriando cliente (gen=$clientGeneration)")
             client = null
             // ensureClient() cria um cliente novo e já reseta o guard de parâmetros (onClientCreated).
             runCatching { ensureClient() }
@@ -433,7 +449,7 @@ class RealTdlibGateway(
         small.local?.let { local ->
             if (local.isDownloadingCompleted && local.path.isNotBlank()) return local.path
         }
-        val file = send(TdApi.DownloadFile(small.id, 16, 0L, 0L, true)) as? TdApi.File ?: return null
+        val file = downloadSmallFile(small.id) ?: return null
         return file.local?.path?.takeIf { it.isNotBlank() }
     }
 
@@ -446,7 +462,7 @@ class RealTdlibGateway(
         thumb.local?.let { local ->
             if (local.isDownloadingCompleted && local.path.isNotBlank()) return local.path
         }
-        val file = send(TdApi.DownloadFile(thumb.id, 16, 0L, 0L, true)) as? TdApi.File ?: return null
+        val file = downloadSmallFile(thumb.id) ?: return null
         return file.local?.path?.takeIf { it.isNotBlank() }
     }
 
@@ -568,9 +584,19 @@ class RealTdlibGateway(
         f.local?.let { local ->
             if (local.isDownloadingCompleted && local.path.isNotBlank()) return local.path
         }
-        val file = send(TdApi.DownloadFile(f.id, 16, 0L, 0L, true)) as? TdApi.File ?: return null
+        val file = downloadSmallFile(f.id) ?: return null
         return file.local?.path?.takeIf { it.isNotBlank() }
     }
+
+    /**
+     * Download síncrono de um arquivo pequeno (avatar, miniatura, pôster) com prazo. Sem prazo, um
+     * arquivo preso (rede instável, TDLib reconectando) segurava a lista de canais ou a página inteira,
+     * que espera todos os itens juntos. No prazo esgotado devolve null e o card fica sem imagem.
+     */
+    private suspend fun downloadSmallFile(fileId: Int): TdApi.File? =
+        kotlinx.coroutines.withTimeoutOrNull(SMALL_FILE_TIMEOUT_MS) {
+            send(TdApi.DownloadFile(fileId, 16, 0L, 0L, true)) as? TdApi.File
+        }
 
     private suspend fun loadChatList(chatList: TdApi.ChatList, limit: Int) {
         // LoadChats carrega mais chats por vez e retorna Error 404 quando a lista acaba. Outros erros
@@ -1175,7 +1201,9 @@ class RealTdlibGateway(
             }
 
             TdlibAuthReducer.Effect.FetchCurrentUser -> scope.launch {
-                val me = send(TdApi.GetMe()) as? TdApi.User
+                // runCatching: send() lança sem cliente (logout logo depois do Ready); sem handler no
+                // scope, a exceção derrubava o app.
+                val me = runCatching { send(TdApi.GetMe()) as? TdApi.User }.getOrNull()
                 val display = me?.let {
                     listOf(it.firstName, it.lastName)
                         .filter { name -> name.isNotBlank() }

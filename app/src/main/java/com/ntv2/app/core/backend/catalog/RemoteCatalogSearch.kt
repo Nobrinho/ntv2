@@ -46,8 +46,12 @@ class RemoteCatalogSearch(
             size > PAGE_CACHE_MAX
     }
 
-    // Temporadas por série: a tela de série é aberta várias vezes a partir da mesma busca.
-    private val seasonsCache = ConcurrentHashMap<Long, List<IndexSeason>>()
+    // Temporadas por série, com o mesmo prazo das páginas: sem prazo, episódio novo só aparecia depois
+    // de reiniciar o app (a TV fica dias aberta).
+    private val seasonsCache = ConcurrentHashMap<Long, Pair<Long, List<IndexSeason>>>()
+
+    /** null = ainda não sabe; false = backend sem `series_episodes_many` (uma chamada por série). */
+    @Volatile private var batchSupported: Boolean? = null
 
     /** O RPC filtra por um gênero e um ano e não tem filtro de ator; busca só por filtro fica local. */
     override fun supports(query: String, genres: Set<String>, years: Set<Int>, actor: String?): Boolean =
@@ -91,14 +95,44 @@ class RemoteCatalogSearch(
         return page
     }
 
+    private fun cachedSeasons(seriesTmdbId: Long): List<IndexSeason>? =
+        seasonsCache[seriesTmdbId]?.takeIf { now() - it.first < PAGE_CACHE_TTL_MS }?.second
+
     suspend fun seriesEpisodes(seriesTmdbId: Long): List<IndexSeason> {
-        seasonsCache[seriesTmdbId]?.let { return it }
+        cachedSeasons(seriesTmdbId)?.let { return it }
         val body = JSONObject().put("series_tmdb_id", seriesTmdbId).toString()
-        return parseSeriesEpisodes(client.rpc("series_episodes", body)).also { seasonsCache[seriesTmdbId] = it }
+        return parseSeriesEpisodes(client.rpc("series_episodes", body)).also { seasonsCache[seriesTmdbId] = now() to it }
+    }
+
+    /**
+     * Temporadas de todas as séries da página numa chamada (`series_episodes_many`). Antes era uma
+     * chamada por série: 30 séries = 31 requisições por busca, dentro do prazo de 3 s.
+     */
+    private suspend fun fetchSeasonsBatch(ids: List<Long>): Boolean {
+        if (batchSupported == false) return false
+        val body = JSONObject().put("series_tmdb_ids", JSONArray(ids)).toString()
+        val json = try {
+            JSONObject(client.rpc("series_episodes_many", body))
+        } catch (e: com.ntv2.app.core.backend.BackendException) {
+            // Backend sem a RPC (migration 20261117000100 ainda não aplicada): PostgREST responde 404.
+            if (e.code == 404) { batchSupported = false; return false }
+            throw e
+        }
+        batchSupported = true
+        val at = now()
+        ids.forEach { id ->
+            val seasons = json.optJSONArray(id.toString())?.let { parseSeriesEpisodes(it.toString()) }.orEmpty()
+            seasonsCache[id] = at to seasons
+        }
+        return true
     }
 
     private suspend fun withSeasons(series: List<IndexSeries>): List<IndexSeries> {
         if (series.isEmpty()) return series
+        val missing = series.map { it.tmdbId }.filter { cachedSeasons(it) == null }.distinct()
+        if (missing.isEmpty() || fetchSeasonsBatch(missing.take(BATCH_MAX))) {
+            return series.map { s -> s.copy(seasons = cachedSeasons(s.tmdbId) ?: seriesEpisodes(s.tmdbId)) }
+        }
         val permits = Semaphore(episodeConcurrency)
         return coroutineScope {
             series.map { s ->
@@ -110,6 +144,7 @@ class RemoteCatalogSearch(
     private companion object {
         const val PAGE_CACHE_TTL_MS = 5L * 60L * 1000L
         const val PAGE_CACHE_MAX = 50
+        const val BATCH_MAX = 100
     }
 }
 

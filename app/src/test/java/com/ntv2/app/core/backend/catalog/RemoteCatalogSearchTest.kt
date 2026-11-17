@@ -123,7 +123,9 @@ class RemoteCatalogSearchTest {
         assertEquals("1999", body.getString("year"))
         assertEquals(60, body.getInt("lim"))
         assertEquals(0, body.getInt("off"))
-        assertEquals(1396L, JSONObject(transport.requests[1].body!!).getLong("series_tmdb_id"))
+        // Backend sem series_episodes_many (404): cai em uma chamada por série.
+        val perSeries = transport.requests.first { it.url.endsWith("/rpc/series_episodes") }
+        assertEquals(1396L, JSONObject(perSeries.body!!).getLong("series_tmdb_id"))
 
         assertEquals(603L, movies.single().tmdbId)
         assertEquals(2, series.single().seasons.size)
@@ -133,6 +135,22 @@ class RemoteCatalogSearchTest {
         remote.search(0L, "matrix", emptySet(), emptySet(), null, CatalogKind.ALL, 60)
         assertEquals(1, transport.requests.count { it.url.endsWith("/rpc/series_episodes") })
         assertTrue(JSONObject(transport.requests.last().body!!).isNull("genre"))
+    }
+
+    @Test
+    fun `temporadas de todas as series numa chamada so`() = runTest {
+        val transport = FakeTransport { req ->
+            when {
+                req.url.endsWith("/rpc/search_catalog") -> BackendResponse(200, searchJson)
+                req.url.endsWith("/rpc/series_episodes_many") -> BackendResponse(200, """{"1396": $episodesJson}""")
+                else -> BackendResponse(500, "nao deveria")
+            }
+        }
+        val remote = RemoteCatalogSearch(SupabaseClient(BackendConfig("http://local", "anon"), transport))
+        val (_, series) = remote.search(0L, "matrix", emptySet(), emptySet(), null, CatalogKind.ALL, 60)
+        assertEquals(2, series.single().seasons.size)
+        assertEquals(1, transport.requests.count { it.url.endsWith("/rpc/series_episodes_many") })
+        assertEquals(0, transport.requests.count { it.url.endsWith("/rpc/series_episodes") })
     }
 
     @Test

@@ -34,7 +34,11 @@ class LocalStreamServer(
 ) {
     private val appContext = context.applicationContext
     private var serverSocket: ServerSocket? = null
-    private val workers = Executors.newCachedThreadPool()
+    private var boundIp: String? = null
+    // Pool fixo: o Chromecast abre poucas conexões; ilimitado, qualquer aparelho da rede esgotava threads.
+    private val workers = Executors.newFixedThreadPool(MAX_CLIENTS)
+    /** Conexões abertas: [stop] fecha todas (antes seguiam lendo e reiniciavam o download apagado). */
+    private val clients = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Socket, Boolean>())
 
     @Volatile private var current: Served? = null
 
@@ -44,8 +48,14 @@ class LocalStreamServer(
     @Synchronized
     fun serve(fileId: Int, sourceUri: String, totalBytes: Long, mimeType: String): String? {
         val ip = localIpv4() ?: return null
-        val socket = serverSocket ?: ServerSocket(0).also {
+        // Só no IP da rede local anunciado ao Chromecast (antes escutava em todas as interfaces).
+        if (boundIp != ip) {
+            runCatching { serverSocket?.close() }
+            serverSocket = null
+        }
+        val socket = serverSocket ?: ServerSocket(0, 50, java.net.InetAddress.getByName(ip)).also {
             serverSocket = it
+            boundIp = ip
             thread(name = "ntv-cast-server", isDaemon = true) { acceptLoop(it) }
         }
         // Token aleatório no caminho: outro aparelho da rede não consegue adivinhar a URL.
@@ -59,6 +69,9 @@ class LocalStreamServer(
         current = null
         runCatching { serverSocket?.close() }
         serverSocket = null
+        boundIp = null
+        clients.toList().forEach { runCatching { it.close() } }
+        clients.clear()
     }
 
     private fun acceptLoop(server: ServerSocket) {
@@ -73,12 +86,15 @@ class LocalStreamServer(
     }
 
     private fun handle(client: Socket) {
+        clients += client
         client.use { socket ->
             runCatching {
                 socket.soTimeout = 30_000
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
-                val requestLine = reader.readLine() ?: return
-                val headers = generateSequence { reader.readLine()?.takeIf { it.isNotEmpty() } }
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.US_ASCII))
+                val requestLine = reader.readBoundedLine() ?: return
+                // Cabeçalhos com teto de linhas e de tamanho: são lidos antes de conferir o token.
+                val headers = generateSequence { reader.readBoundedLine()?.takeIf { it.isNotEmpty() } }
+                    .take(MAX_HEADERS)
                     .mapNotNull { line -> line.indexOf(':').takeIf { it > 0 }?.let { line.substring(0, it).trim().lowercase() to line.substring(it + 1).trim() } }
                     .toMap()
                 val parts = requestLine.split(" ")
@@ -92,7 +108,7 @@ class LocalStreamServer(
                 }
                 val total = served.totalBytes
                 val (start, end) = parseRange(headers["range"], total)
-                if (start >= total) {
+                if (start >= total || end < start) {
                     writeHead(out, "416 Range Not Satisfiable", listOf("Content-Range" to "bytes */$total", "Content-Length" to "0"))
                     return
                 }
@@ -116,6 +132,25 @@ class LocalStreamServer(
                 if (e !is SocketException) Log.w(TAG, "falha servindo o Chromecast", e)
             }
         }
+        clients -= client
+    }
+
+    /** readLine com teto de [MAX_LINE] caracteres (linha maior derruba a conexão). */
+    private fun BufferedReader.readBoundedLine(): String? {
+        val sb = StringBuilder()
+        while (true) {
+            val c = read()
+            if (c < 0) return if (sb.isEmpty()) null else sb.toString()
+            if (c == '\n'.code) return sb.toString().removeSuffix("\r")
+            if (sb.length >= MAX_LINE) throw java.io.IOException("linha de cabeçalho grande demais")
+            sb.append(c.toChar())
+        }
+    }
+
+    private companion object {
+        const val MAX_CLIENTS = 8
+        const val MAX_HEADERS = 50
+        const val MAX_LINE = 8 * 1024
     }
 
     private fun streamRange(served: Served, start: Long, length: Long, out: OutputStream) {

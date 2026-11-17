@@ -80,11 +80,13 @@ class StorageJanitor(
         )
     }
 
-    override suspend fun ensureSpaceForPlayback(): StorageSnapshot? {
-        val snapshot = deviceStorage.snapshot() ?: return null
-        if (snapshot.canStartPlayback) return snapshot
+    // Fora da Main: é chamado do preparo do player (viewModelScope) e, com pouco espaço, apaga o cache
+    // de imagens no disco — justamente quando o aparelho está mais lento (risco de ANR).
+    override suspend fun ensureSpaceForPlayback(): StorageSnapshot? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val snapshot = deviceStorage.snapshot() ?: return@withContext null
+        if (snapshot.canStartPlayback) return@withContext snapshot
         emergencyTrim()
-        return deviceStorage.snapshot()
+        deviceStorage.snapshot()
     }
 
     override fun currentStorage(): StorageSnapshot? = deviceStorage.snapshot()

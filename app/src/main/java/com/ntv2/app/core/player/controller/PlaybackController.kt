@@ -135,10 +135,13 @@ class DefaultPlaybackController(
             )
         }
 
-        return runCatching {
+        return try {
             coordinator.prepare(media)
             PlaybackPrepareResult.Started
-        }.getOrElse { error ->
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Nova tentativa cancelou esta: não vira "Falha" (a tela mostrava erro por cima da nova).
+            throw e
+        } catch (error: Exception) {
             PlaybackPrepareResult.Failed(
                 message = error.message ?: "Falha ao inicializar reprodução"
             )

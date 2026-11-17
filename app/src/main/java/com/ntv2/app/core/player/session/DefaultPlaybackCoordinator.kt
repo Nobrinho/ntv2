@@ -184,8 +184,14 @@ class DefaultPlaybackCoordinator(
             val partError = generateSequence<Throwable>(error) { it.cause }
                 .filterIsInstance<com.ntv2.app.core.multipart.PartUnavailableException>()
                 .firstOrNull()
+            // Só decoder de VÍDEO entra na política de software/pontos ruins: uma faixa de áudio que não
+            // decodifica gravava "pontos ruins" de vídeo e reiniciava o player 6 vezes à toa.
+            val failedMime = (error as? androidx.media3.exoplayer.ExoPlaybackException)
+                ?.takeIf { it.type == androidx.media3.exoplayer.ExoPlaybackException.TYPE_RENDERER }
+                ?.rendererFormat?.sampleMimeType
             val isDecoderError = error.errorCode in
-                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED until PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED
+                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED until PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED &&
+                (failedMime == null || androidx.media3.common.MimeTypes.isVideo(failedMime))
             val isIoError = error.errorCode in
                 PlaybackException.ERROR_CODE_IO_UNSPECIFIED until PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
             var unsupportedVideo: String? = null
@@ -545,13 +551,23 @@ class DefaultPlaybackCoordinator(
     }
 
     override fun play() {
-        exoPlayer?.playWhenReady = true
-        snapshotState.update { it.copy(state = PlaybackState.Ready, isPlaying = true) }
+        val player = exoPlayer ?: return
+        player.playWhenReady = true
+        // Só vira Ready se o player está pronto: em BUFFERING o estado real continua Buffering (antes o
+        // Play forçava Ready, o spinner sumia e o watchdog deixava de agir num download parado).
+        if (player.playbackState == Player.STATE_READY) {
+            snapshotState.update { it.copy(state = PlaybackState.Ready, isPlaying = true) }
+        }
     }
 
     override fun pause() {
-        exoPlayer?.playWhenReady = false
-        snapshotState.update { it.copy(state = PlaybackState.Paused, isPlaying = false) }
+        val player = exoPlayer
+        player?.playWhenReady = false
+        if (player == null || player.playbackState == Player.STATE_READY) {
+            snapshotState.update { it.copy(state = PlaybackState.Paused, isPlaying = false) }
+        } else {
+            snapshotState.update { it.copy(isPlaying = false) }
+        }
         onPlaybackSettled()
     }
 
@@ -593,7 +609,8 @@ class DefaultPlaybackCoordinator(
     }
 
     override fun onAppStop() {
-        wasPlayingBeforeStop = exoPlayer?.isPlaying == true
+        // playWhenReady, não isPlaying: saindo durante o carregamento o vídeo também deve retomar.
+        wasPlayingBeforeStop = exoPlayer?.playWhenReady == true
         pause()
     }
 
@@ -844,6 +861,9 @@ class DefaultPlaybackCoordinator(
         freezeJob?.cancel()
         freezeJob = null
 
+        // A troca de áudio pendente é desta sessão: um erro qualquer depois (outra sessão, retry) não
+        // pode ser tratado como falha do áudio escolhido.
+        pendingAudioSwitch = false
         val media = currentMedia
         val skipSave = castOwnsProgress
         castOwnsProgress = false

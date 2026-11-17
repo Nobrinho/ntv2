@@ -113,8 +113,10 @@ class MediaLibraryViewModelTest {
         progressStore: PlaybackProgressStore = FakeProgressStore(),
         maxRetainedItems: Int = 2_000,
         trailerPreviewSetting: Flow<Boolean> = MutableStateFlow(true),
-        trailerPreviewRemote: () -> Boolean = { true }
+        trailerPreviewRemote: () -> Boolean = { true },
+        searchIndex: com.ntv2.app.feature.media.data.index.SearchIndexRepository? = null
     ) = MediaLibraryViewModel(
+        searchIndexRepository = searchIndex,
         mediaRepository = media,
         channelRepository = FakeChannelRepo(channelsFlow),
         settingsRepository = FakeSettingsRepo(minDurationFlow, activeChannelFlow, trailerPreviewSetting),
@@ -396,6 +398,44 @@ class MediaLibraryViewModelTest {
         advanceUntilIdle()
         assertFalse(vm.uiState.value.isRefreshing)
         assertEquals(1, vm.uiState.value.items.size)
+    }
+
+    @Test
+    fun `atualizar sincroniza o catalogo antes de recarregar e a abertura nao`() = runTest(dispatcher) {
+        var syncs = 0
+        val local = com.ntv2.app.feature.media.data.index.IndexSnapshot(
+            channelId = 1L,
+            movies = listOf(
+                com.ntv2.app.feature.media.data.index.IndexMovie(
+                    tmdbId = 1, title = "x", originalTitle = null, year = null, posterUrl = null,
+                    backdropUrl = null, logoUrl = null, overview = null, genres = emptyList(),
+                    cast = emptyList(), videoMessageId = 1
+                )
+            ),
+            series = emptyList(),
+            generatedAtMillis = null
+        )
+        val index = com.ntv2.app.feature.media.data.index.SearchIndexRepository(
+            indexUrl = "http://127.0.0.1:1/index.json",
+            localIndex = { local },
+            refreshLocal = { syncs++ }
+        )
+        val media = FakeMediaRepo().apply {
+            listPages = { channelId, _ -> MediaPage(listOf(item("a", channelId, 600, 1)), nextCursor = 0L) }
+        }
+        val vm = buildViewModel(media, searchIndex = index)
+        channelsFlow.value = listOf(ChannelSummary(1, "C1", null))
+        advanceUntilIdle()
+        assertEquals(0, syncs)
+
+        vm.onAction(MediaLibraryAction.Refresh)
+        advanceUntilIdle()
+        assertEquals(1, syncs)
+        assertFalse(vm.uiState.value.isRefreshing)
+        assertTrue(vm.uiState.value.items.isNotEmpty())
+        // O índice real faz contas em Dispatchers.Default e volta ao Main do teste: espera elas acabarem
+        // antes do resetMain, senão a volta estoura no teste seguinte.
+        repeat(5) { Thread.sleep(50); advanceUntilIdle() }
     }
 
     @Test

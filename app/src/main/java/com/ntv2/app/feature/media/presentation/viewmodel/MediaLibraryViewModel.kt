@@ -39,6 +39,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+
+/** Prazo do sync do catálogo no botão Atualizar; depois disso a grade recarrega sem ele. */
+private const val CATALOG_REFRESH_TIMEOUT_MS = 8_000L
 
 sealed interface MediaLibraryAction {
     data object Load : MediaLibraryAction
@@ -246,6 +250,7 @@ class MediaLibraryViewModel(
         // Pré-carrega o índice de busca em background para a 1ª busca já vir instantânea.
         searchIndexRepository?.let { repo -> viewModelScope.launch { runCatching { repo.covers(0L) } } }
         observeIndexUpdates()
+        observeCatalogChanges()
         observeEmptySearches()
     }
 
@@ -292,10 +297,41 @@ class MediaLibraryViewModel(
         }
     }
 
+    private suspend fun syncCatalogForRefresh() {
+        val repo = searchIndexRepository ?: return
+        try {
+            withTimeoutOrNull(CATALOG_REFRESH_TIMEOUT_MS) { withContext(ioDispatcher) { repo.refresh() } }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Sem catálogo novo: a grade recarrega com o que já tem.
+        }
+    }
+
+    /**
+     * O sync de fundo mudou o catálogo (ex.: 20 s depois de abrir o app): cards montados antes dele
+     * podem ter ficado sem capa. Recarrega o canal sem esqueleto, só se houver card sem capa.
+     */
+    private fun observeCatalogChanges() {
+        val repo = searchIndexRepository ?: return
+        viewModelScope.launch {
+            repo.catalogChanged.collect {
+                val state = _uiState.value
+                if (state.isLoading || state.isRefreshing || state.searchQuery.isNotBlank()) return@collect
+                val missingCover = state.items.any { it.posterPath == null }
+                val activeId = state.activeChannelId ?: return@collect
+                if (!missingCover) return@collect
+                val title = channelTitles[activeId] ?: state.activeChannelName
+                loadActiveChannel(ChannelSummary(id = activeId, title = title, avatarPath = null), keepTab = true, refreshing = true)
+            }
+        }
+    }
+
     fun onAction(action: MediaLibraryAction) {
         when (action) {
-            MediaLibraryAction.Load,
-            MediaLibraryAction.Refresh -> loadFirstPages(refreshing = true)
+            MediaLibraryAction.Load -> loadFirstPages(refreshing = true)
+            // Atualizar também pede o catálogo ao backend: sem ele os posts novos ficam sem capa.
+            MediaLibraryAction.Refresh -> loadFirstPages(refreshing = true, syncCatalog = true)
 
             is MediaLibraryAction.SearchChanged -> {
                 searchDebounceJob?.cancel()
@@ -551,10 +587,18 @@ class MediaLibraryViewModel(
     }
 
     /** Carrega a 1ª página do canal ativo (grade plana). */
-    private fun loadActiveChannel(channel: ChannelSummary, keepTab: Boolean = false, refreshing: Boolean = false) {
+    private fun loadActiveChannel(
+        channel: ChannelSummary,
+        keepTab: Boolean = false,
+        refreshing: Boolean = false,
+        syncCatalog: Boolean = false
+    ) {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
           try {
+            // Mesmo caminho do "baixar índice" das Configurações (catálogo do backend + cópia local),
+            // com prazo: backend lento não segura a grade, que recarrega do mesmo jeito.
+            if (syncCatalog) syncCatalogForRefresh()
             clearChannelData()
             channelOrder += channel.id
             channelTitles[channel.id] = channel.title
@@ -1226,14 +1270,17 @@ class MediaLibraryViewModel(
     }
 
     /** Recarrega a 1ª página do canal ativo (Atualizar / busca). */
-    private fun loadFirstPages(refreshing: Boolean = false) {
+    private fun loadFirstPages(refreshing: Boolean = false, syncCatalog: Boolean = false) {
         val activeId = _uiState.value.activeChannelId ?: run {
             _uiState.update { it.copy(isRefreshing = false) }
             return
         }
         val title = channelTitles[activeId] ?: _uiState.value.activeChannelName
         if (refreshing) _uiState.update { it.copy(isRefreshing = true) }
-        loadActiveChannel(ChannelSummary(id = activeId, title = title, avatarPath = null), keepTab = true, refreshing = refreshing)
+        loadActiveChannel(
+            ChannelSummary(id = activeId, title = title, avatarPath = null),
+            keepTab = true, refreshing = refreshing, syncCatalog = syncCatalog
+        )
     }
 
     /** Carrega a próxima página de um canal específico e a acrescenta. */

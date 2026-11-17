@@ -210,7 +210,15 @@ class SearchIndexRepository(
      */
     fun invalidate() {
         loadedAt = 0L
+        _catalogChanged.tryEmit(Unit)
     }
+
+    private val _catalogChanged = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
+    /** O sync de fundo trouxe mudanças: a grade pode refazer cards que ficaram sem capa. */
+    val catalogChanged: kotlinx.coroutines.flow.SharedFlow<Unit> = _catalogChanged
 
     /**
      * Baixa o índice agora, ignorando o cache de [ttlMillis] (botão em Configurações). Se falhar,

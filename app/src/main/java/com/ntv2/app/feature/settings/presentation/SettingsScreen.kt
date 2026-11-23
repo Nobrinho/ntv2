@@ -124,13 +124,16 @@ fun SettingsScreen(
     // Estado do sync e "Sincronizar agora" (dentro de Conectar aparelhos).
     syncRunner: com.ntv2.app.core.backend.sync.SyncRunner? = null,
     // NBR Play Premium por Pix (null = backend desligado: o item não aparece).
-    premium: com.ntv2.app.core.backend.premium.PremiumRepository? = null
+    premium: com.ntv2.app.core.backend.premium.PremiumRepository? = null,
+    // "Minha conta" (null = backend desligado: o item não aparece).
+    account: com.ntv2.app.core.backend.account.AccountRepository? = null
 ) {
     var showPremium by remember { mutableStateOf(false) }
     val premiumStatus = premium?.status?.collectAsStateWithLifecycle()?.value
     LaunchedEffect(premium) { runCatching { premium?.refresh() } }
     var showConnectionTest by remember { mutableStateOf(false) }
     var showDeviceLink by remember { mutableStateOf(false) }
+    var showAccount by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     var showPrivacy by remember { mutableStateOf(false) }
     var showCardLoadingPicker by remember { mutableStateOf(false) }
@@ -146,7 +149,7 @@ fun SettingsScreen(
         .focusRequester(itemFocus[index])
         .onFocusChanged { if (it.isFocused) lastFocusIndex = index }
     val anyModal = showPrivacy || confirmLogout || showCardLoadingPicker || showConnectionTest ||
-        showDeviceLink || showPremium || showDurationPicker
+        showDeviceLink || showPremium || showDurationPicker || showAccount
     // Também ao fechar algo aberto por cima do app inteiro (ex.: "Ver introdução novamente"), que
     // avisa pelo sinal de restauração de foco.
     val restoreSignal = com.ntv2.app.core.ui.LocalFocusRestoreSignal.current
@@ -165,7 +168,7 @@ fun SettingsScreen(
 
         // ---- Itens (os mesmos no celular e na TV; muda só a arrumação) ----
         val premiumActive = premiumStatus?.premium == true
-        // Perfis de acesso (MOCK local): abre a troca rápida, de onde se gerencia.
+        // Perfis de acesso: abre a troca rápida, de onde se gerencia.
         val profileActions = com.ntv2.app.core.profiles.LocalProfileActions.current
         val itProfiles: @Composable () -> Unit = {
             SettingsItem(
@@ -193,6 +196,15 @@ fun SettingsScreen(
                     trailing = { if (premiumActive) SettingsValue(tv, "Ativo", BrandColors.Success) else SettingsChevron(tv) }
                 )
             } } else null
+        val accountBlocked = account?.blocked?.collectAsStateWithLifecycle()?.value == true
+        val itAccount: (@Composable () -> Unit)? = if (account != null) { {
+            SettingsItem(
+                tv, NbrIcons.Users, "Minha conta",
+                if (accountBlocked) "Aparelho bloqueado · ver detalhes" else "Aparelhos, denúncias enviadas e apagar meus dados",
+                tone = if (accountBlocked) SettingsTone.Error else SettingsTone.Accent,
+                modifier = itemMod(16), onClick = { showAccount = true }
+            )
+        } } else null
         val itChannels: @Composable () -> Unit = {
             SettingsItem(tv, NbrIcons.Library, "Seleção de canais", "Gerenciar os canais disponíveis",
                 modifier = itemMod(5), onClick = onManageChannels)
@@ -320,7 +332,7 @@ fun SettingsScreen(
                     ) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             SettingsSectionLabel("Conta e app")
-                            SettingsGroup(true, listOfNotNull(itProfiles, itConnect, itPremium, itChannels, itPrivacy, itLogout))
+                            SettingsGroup(true, listOfNotNull(itProfiles, itAccount, itConnect, itPremium, itChannels, itPrivacy, itLogout))
                             SettingsSectionLabel("Conteúdo", Modifier.padding(top = 10.dp))
                             SettingsGroup(true, listOfNotNull(itDuration, itIndex, itConnection))
                         }
@@ -346,7 +358,7 @@ fun SettingsScreen(
                 ) {
                     Text("Configurações", style = NbrType.ScreenTitle, color = SettingsText)
                     SettingsSectionLabel("Conta e app")
-                    SettingsGroup(false, listOfNotNull(itProfiles, itConnect, itPremium, itChannels, itConnection))
+                    SettingsGroup(false, listOfNotNull(itProfiles, itAccount, itConnect, itPremium, itChannels, itConnection))
                     SettingsSectionLabel("Conteúdo")
                     SettingsGroup(false, listOfNotNull(itDuration, itIndex))
                     SettingsMoreButton("Interface e sobre", expanded = moreExpanded) { moreExpanded = !moreExpanded }
@@ -411,6 +423,16 @@ fun SettingsScreen(
             )
         }
 
+        if (showAccount && account != null) {
+            AccountOverlay(
+                account = account,
+                deviceLink = deviceLink,
+                premium = premium,
+                isTv = adaptive.useTvLayout,
+                onClose = { showAccount = false }
+            )
+        }
+
         if (showPremium && premium != null) {
             PremiumOverlay(repository = premium, isTv = adaptive.useTvLayout, onClose = { showPremium = false })
         }
@@ -437,7 +459,7 @@ fun SettingsScreen(
     }
 }
 
-private const val SETTINGS_ITEM_COUNT = 16
+private const val SETTINGS_ITEM_COUNT = 17
 
 private val INSTALLED_VERSION_LABEL: String =
     "Versão ${BuildConfig.VERSION_NAME} (${if (BuildConfig.DEBUG) "debug" else "release"})"
@@ -743,7 +765,7 @@ private fun PrivacyCloseButton(onClose: () -> Unit) {
 }
 
 private const val PRIVACY_POLICY_TEXT =
-    "Última atualização: 18/10/2026\n" +
+    "Última atualização: 23/11/2026\n" +
     "\n" +
     "O NBR Play é um aplicativo cliente de mídia para TV e celular que exibe e reproduz vídeos dos canais do Telegram escolhidos pelo próprio usuário. O aplicativo não hospeda, não distribui e não disponibiliza conteúdo: ele apenas organiza e reproduz o que já existe nos canais aos quais a sua conta do Telegram tem acesso.\n" +
     "\n" +
@@ -761,9 +783,10 @@ private const val PRIVACY_POLICY_TEXT =
     "4. Dados enviados ao nosso servidor\n" +
     "O aplicativo usa um servidor próprio (hospedado no Supabase) para os recursos abaixo. Cada aparelho recebe um identificador anônimo aleatório, criado automaticamente, que não está ligado ao seu nome, telefone ou conta do Telegram.\n" +
     "\n" +
-    "• Minha lista, histórico e progresso (para sincronizar entre aparelhos e não se perderem): identificação do vídeo (número da mensagem no canal), título, nome do canal, endereço da capa, ano, posição e duração assistidas e as datas de cada alteração.\n" +
+    "• Minha lista, histórico e progresso (para sincronizar entre aparelhos e não se perderem), separados por perfil: identificação do vídeo (número da mensagem no canal), título, nome do canal, endereço da capa, ano, posição e duração assistidas e as datas de cada alteração.\n" +
+    "• Perfis (\"Quem está assistindo?\"): nome, cor e ícone do perfil, se é infantil e a classificação máxima, preferências de áudio, legenda e próximo episódio e, se você criar um PIN, apenas um código cifrado dele (hash) — o PIN em si nunca sai do aparelho.\n" +
     "• Conectar aparelhos (quando você usa a opção): nome do aparelho (tipo e modelo, por exemplo \"TV · AFTKM\"), data do vínculo e o código temporário de 6 caracteres.\n" +
-    "• Reportar problema (só quando você usa a opção em um vídeo): motivo escolhido, o texto que você escrever, título, ano, canal, identificação do vídeo, modelo do aparelho, versão do Android e versão do aplicativo.\n" +
+    "• Reportar problema (só quando você usa a opção em um vídeo): motivo escolhido, o texto que você escrever, título, ano, canal, identificação do vídeo, modelo do aparelho, versão do Android e versão do aplicativo. O administrador pode registrar uma resposta, que você vê em Configurações › Minha conta.\n" +
     "• Dados de uso e diagnóstico (para encontrar falhas e melhorar o aplicativo): abertura do aplicativo, vídeo aberto (identificação do vídeo), erros de reprodução (código do erro, decodificador e formato do vídeo), buscas que não tiveram resultado (o texto pesquisado) e reportes enviados, sempre com o modelo do aparelho e a versão do aplicativo.\n" +
     "• Pagamentos do NBR Play Premium (só se você assinar): plano escolhido, valor, situação do pagamento, número do pagamento no Mercado Pago, datas e a validade do Premium. O pagamento em si acontece no seu banco e no Mercado Pago: não recebemos nem guardamos seus dados bancários, CPF ou nome.\n" +
     "• Dados técnicos de conexão: o endereço IP é usado no momento de cada acesso para segurança e para limitar abusos (limite de requisições por minuto). Ele não é associado ao seu perfil e fica apenas nos registros técnicos do provedor por poucos dias.\n" +
@@ -807,6 +830,8 @@ private const val PRIVACY_POLICY_TEXT =
     "\n" +
     "Também é possível, sem pedir nada:\n" +
     "• Desconectar aparelhos em Configurações › Conectar aparelhos;\n" +
+    "• Apagar meus dados em Configurações › Minha conta: apaga do aparelho e do servidor perfis, Minha lista, histórico, progresso e dados de uso (as denúncias ficam, sem vínculo com você);\n" +
+    "• Ver suas denúncias e a resposta do administrador em Configurações › Minha conta;\n" +
     "• Apagar os dados do aparelho saindo da conta ou desinstalando o aplicativo — os dados do servidor são apagados automaticamente após 60 dias sem uso.\n" +
     "\n" +
     "11. Permissões do aparelho\n" +

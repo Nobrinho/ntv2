@@ -477,7 +477,8 @@ fun AppNavHost(
                 },
                 deviceLink = appContainer.deviceLinkRepository,
                 syncRunner = appContainer.syncRunner,
-                premium = appContainer.premiumRepository
+                premium = appContainer.premiumRepository,
+                account = appContainer.accountRepository
             )
         }
 
@@ -559,6 +560,26 @@ fun AppNavHost(
             if (next == null) focusRestoreSignal++
         }
     )
+
+    // Aparelho bloqueado pelo administrador (403 BLOCKED): avisa uma vez por execução. Os detalhes e o
+    // identificador para suporte ficam em Configurações > Minha conta.
+    val accountBlocked = appContainer.accountRepository?.blocked?.collectAsStateWithLifecycle()?.value == true
+    var blockedNoticeSeen by rememberSaveable { mutableStateOf(false) }
+    if (accountBlocked && !blockedNoticeSeen && !showSplash && !showOnboarding) {
+        com.ntv2.app.core.ui.ConfirmDialog(
+            title = "Aparelho bloqueado",
+            message = "O administrador bloqueou este aparelho: busca, sincronização e denúncias estão pausadas. " +
+                "Veja o identificador para suporte em Configurações > Minha conta.",
+            icon = com.ntv2.app.core.ui.icons.NbrIcons.TriangleAlert,
+            confirmLabel = "Entendi",
+            confirmIcon = com.ntv2.app.core.ui.icons.NbrIcons.ShieldCheck,
+            cancelLabel = "Fechar",
+            cancelIcon = com.ntv2.app.core.ui.icons.NbrIcons.X,
+            onConfirm = { blockedNoticeSeen = true },
+            onDismiss = { blockedNoticeSeen = true },
+            destructive = true
+        )
+    }
 
     if (showOnboarding) {
         // Fechar pelo Voltar também devolve o foco à tela de baixo (senão caía no menu lateral).

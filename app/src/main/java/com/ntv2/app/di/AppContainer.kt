@@ -126,6 +126,8 @@ interface AppContainer {
 
     /** Vincular aparelhos por código; null com o backend desligado. */
     val deviceLinkRepository: com.ntv2.app.core.backend.link.DeviceLinkRepository?
+    /** "Minha conta" (identificador, bloqueio, denúncias, apagar meus dados); null = backend desligado. */
+    val accountRepository: com.ntv2.app.core.backend.account.AccountRepository?
     val catalogSearch: com.ntv2.app.feature.media.data.index.CatalogSearch
 
     /** Catálogo local (flag `remote_catalog`); null com o backend desligado. */
@@ -488,6 +490,21 @@ class DefaultAppContainer(
             session = backendSession,
             // Virou Premium: sincroniza já (sobe a Minha lista deste aparelho para a conta).
             onPremiumChanged = { personalizationSync?.requestNow() }
+        )
+    }
+
+    override val accountRepository: com.ntv2.app.core.backend.account.AccountRepository? by lazy {
+        if (!backendClient.config.enabled) return@lazy null
+        backendSession // liga o token do usuário no cliente antes da primeira chamada
+        com.ntv2.app.core.backend.account.AccountRepository(
+            client = backendClient,
+            wipeLocal = {
+                // Depois do apagamento no servidor: some tudo que é pessoal neste aparelho.
+                appDatabase.favoriteDao().deleteAll()
+                appDatabase.watchHistoryDao().deleteAll()
+                appDatabase.playbackProgressDao().deleteAll()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { profileStore.resetToDefaults() }
+            }
         )
     }
 

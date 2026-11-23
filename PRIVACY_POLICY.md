@@ -1,6 +1,6 @@
 # Política de Privacidade — NBR Play
 
-_Última atualização: 18/10/2026_
+_Última atualização: 23/11/2026_
 
 O **NBR Play** é um aplicativo cliente de mídia para TV e celular que exibe e reproduz vídeos dos canais do Telegram escolhidos pelo próprio usuário. O aplicativo **não hospeda, não distribui e não disponibiliza conteúdo**: ele apenas organiza e reproduz o que já existe nos canais aos quais a sua conta do Telegram tem acesso.
 
@@ -18,9 +18,10 @@ A sessão de login do Telegram, os canais selecionados, as preferências (capas,
 ## 4. Dados enviados ao nosso servidor
 O aplicativo usa um servidor próprio (hospedado no Supabase) para os recursos abaixo. Cada aparelho recebe um **identificador anônimo** aleatório, criado automaticamente, que não está ligado ao seu nome, telefone ou conta do Telegram.
 
-- **Minha lista, histórico e progresso** (para sincronizar entre aparelhos e não se perderem): identificação do vídeo (número da mensagem no canal), título, nome do canal, endereço da capa, ano, posição e duração assistidas e as datas de cada alteração.
+- **Minha lista, histórico e progresso** (para sincronizar entre aparelhos e não se perderem), separados por perfil: identificação do vídeo (número da mensagem no canal), título, nome do canal, endereço da capa, ano, posição e duração assistidas e as datas de cada alteração.
+- **Perfis** ("Quem está assistindo?"): nome, cor e ícone do perfil, se é infantil e a classificação máxima, preferências de áudio, legenda e próximo episódio e, se você criar um PIN, apenas um código cifrado dele (hash) — o PIN em si nunca sai do aparelho.
 - **Conectar aparelhos** (quando você usa a opção): nome do aparelho (tipo e modelo, por exemplo "TV · AFTKM"), data do vínculo e o código temporário de 6 caracteres.
-- **Reportar problema** (só quando você usa a opção em um vídeo): motivo escolhido, o texto que você escrever, título, ano, canal, identificação do vídeo, modelo do aparelho, versão do Android e versão do aplicativo.
+- **Reportar problema** (só quando você usa a opção em um vídeo): motivo escolhido, o texto que você escrever, título, ano, canal, identificação do vídeo, modelo do aparelho, versão do Android e versão do aplicativo. O administrador pode registrar uma resposta, que você vê em Configurações › Minha conta.
 - **Dados de uso e diagnóstico** (para encontrar falhas e melhorar o aplicativo): abertura do aplicativo, vídeo aberto (identificação do vídeo), erros de reprodução (código do erro, decodificador e formato do vídeo), buscas que não tiveram resultado (o texto pesquisado) e reportes enviados, sempre com o modelo do aparelho e a versão do aplicativo.
 - **Pagamentos do NBR Play Premium** (só se você assinar): plano escolhido, valor, situação do pagamento, número do pagamento no Mercado Pago, datas e a validade do Premium. O pagamento em si acontece no seu banco e no Mercado Pago: **não recebemos nem guardamos** seus dados bancários, CPF ou nome.
 - **Dados técnicos de conexão**: o endereço IP é usado no momento de cada acesso para segurança e para limitar abusos (limite de requisições por minuto). Ele não é associado ao seu perfil e fica apenas nos registros técnicos do provedor por poucos dias.
@@ -68,6 +69,8 @@ Você pode pedir confirmação de tratamento, acesso, correção, anonimização
 
 Também é possível, sem pedir nada:
 - **Desconectar aparelhos** em Configurações › Conectar aparelhos;
+- **Apagar meus dados** em Configurações › Minha conta: apaga do aparelho e do servidor perfis, Minha lista, histórico, progresso e dados de uso (as denúncias ficam, sem vínculo com você);
+- **Ver suas denúncias** e a resposta do administrador em Configurações › Minha conta;
 - **Apagar os dados do aparelho** saindo da conta ou desinstalando o aplicativo — os dados do servidor são apagados automaticamente após 60 dias sem uso.
 
 ## 11. Permissões do aparelho

@@ -127,6 +127,15 @@ class SupabaseClient(
      */
     private val blockedUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+    private val _blocked = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /**
+     * Aparelho bloqueado pelo administrador (403 BLOCKED na última chamada autenticada). Volta a false
+     * na primeira chamada autenticada que der certo (desbloqueio). A tela "Minha conta" e o aviso da
+     * abertura leem daqui.
+     */
+    val blocked: kotlinx.coroutines.flow.StateFlow<Boolean> get() = _blocked
+
     /** Fornece o access token do usuário; null = usa a anon key. Ligado pelo [BackendSession]. */
     var tokenProvider: suspend () -> String? = { null }
 
@@ -209,8 +218,12 @@ class SupabaseClient(
                     last = e
                     continue
                 }
-                if (response.code in 200..299) return@withContext response.body
+                if (response.code in 200..299) {
+                    if (token != null) _blocked.value = false
+                    return@withContext response.body
+                }
                 val error = BackendException(response.code, "HTTP ${response.code}: ${response.body.take(200)}")
+                if (error.isBlocked) _blocked.value = true
                 if (response.code == 429) {
                     val waitS = (response.retryAfterSeconds ?: DEFAULT_RETRY_AFTER_S).coerceIn(1, MAX_RETRY_AFTER_S)
                     blockedUntil[route] = now() + waitS * 1000

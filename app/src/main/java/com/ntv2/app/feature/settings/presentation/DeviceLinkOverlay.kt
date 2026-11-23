@@ -233,7 +233,7 @@ private fun LinkMenu(
 
 /** Aparelho conectado (30): surface, raio 14, padding 14, ícone 22 azul; este aparelho com borda azul. */
 @Composable
-private fun DeviceRow(device: LinkedDevice, tv: Boolean) {
+internal fun DeviceRow(device: LinkedDevice, tv: Boolean) {
     val name = device.name ?: "Aparelho"
     val isTvDevice = name.startsWith("TV", ignoreCase = true) || name.contains("Fire", ignoreCase = true)
     val shape = RoundedCornerShape(if (tv) 10.dp else 14.dp)
@@ -608,6 +608,6 @@ private fun ResultLine(icon: ImageVector, color: Color, text: String, tv: Boolea
 }
 
 /** Largura dos botões: cheia no celular; na TV, 260 dp (botões lado a lado no protótipo). */
-private fun bw(tv: Boolean): Modifier = if (tv) Modifier.width(260.dp) else Modifier.fillMaxWidth()
+internal fun bw(tv: Boolean): Modifier = if (tv) Modifier.width(260.dp) else Modifier.fillMaxWidth()
 
 private const val POLL_MS = 3_000L

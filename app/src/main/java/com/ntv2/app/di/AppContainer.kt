@@ -381,7 +381,8 @@ class DefaultAppContainer(
             com.ntv2.app.core.backend.BackendConfig(
                 url = com.ntv2.app.BuildConfig.SUPABASE_URL,
                 anonKey = com.ntv2.app.BuildConfig.SUPABASE_ANON_KEY
-            )
+            ),
+            transport = com.ntv2.app.core.backend.OkHttpTransport(httpClient)
         )
     }
 

@@ -3,6 +3,8 @@ package com.ntv2.app.core.backend
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URL
 
 /** URL + anon key do projeto Supabase. Vazios = backend desligado (o app funciona como antes). */
@@ -63,7 +65,54 @@ class UrlConnectionTransport(
 }
 
 /**
- * Cliente mínimo do Supabase (PostgREST + RPC + Auth) sem SDK: HttpURLConnection + org.json.
+ * Transporte pelo cliente OkHttp único do app (CAs embutidas do Fire TV, DNS IPv4 e pool de conexões
+ * compartilhado). Prazos iguais aos do [UrlConnectionTransport].
+ */
+class OkHttpTransport(
+    client: okhttp3.OkHttpClient,
+    connectTimeoutMs: Long = 10_000,
+    readTimeoutMs: Long = 20_000
+) : HttpTransport {
+    private val client = client.newBuilder()
+        .connectTimeout(connectTimeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .readTimeout(readTimeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .build()
+
+    override fun execute(request: BackendRequest): BackendResponse =
+        client.newCall(request.toOkHttpRequest()).execute().use { response ->
+            BackendResponse(
+                code = response.code,
+                body = response.body?.string().orEmpty(),
+                retryAfterSeconds = response.header("Retry-After")?.trim()?.toLongOrNull()
+            )
+        }
+}
+
+/**
+ * [BackendRequest] → request do OkHttp. Métodos que exigem corpo (POST/PATCH/PUT) recebem corpo vazio
+ * se não vier um; GET/HEAD vão sem corpo. O tipo do corpo vem do cabeçalho Content-Type (UTF-8).
+ */
+private val METHODS_WITH_BODY = setOf("POST", "PUT", "PATCH")
+
+internal fun BackendRequest.toOkHttpRequest(): okhttp3.Request {
+    val contentType = headers.entries
+        .firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }
+        ?.value
+        ?.toMediaTypeOrNull()
+    val requestBody = when {
+        body != null -> body.toRequestBody(contentType)
+        method.uppercase() in METHODS_WITH_BODY -> "".toRequestBody(contentType)
+        else -> null
+    }
+    return okhttp3.Request.Builder()
+        .url(url)
+        .apply { headers.forEach { (k, v) -> header(k, v) } }
+        .method(method, requestBody)
+        .build()
+}
+
+/**
+ * Cliente mínimo do Supabase (PostgREST + RPC + Auth) sem SDK: transporte HTTP trocável + org.json.
  * Contrato das rotas: ntv2-backend/CONTRATO.md.
  */
 class SupabaseClient(

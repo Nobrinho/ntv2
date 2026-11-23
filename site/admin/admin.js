@@ -119,7 +119,7 @@ async function logout() {
 logoutBtn.onclick = logout;
 
 // ---------------------------------------------------------------- painel
-const TABS = [['overview', 'Visão geral'], ['devices', 'Aparelhos'], ['payments', 'Pagamentos'], ['reports', 'Reportes'], ['audit', 'Ações']];
+const TABS = [['overview', 'Visão geral'], ['devices', 'Aparelhos'], ['payments', 'Pagamentos'], ['reports', 'Denúncias'], ['audit', 'Ações']];
 // Ícones de traço do menu (texto fixo, sem dados do servidor).
 const ICONS = {
   overview: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
@@ -380,46 +380,99 @@ async function payments() {
 // ---------------------------------------------------------------- reportes
 const REASONS = { wrong_video: 'Vídeo errado', not_dubbed: 'Não está dublado', audio_problem: 'Problema no áudio',
   subtitle_problem: 'Problema na legenda', bad_quality: 'Qualidade ruim', does_not_play: 'Não reproduz', other: 'Outro problema' };
-const repState = { status: 'open', off: 0 };
+// Triagem por título: um cartão por filme/episódio com as denúncias dele, contagem por motivo e as ações
+// (responder e resolver, ignorar, ocultar o título, pedir repostagem ao bot).
+const repState = { status: 'open', reason: '', off: 0 };
 async function reports() {
   view().innerHTML = html`<div class="card"><div class="row">
-      <select id="st" style="max-width:200px">${[['open', 'Abertos'], ['resolved', 'Resolvidos'], ['ignored', 'Ignorados'], ['', 'Todos']]
+      <select id="st" style="max-width:200px">${[['open', 'Abertas'], ['resolved', 'Resolvidas'], ['ignored', 'Ignoradas'], ['', 'Todas']]
         .map(([v, n]) => `<option value="${v}" ${repState.status === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
-      <span class="grow"></span>
-      <button data-set="resolved" disabled>Marcar como resolvido</button><button data-set="ignored" disabled>Ignorar</button>
-      <button data-set="open" disabled>Reabrir</button></div>
+      <select id="rs" style="max-width:220px"><option value="">Todos os motivos</option>${Object.entries(REASONS)
+        .map(([v, n]) => `<option value="${v}" ${repState.reason === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+      <span class="grow"></span><button id="hiddenBtn">Títulos ocultos</button></div>
     <div id="list" style="margin-top:12px"><p class="muted">Carregando…</p></div></div>`;
   document.getElementById('st').onchange = (e) => { repState.status = e.target.value; repState.off = 0; reports(); };
+  document.getElementById('rs').onchange = (e) => { repState.reason = e.target.value; repState.off = 0; reports(); };
+  document.getElementById('hiddenBtn').onclick = hiddenTitles;
   try {
-    const r = await rpc('admin_reports', { status: repState.status || null, lim: PAGE, off: repState.off });
-    document.getElementById('list').innerHTML = r.total === 0 ? '<p class="muted">Nenhum reporte.</p>' :
-      `<table><thead><tr><th><input type="checkbox" id="all" aria-label="Selecionar todos"></th><th>Filme</th><th>Motivo</th><th>Aparelho</th><th>Data</th><th>Situação</th></tr></thead><tbody>
-      ${r.items.map((x) => `<tr><td><input type="checkbox" data-id="${esc(x.id)}" aria-label="Selecionar"></td>
-        <td data-label="Filme"><b>${esc(x.title || x.media_id)}</b>${x.year ? ` (${esc(x.year)})` : ''}
-          <div class="muted">${esc(x.channel_name || '')} · <span class="mono">${esc(x.media_id)}</span></div>
-          ${x.open_for_media > 1 ? `<span class="tag warn">${esc(x.open_for_media)} reportes abertos deste filme</span>` : ''}</td>
-        <td data-label="Motivo">${esc(REASONS[x.reason] || x.reason)}${x.note ? `<div class="muted">"${esc(x.note)}"</div>` : ''}</td>
+    const r = await rpc('admin_reports_grouped', { status: repState.status || null, reason: repState.reason || null, lim: PAGE, off: repState.off });
+    const list = document.getElementById('list');
+    if (r.total === 0) { list.innerHTML = '<p class="muted">Nenhuma denúncia.</p>'; return; }
+    list.innerHTML = r.items.map((g, i) => `<div class="card" style="margin:0 0 12px" data-group="${i}">
+      <div class="row"><b class="grow">${esc(g.title)}${g.year ? ` (${esc(g.year)})` : ''}</b>
+        <span class="tag ${g.total >= 3 ? 'bad' : 'warn'}">${esc(g.total)} denúncia(s)</span>
+        ${g.hidden ? '<span class="tag bad">oculto</span>' : ''}</div>
+      <div class="muted">${esc(g.channel_name || '')} · <span class="mono">${esc(g.ntv_id || g.media_id)}</span> · última ${esc(ago(g.last_at))}</div>
+      <p style="margin:8px 0">${Object.entries(g.reasons || {}).map(([k, n]) => `<span class="tag">${esc(REASONS[k] || k)}: ${esc(n)}</span>`).join('')}</p>
+      <table><tbody>${(g.reports || []).map((x) => `<tr>
+        <td data-label="Motivo">${esc(REASONS[x.reason] || x.reason)}${x.note ? `<div class="muted">"${esc(x.note)}"</div>` : ''}
+          ${x.admin_note ? `<div class="muted">Resposta: ${esc(x.admin_note)}</div>` : ''}</td>
         <td data-label="Aparelho">${esc(x.device || '—')}<div class="muted">${esc(x.app_version || '')}</div></td>
-        <td data-label="Data">${esc(when(x.created_at))}</td><td data-label="Situação">${statusTag(x.status)}</td></tr>`).join('')}
-      </tbody></table>${pager(r.total, repState)}`;
-    const boxes = () => [...document.querySelectorAll('input[data-id]')];
-    const sync = () => { const any = boxes().some((b) => b.checked); view().querySelectorAll('[data-set]').forEach((b) => (b.disabled = !any)); };
-    boxes().forEach((b) => (b.onchange = sync));
-    const all = document.getElementById('all');
-    if (all) all.onchange = () => { boxes().forEach((b) => (b.checked = all.checked)); sync(); };
-    view().querySelectorAll('[data-set]').forEach((btn) => (btn.onclick = async () => {
-      const ids = boxes().filter((b) => b.checked).map((b) => Number(b.dataset.id));
-      try { await rpc('admin_set_report_status', { ids, status: btn.dataset.set }); reports(); }
-      catch (e) { document.getElementById('list').insertAdjacentHTML('afterbegin', errorBox(e)); }
-    }));
+        <td data-label="Data">${esc(when(x.created_at))}</td><td data-label="Situação">${statusTag(x.status)}</td>
+        <td>${x.account_id ? `<button data-acc="${esc(x.account_id)}">Ver conta</button>` : '<span class="muted">sem vínculo</span>'}</td></tr>`).join('')}
+      </tbody></table>
+      <div class="row" style="margin-top:10px">
+        <input class="grow" data-note placeholder="Resposta ao usuário (aparece em Minha conta)">
+        <button class="primary" data-act="resolved">Resolver</button><button data-act="ignored">Ignorar</button>
+        <button data-act="open">Reabrir</button></div>
+      <div class="row" style="margin-top:8px">
+        ${g.ntv_id ? (g.hidden ? '<button data-unhide>Mostrar de novo</button>' : '<button class="danger" data-hide>Ocultar título</button>') : ''}
+        <button data-repost>Pedir repostagem ao bot</button></div>
+      <p class="msg" data-msg></p></div>`).join('') + pager(r.total, repState);
+    list.querySelectorAll('[data-acc]').forEach((b) => (b.onclick = () => openAccount(b.dataset.acc)));
+    list.querySelectorAll('[data-group]').forEach((card) => {
+      const g = r.items[Number(card.dataset.group)];
+      const msg = card.querySelector('[data-msg]');
+      const ok = (t) => { msg.className = 'msg ok'; msg.textContent = t; };
+      const bad = (e) => { msg.className = 'msg err'; msg.textContent = e.message || e; };
+      card.querySelectorAll('[data-act]').forEach((btn) => (btn.onclick = async () => {
+        const note = card.querySelector('[data-note]').value.trim() || null;
+        try { await rpc('admin_set_report_status', { ids: g.ids, status: btn.dataset.act, note }); reports(); } catch (e) { bad(e); }
+      }));
+      const hide = card.querySelector('[data-hide]');
+      if (hide) hide.onclick = async () => {
+        const reason = card.querySelector('[data-note]').value.trim() || 'denúncias';
+        try { await rpc('admin_hide_title', { ntv_id: g.ntv_id, reason }); reports(); } catch (e) { bad(e); }
+      };
+      const unhide = card.querySelector('[data-unhide]');
+      if (unhide) unhide.onclick = async () => {
+        try { await rpc('admin_unhide_title', { ntv_id: g.ntv_id }); reports(); } catch (e) { bad(e); }
+      };
+      card.querySelector('[data-repost]').onclick = async () => {
+        const top = Object.entries(g.reasons || {}).sort((a, b) => b[1] - a[1])[0];
+        try {
+          const res = await rpc('admin_request_repost', { ntv_id: g.ntv_id || null, media_id: g.media_id,
+            reason: top ? top[0] : 'other', note: card.querySelector('[data-note]').value.trim() || null });
+          ok(`Pedido #${res.id} enviado ao bot.`);
+        } catch (e) { bad(e); }
+      };
+    });
     bindPager(repState, reports);
   } catch (e) { document.getElementById('list').innerHTML = errorBox(e); }
+}
+
+async function hiddenTitles() {
+  const list = document.getElementById('list');
+  list.innerHTML = '<p class="muted">Carregando…</p>';
+  try {
+    const items = await rpc('admin_hidden_titles');
+    list.innerHTML = items.length === 0 ? '<p class="muted">Nenhum título oculto.</p>' :
+      `<table><tbody>${items.map((h) => `<tr><td data-label="Título"><b>${esc(h.title || h.ntv_id)}</b>
+        <div class="mono">${esc(h.ntv_id)} · ${esc(h.kind)}</div></td><td data-label="Motivo">${esc(h.reason || '—')}</td>
+        <td data-label="Desde">${esc(when(h.hidden_at))}</td><td><button data-show="${esc(h.ntv_id)}">Mostrar de novo</button></td></tr>`).join('')}
+      </tbody></table>`;
+    list.querySelectorAll('[data-show]').forEach((b) => (b.onclick = async () => {
+      try { await rpc('admin_unhide_title', { ntv_id: b.dataset.show }); hiddenTitles(); }
+      catch (e) { list.insertAdjacentHTML('afterbegin', errorBox(e)); }
+    }));
+  } catch (e) { list.innerHTML = errorBox(e); }
 }
 
 // ---------------------------------------------------------------- auditoria
 const ACTIONS = { grant_premium: 'Premium de cortesia', report_resolved: 'Reportes resolvidos', report_ignored: 'Reportes ignorados',
   report_open: 'Reportes reabertos', block_device: 'Bloqueio', unblock_device: 'Desbloqueio', disconnect_device: 'Desconexão',
-  delete_account_data: 'Dados apagados (LGPD)' };
+  delete_account_data: 'Dados apagados (LGPD)', hide_title: 'Título oculto', unhide_title: 'Título visível de novo',
+  request_repost: 'Pedido de repostagem' };
 async function audit() {
   view().innerHTML = '<div class="card"><p class="muted">Carregando…</p></div>';
   try {

@@ -98,6 +98,8 @@ private class GrowingFileDataSource(
 
     private var dataSpec: DataSpec? = null
     private var randomAccessFile: RandomAccessFile? = null
+    /** Só avisa o fim da transferência se ela começou (open pode falhar antes do transferStarted). */
+    private var transferring = false
     private var fileId: Int = -1
     private var readPosition: Long = 0L
     private var bytesRemaining: Long = C.LENGTH_UNSET.toLong()
@@ -154,6 +156,7 @@ private class GrowingFileDataSource(
         randomAccessFile = RandomAccessFile(file, "r")
         randomAccessFile?.seek(readPosition)
         transferStarted(dataSpec)
+        transferring = true
 
         // C2: baixa a faixa exigida por ESTE open (posição de seek ou índice no fim do arquivo),
         // mas LIMITADA a uma janela — não o arquivo inteiro (evita encher o disco). Leituras de
@@ -475,7 +478,10 @@ private class GrowingFileDataSource(
             randomAccessFile?.close()
         } finally {
             randomAccessFile = null
-            dataSpec?.let { transferEnded() }
+            if (transferring) {
+                transferring = false
+                transferEnded()
+            }
             dataSpec = null
             fileId = -1
             readPosition = 0L

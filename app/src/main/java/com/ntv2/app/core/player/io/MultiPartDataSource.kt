@@ -46,6 +46,8 @@ internal class MultiPartDataSource(
 
     private var dataSpec: DataSpec? = null
     private var reader: MultiPartReader? = null
+    /** Só avisa o fim da transferência se ela começou (open pode falhar antes do transferStarted). */
+    private var transferring = false
 
     override fun open(dataSpec: DataSpec): Long {
         this.dataSpec = dataSpec
@@ -86,6 +88,7 @@ internal class MultiPartDataSource(
         )
         reader = opened
         transferStarted(dataSpec)
+        transferring = true
         // Faixa aberta: não anuncia tamanho (como o arquivo único). Faixa fixa: o que falta dela.
         return if (unbounded) C.LENGTH_UNSET.toLong() else opened.remaining
     }
@@ -140,7 +143,10 @@ internal class MultiPartDataSource(
         try {
             reader?.close()
         } finally {
-            if (dataSpec != null) transferEnded()
+            if (transferring) {
+                transferring = false
+                transferEnded()
+            }
             dataSpec = null
             reader = null
         }

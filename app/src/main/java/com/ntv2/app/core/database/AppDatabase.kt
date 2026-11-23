@@ -22,7 +22,7 @@ import com.ntv2.app.core.database.entity.WatchHistoryEntity
         FavoriteEntity::class,
         WatchHistoryEntity::class
     ],
-    version = 5,
+    version = 6,
     // Schema em app/schemas (no git): a cada versão nova, o JSON gerado é a referência da migração.
     exportSchema = true
 )
@@ -123,7 +123,53 @@ abstract class AppDatabase : RoomDatabase() {
             "ALTER TABLE watch_history ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"
         )
 
+        /**
+         * Perfis: favoritos, progresso e histórico ganham `profileId` e a chave passa a (profileId, mediaId).
+         * O SQLite não troca a chave primária com ALTER TABLE: cada tabela é recriada e tudo que existia
+         * vai para o perfil inicial "p_main" (o mesmo padrão do backend).
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_5_6_SQL.forEach(db::execSQL)
+            }
+        }
+
+        internal val MIGRATION_5_6_SQL: List<String> = listOf(
+            "CREATE TABLE IF NOT EXISTS `favorites_v6` (`profileId` TEXT NOT NULL DEFAULT 'p_main', " +
+                "`mediaId` TEXT NOT NULL, `channelId` INTEGER NOT NULL, `channelTitle` TEXT NOT NULL, " +
+                "`title` TEXT NOT NULL, `posterPath` TEXT, `thumbnailPath` TEXT, `durationSeconds` INTEGER NOT NULL, " +
+                "`tmdbId` TEXT, `genres` TEXT, `addedAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                "`deleted` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`profileId`, `mediaId`))",
+            "INSERT INTO favorites_v6 (profileId, mediaId, channelId, channelTitle, title, posterPath, thumbnailPath, " +
+                "durationSeconds, tmdbId, genres, addedAt, updatedAt, deleted) " +
+                "SELECT 'p_main', mediaId, channelId, channelTitle, title, posterPath, thumbnailPath, " +
+                "durationSeconds, tmdbId, genres, addedAt, updatedAt, deleted FROM favorites",
+            "DROP TABLE favorites",
+            "ALTER TABLE favorites_v6 RENAME TO favorites",
+
+            "CREATE TABLE IF NOT EXISTS `playback_progress_v6` (`profileId` TEXT NOT NULL DEFAULT 'p_main', " +
+                "`mediaId` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL, `deleted` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`profileId`, `mediaId`))",
+            "INSERT INTO playback_progress_v6 (profileId, mediaId, positionMs, durationMs, updatedAt, deleted) " +
+                "SELECT 'p_main', mediaId, positionMs, durationMs, updatedAt, deleted FROM playback_progress",
+            "DROP TABLE playback_progress",
+            "ALTER TABLE playback_progress_v6 RENAME TO playback_progress",
+
+            "CREATE TABLE IF NOT EXISTS `watch_history_v6` (`profileId` TEXT NOT NULL DEFAULT 'p_main', " +
+                "`mediaId` TEXT NOT NULL, `channelId` INTEGER NOT NULL, `channelTitle` TEXT NOT NULL, " +
+                "`title` TEXT NOT NULL, `posterPath` TEXT, `thumbnailPath` TEXT, `durationMs` INTEGER NOT NULL, " +
+                "`lastPositionMs` INTEGER NOT NULL, `completed` INTEGER NOT NULL, `genres` TEXT, " +
+                "`updatedAt` INTEGER NOT NULL, `deleted` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`profileId`, `mediaId`))",
+            "INSERT INTO watch_history_v6 (profileId, mediaId, channelId, channelTitle, title, posterPath, thumbnailPath, " +
+                "durationMs, lastPositionMs, completed, genres, updatedAt, deleted) " +
+                "SELECT 'p_main', mediaId, channelId, channelTitle, title, posterPath, thumbnailPath, " +
+                "durationMs, lastPositionMs, completed, genres, updatedAt, deleted FROM watch_history",
+            "DROP TABLE watch_history",
+            "ALTER TABLE watch_history_v6 RENAME TO watch_history"
+        )
+
         /** Todas as migrações, em ordem. Toda versão nova do banco acrescenta a sua aqui. */
-        val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        val ALL_MIGRATIONS: Array<Migration> =
+            arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
     }
 }

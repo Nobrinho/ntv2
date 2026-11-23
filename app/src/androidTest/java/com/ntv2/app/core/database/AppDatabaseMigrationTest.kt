@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ntv2.app.core.database.entity.FavoriteEntity
 import com.ntv2.app.core.database.entity.WatchHistoryEntity
+import com.ntv2.app.core.profiles.ProfileIds.MAIN
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -52,8 +53,8 @@ class AppDatabaseMigrationTest {
             assertEquals("Filmes", channels.single().title)
             assertNull(channels.single().avatarPath)
             // Tabelas das versões seguintes existem e funcionam.
-            assertEquals(emptyList<Any>(), database.playbackProgressDao().getAll())
-            assertEquals(emptyList<Any>(), database.favoriteDao().observeAll().first())
+            assertEquals(emptyList<Any>(), database.playbackProgressDao().getAll(MAIN))
+            assertEquals(emptyList<Any>(), database.favoriteDao().observeAll(MAIN).first())
         }
     }
 
@@ -67,7 +68,7 @@ class AppDatabaseMigrationTest {
             )
         }
         withUpgradedDb { database ->
-            val progress = database.playbackProgressDao().get("m1")
+            val progress = database.playbackProgressDao().get(MAIN, "m1")
             assertEquals(82_000L, progress?.positionMs)
             assertEquals(1, database.selectedChannelDao().observeAll().first().size)
         }
@@ -84,16 +85,16 @@ class AppDatabaseMigrationTest {
         }
         withUpgradedDb { database ->
             assertEquals("/a.jpg", database.selectedChannelDao().observeAll().first().single().avatarPath)
-            assertEquals(82_000L, database.playbackProgressDao().get("m1")?.positionMs)
+            assertEquals(82_000L, database.playbackProgressDao().get(MAIN, "m1")?.positionMs)
             // Tabelas criadas pela migração 3→4 aceitam dados pelo DAO (tipos compatíveis).
             database.favoriteDao().upsert(
-                FavoriteEntity("m1", 10L, "Filmes", "Linha de Frente", null, null, 7200, null, null, 2000L)
+                FavoriteEntity(MAIN, "m1", 10L, "Filmes", "Linha de Frente", null, null, 7200, null, null, 2000L)
             )
             database.watchHistoryDao().upsert(
-                WatchHistoryEntity("m1", 10L, "Filmes", "Linha de Frente", null, null, 7_200_000L, 82_000L, false, null, 3000L)
+                WatchHistoryEntity(MAIN, "m1", 10L, "Filmes", "Linha de Frente", null, null, 7_200_000L, 82_000L, false, null, 3000L)
             )
-            assertEquals(true, database.favoriteDao().isFavorite("m1"))
-            assertEquals(82_000L, database.watchHistoryDao().get("m1")?.lastPositionMs)
+            assertEquals(true, database.favoriteDao().isFavorite(MAIN, "m1"))
+            assertEquals(82_000L, database.watchHistoryDao().get(MAIN, "m1")?.lastPositionMs)
         }
     }
 
@@ -116,33 +117,67 @@ class AppDatabaseMigrationTest {
             )
         }
         withUpgradedDb { database ->
-            val fav = database.favoriteDao().getForSync("m1")!!
+            val fav = database.favoriteDao().getForSync(MAIN, "m1")!!
             assertEquals(2000L, fav.updatedAt) // preenchido com addedAt
             assertEquals(false, fav.deleted)
-            assertEquals(true, database.favoriteDao().isFavorite("m1"))
-            assertEquals(3000L, database.watchHistoryDao().get("m1")?.updatedAt)
-            assertEquals(82_000L, database.playbackProgressDao().get("m1")?.positionMs)
+            assertEquals(true, database.favoriteDao().isFavorite(MAIN, "m1"))
+            assertEquals(3000L, database.watchHistoryDao().get(MAIN, "m1")?.updatedAt)
+            assertEquals(82_000L, database.playbackProgressDao().get(MAIN, "m1")?.positionMs)
 
             // Tombstone: some das consultas da UI, mas continua para a sincronização.
-            database.favoriteDao().markDeleted("m1", 5000L)
-            assertEquals(false, database.favoriteDao().isFavorite("m1"))
-            assertEquals(emptyList<Any>(), database.favoriteDao().observeAll().first())
-            assertEquals(true, database.favoriteDao().getForSync("m1")?.deleted)
+            database.favoriteDao().markDeleted(MAIN, "m1", 5000L)
+            assertEquals(false, database.favoriteDao().isFavorite(MAIN, "m1"))
+            assertEquals(emptyList<Any>(), database.favoriteDao().observeAll(MAIN).first())
+            assertEquals(true, database.favoriteDao().getForSync(MAIN, "m1")?.deleted)
             assertEquals(listOf("m1"), database.favoriteDao().changedSince(4000L).map { it.mediaId })
 
-            database.watchHistoryDao().markAllDeleted(6000L)
-            assertEquals(emptyList<Any>(), database.watchHistoryDao().getAll())
-            database.playbackProgressDao().markDeleted("m1", 6000L)
-            assertNull(database.playbackProgressDao().get("m1"))
-            assertEquals(true, database.playbackProgressDao().getForSync("m1")?.deleted)
+            database.watchHistoryDao().markAllDeleted(MAIN, 6000L)
+            assertEquals(emptyList<Any>(), database.watchHistoryDao().getAll(MAIN))
+            database.playbackProgressDao().markDeleted(MAIN, "m1", 6000L)
+            assertNull(database.playbackProgressDao().get(MAIN, "m1"))
+            assertEquals(true, database.playbackProgressDao().getForSync(MAIN, "m1")?.deleted)
+        }
+    }
+
+    @Test
+    fun v5_levaTudoParaOPerfilInicialESeparaPorPerfil() {
+        createDb(version = 5, schema = V5) { db ->
+            db.execSQL(
+                "INSERT INTO favorites (mediaId, channelId, channelTitle, title, posterPath, thumbnailPath, " +
+                    "durationSeconds, tmdbId, genres, addedAt, updatedAt, deleted) VALUES ('m1', 10, 'Filmes', " +
+                    "'Linha de Frente', NULL, NULL, 7200, '42', 'Drama', 2000, 2500, 0)"
+            )
+            db.execSQL(
+                "INSERT INTO watch_history (mediaId, channelId, channelTitle, title, posterPath, thumbnailPath, " +
+                    "durationMs, lastPositionMs, completed, genres, updatedAt, deleted) VALUES ('m1', 10, 'Filmes', " +
+                    "'Linha de Frente', NULL, NULL, 7200000, 82000, 0, NULL, 3000, 0)"
+            )
+            db.execSQL(
+                "INSERT INTO playback_progress (mediaId, positionMs, durationMs, updatedAt, deleted) " +
+                    "VALUES ('m1', 82000, 7200000, 1000, 1)"
+            )
+        }
+        withUpgradedDb { database ->
+            val fav = database.favoriteDao().getForSync(MAIN, "m1")!!
+            assertEquals(2500L, fav.updatedAt)
+            assertEquals(MAIN, fav.profileId)
+            assertEquals(82_000L, database.watchHistoryDao().get(MAIN, "m1")?.lastPositionMs)
+            assertEquals(true, database.playbackProgressDao().getForSync(MAIN, "m1")?.deleted)
+
+            // Mesmo título em outro perfil: linha própria, sem mexer na do perfil inicial.
+            database.favoriteDao().upsert(fav.copy(profileId = "p_kids", updatedAt = 9000L))
+            assertEquals(listOf("m1"), database.favoriteDao().observeIds("p_kids").first())
+            database.favoriteDao().markDeleted("p_kids", "m1", 9500L)
+            assertEquals(true, database.favoriteDao().isFavorite(MAIN, "m1"))
+            assertEquals(false, database.favoriteDao().isFavorite("p_kids", "m1"))
         }
     }
 
     @Test
     fun bancoNovoAbreNaVersaoAtual() {
         withUpgradedDb { database ->
-            assertEquals(emptyList<Any>(), database.watchHistoryDao().getAll())
-            assertEquals(5, database.openHelper.readableDatabase.version)
+            assertEquals(emptyList<Any>(), database.watchHistoryDao().getAll(MAIN))
+            assertEquals(6, database.openHelper.readableDatabase.version)
         }
     }
 
@@ -195,5 +230,21 @@ class AppDatabaseMigrationTest {
                 "`durationMs` INTEGER NOT NULL, `lastPositionMs` INTEGER NOT NULL, `completed` INTEGER NOT NULL, " +
                 "`genres` TEXT, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`mediaId`))"
         val V4 = listOf(SELECTED_CHANNELS_V3, PLAYBACK_PROGRESS_V2, FAVORITES_V4, WATCH_HISTORY_V4)
+
+        // v5 (app/schemas/.../5.json): tombstones e updatedAt para a sincronização.
+        val V5 = listOf(
+            SELECTED_CHANNELS_V3,
+            "CREATE TABLE IF NOT EXISTS `playback_progress` (`mediaId` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, " +
+                "`durationMs` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `deleted` INTEGER NOT NULL DEFAULT 0, " +
+                "PRIMARY KEY(`mediaId`))",
+            "CREATE TABLE IF NOT EXISTS `favorites` (`mediaId` TEXT NOT NULL, `channelId` INTEGER NOT NULL, " +
+                "`channelTitle` TEXT NOT NULL, `title` TEXT NOT NULL, `posterPath` TEXT, `thumbnailPath` TEXT, " +
+                "`durationSeconds` INTEGER NOT NULL, `tmdbId` TEXT, `genres` TEXT, `addedAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`mediaId`))",
+            "CREATE TABLE IF NOT EXISTS `watch_history` (`mediaId` TEXT NOT NULL, `channelId` INTEGER NOT NULL, " +
+                "`channelTitle` TEXT NOT NULL, `title` TEXT NOT NULL, `posterPath` TEXT, `thumbnailPath` TEXT, " +
+                "`durationMs` INTEGER NOT NULL, `lastPositionMs` INTEGER NOT NULL, `completed` INTEGER NOT NULL, " +
+                "`genres` TEXT, `updatedAt` INTEGER NOT NULL, `deleted` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`mediaId`))"
+        )
     }
 }

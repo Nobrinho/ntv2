@@ -15,6 +15,10 @@ import com.ntv2.app.core.library.FavoriteMedia
 import com.ntv2.app.core.library.RoomUserLibraryRepository
 import com.ntv2.app.core.player.progress.RoomPlaybackProgressStore
 import com.ntv2.app.core.player.progress.WatchedMediaMeta
+import com.ntv2.app.core.profiles.FakePrefs
+import com.ntv2.app.core.profiles.Profile
+import com.ntv2.app.core.profiles.ProfileIds
+import com.ntv2.app.core.profiles.ProfileStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
@@ -71,7 +75,7 @@ class PersonalizationSyncerTest {
                     val incoming = JSONArray(request.body)
                     for (i in 0 until incoming.length()) {
                         val row = incoming.getJSONObject(i)
-                        val id = row.getString("media_id")
+                        val id = keyOf(table, row)
                         val saved = store[id]
                         // keep_newest: escrita mais velha que a salva é ignorada.
                         if (saved != null && ms(row) < ms(saved)) continue
@@ -88,12 +92,17 @@ class PersonalizationSyncerTest {
                     val or = query["or"]
                     if (or != null) {
                         if (!hasSyncedAt) return BackendResponse(400, """{"code":"42703","message":"column favorites.synced_at does not exist"}""")
-                        val m = Regex("""synced_at\.gt\."([^"]*)".*media_id\.gt\."([^"]*)"""").find(or)!!
-                        val at = SyncTime.toEpochMs(m.groupValues[1])!!
-                        val after = m.groupValues[2]
+                        val at = SyncTime.toEpochMs(Regex("""synced_at\.gt\."([^"]*)"""").find(or)!!.groupValues[1])!!
+                        val afterProfile = Regex("""profile_id\.gt\."([^"]*)"""").find(or)!!.groupValues[1]
+                        val afterId = Regex("""media_id\.gt\."([^"]*)"""").find(or)?.groupValues?.get(1)
+                        // Ordem (synced_at, profile_id, media_id), como o índice do backend.
                         val page = store.values
-                            .filter { synced(it) > at || (synced(it) == at && it.getString("media_id") > after) }
-                            .sortedWith(compareBy({ synced(it) }, { it.getString("media_id") }))
+                            .filter {
+                                val p = it.optString("profile_id", "p_main")
+                                synced(it) > at || (synced(it) == at && p > afterProfile) ||
+                                    (afterId != null && synced(it) == at && p == afterProfile && it.getString("media_id") > afterId)
+                            }
+                            .sortedWith(compareBy({ synced(it) }, { it.optString("profile_id", "p_main") }, { it.optString("media_id") }))
                             .take(limit)
                         return BackendResponse(200, JSONArray(page).toString())
                     }
@@ -107,6 +116,17 @@ class PersonalizationSyncerTest {
         /** false = backend antigo, sem a coluna synced_at (o app cai no pull por updated_at). */
         var hasSyncedAt = true
         private var serverTick = 0L
+
+        /**
+         * Chave da linha no servidor: (profile_id, media_id); o perfil inicial fica só com o media_id, para os
+         * testes anteriores aos perfis continuarem lendo `rows(tabela).getValue(mediaId)`. Perfis: profile_id.
+         */
+        private fun keyOf(table: String, row: JSONObject): String {
+            val profile = row.optString("profile_id", "p_main")
+            if (table == "account_profiles") return profile
+            val media = row.getString("media_id")
+            return if (profile == "p_main") media else "$profile|$media"
+        }
 
         private fun ms(row: JSONObject) = SyncTime.toEpochMs(row.getString("updated_at"))!!
         private fun synced(row: JSONObject) =
@@ -145,10 +165,12 @@ class PersonalizationSyncerTest {
         val marks = InMemorySyncMarks()
         val client = SupabaseClient(BackendConfig("http://local:54321", "anon"), server)
         val session = BackendSession(client, tokens)
-        val library = RoomUserLibraryRepository(favorites, now = { clock })
-        val store = RoomPlaybackProgressStore(progress, history, now = { clock })
+        val profiles = ProfileStore(FakePrefs()) { clock }
+        val library = RoomUserLibraryRepository(favorites, profile = profiles, now = { clock })
+        val store = RoomPlaybackProgressStore(progress, history, profile = profiles, now = { clock })
         val syncer = PersonalizationSyncer(
             client, session, favorites, progress, history, marks,
+            profiles = profiles,
             syncFlag = AppConfigSyncFlag(client, ttlMs = 0L),
             pageSize = pageSize,
             now = { clock }
@@ -463,5 +485,101 @@ class PersonalizationSyncerTest {
         assertEquals(1, phone.syncer.sync(forceFull = true).pushed.getValue("favorites"))
         assertEquals(1, tv.syncer.sync(forceFull = true).pulled.getValue("favorites"))
         assertTrue(tv.library.isFavorite("-100_7"))
+    }
+
+    // ---- Perfis ----
+
+    @Test
+    fun `cada perfil tem a propria lista e ela viaja com o perfil`() = runTest {
+        val server = FakeServer()
+        val tokens = MemoryTokens()
+        val phone = Device(server, tokens)
+        val tv = Device(server, tokens)
+
+        phone.library.add(fav("-100_1"))
+        phone.profiles.setActive(ProfileIds.KIDS)
+        phone.library.add(fav("-100_2"))
+        assertEquals(setOf("-100_2"), phone.library.observeFavoriteIds().first())
+
+        phone.syncer.sync()
+        assertEquals("p_main", server.rows("favorites").getValue("-100_1").getString("profile_id"))
+        assertEquals("p_kids", server.rows("favorites").getValue("p_kids|-100_2").getString("profile_id"))
+        assertTrue(server.requests.any { it.url.contains("favorites?on_conflict=user_id%2Cprofile_id%2Cmedia_id") ||
+            it.url.contains("favorites?on_conflict=user_id,profile_id,media_id") })
+
+        tv.syncer.sync()
+        assertEquals(setOf("-100_1"), tv.library.observeFavoriteIds().first())
+        tv.profiles.setActive(ProfileIds.KIDS)
+        assertEquals(setOf("-100_2"), tv.library.observeFavoriteIds().first())
+    }
+
+    @Test
+    fun `perfil criado, editado e apagado em um aparelho chega ao outro`() = runTest {
+        val server = FakeServer()
+        val tokens = MemoryTokens()
+        val phone = Device(server, tokens, clock = 5_000L)
+        val tv = Device(server, tokens, clock = 5_000L)
+
+        phone.profiles.save(Profile.new("Ana").copy(id = "ana").withPin("1234"))
+        phone.syncer.sync()
+        val remote = server.rows("account_profiles").getValue("ana")
+        assertEquals("Ana", remote.getString("name"))
+        assertFalse(remote.getString("pin_hash").contains("1234"))
+        // Perfis de exemplo (nunca alterados) não sobem.
+        assertFalse(server.rows("account_profiles").containsKey(ProfileIds.KIDS))
+
+        tv.syncer.sync()
+        val onTv = tv.profiles.byId("ana")!!
+        assertTrue(onTv.checkPin("1234"))
+
+        tv.profiles.setActive("ana")
+        tv.library.add(fav("-100_5"))
+        tv.clock = 9_000L
+        phone.clock = 9_000L
+        tv.syncer.sync()
+
+        phone.syncer.sync()
+        phone.clock = 10_000L
+        phone.profiles.delete("ana")
+        phone.syncer.sync()
+        assertTrue(server.rows("account_profiles").getValue("ana").getBoolean("deleted"))
+
+        tv.clock = 11_000L
+        tv.syncer.sync()
+        assertNull(tv.profiles.byId("ana"))
+        assertEquals(ProfileIds.MAIN, tv.profiles.activeId.value)
+    }
+
+    @Test
+    fun `filtro do pull pagina por perfil e media`() {
+        val f = PersonalizationSyncer.pullFilter("T", "p_kids", "m9", profilesOnly = false)
+        assertEquals(
+            "(synced_at.gt.\"T\",and(synced_at.eq.\"T\",profile_id.gt.\"p_kids\")," +
+                "and(synced_at.eq.\"T\",profile_id.eq.\"p_kids\",media_id.gt.\"m9\"))",
+            f
+        )
+        assertEquals(
+            "(synced_at.gt.\"T\",and(synced_at.eq.\"T\",profile_id.gt.\"a\"))",
+            PersonalizationSyncer.pullFilter("T", "a", "", profilesOnly = true)
+        )
+    }
+
+    @Test
+    fun `pagina cheia com o mesmo synced_at em dois perfis nao perde linhas`() = runTest {
+        val server = FakeServer()
+        val tokens = MemoryTokens()
+        val phone = Device(server, tokens, pageSize = 2)
+        val tv = Device(server, tokens, pageSize = 2)
+        phone.library.add(fav("a"))
+        phone.library.add(fav("b"))
+        phone.profiles.setActive(ProfileIds.KIDS)
+        phone.library.add(fav("a"))
+        phone.library.add(fav("c"))
+        phone.syncer.sync()
+
+        tv.syncer.sync()
+        assertEquals(setOf("a", "b"), tv.library.observeFavoriteIds().first())
+        tv.profiles.setActive(ProfileIds.KIDS)
+        assertEquals(setOf("a", "c"), tv.library.observeFavoriteIds().first())
     }
 }

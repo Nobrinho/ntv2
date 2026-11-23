@@ -5,7 +5,11 @@ import com.ntv2.app.core.database.dao.PlaybackProgressDao
 import com.ntv2.app.core.database.dao.WatchHistoryDao
 import com.ntv2.app.core.database.entity.PlaybackProgressEntity
 import com.ntv2.app.core.database.entity.WatchHistoryEntity
+import com.ntv2.app.core.profiles.ActiveProfile
+import com.ntv2.app.core.profiles.FixedActiveProfile
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
@@ -87,6 +91,8 @@ class RoomPlaybackProgressStore(
     private val dao: PlaybackProgressDao,
     // Opcional: quando ausente (ex.: testes de resume), o histórico simplesmente não é mantido.
     private val historyDao: WatchHistoryDao? = null,
+    /** Perfil ativo: progresso, histórico e "continuar" são por perfil. */
+    private val profile: ActiveProfile = FixedActiveProfile(),
     private val now: () -> Long = System::currentTimeMillis,
     /**
      * Avisa a sincronização de que algo mudou (no-op com o backend desligado). Os ticks do player
@@ -98,15 +104,20 @@ class RoomPlaybackProgressStore(
     private val changesFlow = MutableSharedFlow<String>(extraBufferCapacity = 16)
     override val changes: Flow<String> = changesFlow
 
+    private val profileId: String get() = profile.activeId.value
+
     override suspend fun resumePositionMs(mediaId: String, durationMs: Long): Long {
-        val saved = dao.get(mediaId)?.positionMs ?: return 0L
+        val saved = dao.get(profileId, mediaId)?.positionMs ?: return 0L
         return PlaybackProgressPolicy.resumePosition(saved, durationMs)
     }
 
     override suspend fun onProgress(mediaId: String, positionMs: Long, durationMs: Long) {
+        // Perfil lido uma vez: um tick no meio da troca de perfil não divide a gravação entre dois.
+        val pid = profileId
         when (val action = PlaybackProgressPolicy.onProgress(positionMs, durationMs)) {
             is PlaybackProgressPolicy.SaveAction.Save -> dao.upsert(
                 PlaybackProgressEntity(
+                    profileId = pid,
                     mediaId = mediaId,
                     positionMs = action.positionMs,
                     durationMs = action.durationMs,
@@ -114,20 +125,20 @@ class RoomPlaybackProgressStore(
                     deleted = false
                 )
             )
-            PlaybackProgressPolicy.SaveAction.Clear -> dao.markDeleted(mediaId, now())
+            PlaybackProgressPolicy.SaveAction.Clear -> dao.markDeleted(pid, mediaId, now())
             PlaybackProgressPolicy.SaveAction.Ignore -> {
                 // Ignorado para resume (começo demais), mas ainda atualiza a posição do histórico.
             }
         }
         // Atualiza a posição/estado do histórico (no-op se a linha não existir ou sem historyDao).
         val completed = durationMs > 0L && positionMs >= durationMs - PlaybackProgressPolicy.END_GUARD_MS
-        historyDao?.updateProgress(mediaId, positionMs, durationMs, completed, now())
+        historyDao?.updateProgress(pid, mediaId, positionMs, durationMs, completed, now())
         changesFlow.tryEmit(mediaId)
         onLocalChange(LocalChange.PROGRESS)
     }
 
     override suspend fun clear(mediaId: String) {
-        dao.markDeleted(mediaId, now())
+        dao.markDeleted(profileId, mediaId, now())
         changesFlow.tryEmit(mediaId)
         onLocalChange(LocalChange.EDIT)
     }
@@ -138,7 +149,7 @@ class RoomPlaybackProgressStore(
         // enquanto a grade pode ter até 1.000 cards — um IN (...) com todos os ids era mais caro e
         // estourava o limite de 999 parâmetros do SQLite antes do Android 11.
         val wanted = mediaIds.toHashSet()
-        return dao.getAll()
+        return dao.getAll(profileId)
             .filter { it.mediaId in wanted }
             .associate { it.mediaId to it.positionMs }
     }
@@ -147,7 +158,8 @@ class RoomPlaybackProgressStore(
         if (mediaIds.isEmpty()) return emptyMap()
         val wanted = mediaIds.toHashSet()
         val result = HashMap<String, Float>()
-        historyDao?.getAll()?.forEach { h ->
+        val pid = profileId
+        historyDao?.getAll(pid)?.forEach { h ->
             if (h.mediaId !in wanted) return@forEach
             val fraction = when {
                 h.completed -> 1f
@@ -157,7 +169,7 @@ class RoomPlaybackProgressStore(
             result[h.mediaId] = fraction
         }
         // Progresso salvo vale mais que o histórico (é a posição de retomar), menos para quem já terminou.
-        dao.getAll().forEach { p ->
+        dao.getAll(pid).forEach { p ->
             if (p.mediaId !in wanted || p.positionMs <= 0L || result[p.mediaId] == 1f) return@forEach
             result[p.mediaId] = if (p.durationMs > 0L) fraction(p.positionMs, p.durationMs) else 0.01f
         }
@@ -171,9 +183,11 @@ class RoomPlaybackProgressStore(
 
     override suspend fun recordOpened(meta: WatchedMediaMeta) {
         val dao = historyDao ?: return
-        val existing = dao.get(meta.mediaId)
+        val pid = profileId
+        val existing = dao.get(pid, meta.mediaId)
         dao.upsert(
             WatchHistoryEntity(
+                profileId = pid,
                 mediaId = meta.mediaId,
                 channelId = meta.channelId,
                 channelTitle = meta.channelTitle,
@@ -192,12 +206,15 @@ class RoomPlaybackProgressStore(
         onLocalChange(LocalChange.EDIT)
     }
 
-    override fun observeHistory(): Flow<List<WatchedItem>> =
-        historyDao?.observeAll()?.map { list -> list.map { it.toItem() } } ?: emptyFlow()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun observeHistory(): Flow<List<WatchedItem>> {
+        val dao = historyDao ?: return emptyFlow()
+        return profile.activeId.flatMapLatest { id -> dao.observeAll(id) }.map { list -> list.map { it.toItem() } }
+    }
 
     override suspend fun continueWatching(limit: Int): List<WatchedItem> {
         val dao = historyDao ?: return emptyList()
-        return dao.getAll()
+        return dao.getAll(profileId)
             .asSequence()
             .filter { !it.completed }
             .filter { it.lastPositionMs >= PlaybackProgressPolicy.MIN_POSITION_MS }
@@ -208,19 +225,20 @@ class RoomPlaybackProgressStore(
     }
 
     override suspend fun history(): List<WatchedItem> =
-        historyDao?.getAll()?.map { it.toItem() } ?: emptyList()
+        historyDao?.getAll(profileId)?.map { it.toItem() } ?: emptyList()
 
     // Remoções via tombstone: precisam chegar aos outros aparelhos.
     override suspend fun removeFromHistory(mediaId: String) {
         val t = now()
-        historyDao?.markDeleted(mediaId, t)
-        dao.markDeleted(mediaId, t)
+        val pid = profileId
+        historyDao?.markDeleted(pid, mediaId, t)
+        dao.markDeleted(pid, mediaId, t)
         changesFlow.tryEmit(mediaId)
         onLocalChange(LocalChange.EDIT)
     }
 
     override suspend fun clearHistory() {
-        historyDao?.markAllDeleted(now())
+        historyDao?.markAllDeleted(profileId, now())
         onLocalChange(LocalChange.EDIT)
     }
 

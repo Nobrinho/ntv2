@@ -1,17 +1,19 @@
 package com.ntv2.app.core.database.entity
 
+import com.ntv2.app.core.profiles.ProfileIds
 import androidx.room.ColumnInfo
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
 /**
  * Um título na "Minha lista" do usuário. Guarda os campos denormalizados do card para renderizar a
  * trilha sem rede; a reprodução é resolvida depois pelo messageId embutido no [mediaId]
  * ("channelId_messageId"), igual aos cards do índice.
  */
-@Entity(tableName = "favorites")
+@Entity(tableName = "favorites", primaryKeys = ["profileId", "mediaId"])
 data class FavoriteEntity(
-    @PrimaryKey val mediaId: String,
+    /** Perfil de "Quem está assistindo?" (ProfileStore); "p_main" é o perfil inicial. */
+    @ColumnInfo(defaultValue = "p_main") val profileId: String = ProfileIds.MAIN,
+    val mediaId: String,
     val channelId: Long,
     val channelTitle: String,
     val title: String,

@@ -1,12 +1,14 @@
 package com.ntv2.app.core.database.entity
 
+import com.ntv2.app.core.profiles.ProfileIds
 import androidx.room.ColumnInfo
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
-@Entity(tableName = "playback_progress")
+@Entity(tableName = "playback_progress", primaryKeys = ["profileId", "mediaId"])
 data class PlaybackProgressEntity(
-    @PrimaryKey val mediaId: String,
+    /** Perfil de "Quem está assistindo?" (ProfileStore); "p_main" é o perfil inicial. */
+    @ColumnInfo(defaultValue = "p_main") val profileId: String = ProfileIds.MAIN,
+    val mediaId: String,
     val positionMs: Long,
     val durationMs: Long,
     val updatedAt: Long,

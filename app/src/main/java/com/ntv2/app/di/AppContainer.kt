@@ -1,6 +1,7 @@
 package com.ntv2.app.di
 
 import android.content.Context
+import kotlinx.coroutines.launch
 import com.ntv2.app.core.database.AppDatabase
 import com.ntv2.app.core.player.PlaybackCoordinator
 import com.ntv2.app.core.player.controller.DefaultPlaybackController
@@ -77,6 +78,8 @@ interface AppContainer {
     val playbackSourceResolver: PlaybackSourceResolver
     val playbackController: PlaybackController
     val castManager: com.ntv2.app.core.cast.CastManager
+    /** Perfis de "Quem está assistindo?" (perfil ativo escopa lista, histórico e progresso). */
+    val profileStore: com.ntv2.app.core.profiles.ProfileStore
     /** Cliente OkHttp único do app; usos com prazos próprios derivam dele com `newBuilder()`. */
     val httpClient: okhttp3.OkHttpClient
     val localStreamServer: com.ntv2.app.core.cast.LocalStreamServer
@@ -248,10 +251,34 @@ class DefaultAppContainer(
         )
     }
 
+    override val profileStore: com.ntv2.app.core.profiles.ProfileStore by lazy {
+        com.ntv2.app.core.profiles.ProfileStore.get(appContext).also { store ->
+            store.onLocalChange = { notifyPersonalizationChange(com.ntv2.app.core.backend.sync.LocalChange.EDIT) }
+            // Perfil apagado (aqui ou em outro aparelho): a lista, o histórico e o progresso dele saem
+            // por tombstone, para a remoção chegar também aos outros aparelhos.
+            store.onProfileRemoved = { id ->
+                profileCleanupScope.launch {
+                    val t = System.currentTimeMillis()
+                    runCatching {
+                        appDatabase.favoriteDao().markProfileDeleted(id, t)
+                        appDatabase.watchHistoryDao().markAllDeleted(id, t)
+                        appDatabase.playbackProgressDao().markProfileDeleted(id, t)
+                    }
+                    notifyPersonalizationChange(com.ntv2.app.core.backend.sync.LocalChange.EDIT)
+                }
+            }
+        }
+    }
+
+    private val profileCleanupScope by lazy {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    }
+
     override val playbackProgressStore: PlaybackProgressStore by lazy {
         RoomPlaybackProgressStore(
             appDatabase.playbackProgressDao(),
             appDatabase.watchHistoryDao(),
+            profile = profileStore,
             onLocalChange = ::notifyPersonalizationChange
         )
     }
@@ -259,6 +286,7 @@ class DefaultAppContainer(
     override val userLibraryRepository: com.ntv2.app.core.library.UserLibraryRepository by lazy {
         com.ntv2.app.core.library.RoomUserLibraryRepository(
             appDatabase.favoriteDao(),
+            profile = profileStore,
             onLocalChange = ::notifyPersonalizationChange
         )
     }
@@ -433,6 +461,7 @@ class DefaultAppContainer(
             progressDao = appDatabase.playbackProgressDao(),
             historyDao = appDatabase.watchHistoryDao(),
             marks = com.ntv2.app.core.backend.sync.DataStoreSyncMarks(appContext),
+            profiles = profileStore,
             premiumCheck = { premiumRepository?.syncAllowed() ?: true }
         )
         val prefs = appContext.getSharedPreferences("sync_status", Context.MODE_PRIVATE)

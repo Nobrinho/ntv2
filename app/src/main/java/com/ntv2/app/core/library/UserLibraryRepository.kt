@@ -3,7 +3,11 @@ package com.ntv2.app.core.library
 import com.ntv2.app.core.backend.sync.LocalChange
 import com.ntv2.app.core.database.dao.FavoriteDao
 import com.ntv2.app.core.database.entity.FavoriteEntity
+import com.ntv2.app.core.profiles.ActiveProfile
+import com.ntv2.app.core.profiles.FixedActiveProfile
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 
 /** Um título salvo na "Minha lista" do usuário. */
@@ -20,7 +24,7 @@ data class FavoriteMedia(
     val addedAt: Long
 )
 
-/** "Minha lista": favoritar/desfavoritar e observar a lista. Único por dispositivo. */
+/** "Minha lista": favoritar/desfavoritar e observar a lista. Uma por perfil (o ativo). */
 interface UserLibraryRepository {
     /** Minha lista, mais recente primeiro. */
     fun observeFavorites(): Flow<List<FavoriteMedia>>
@@ -40,18 +44,24 @@ interface UserLibraryRepository {
 
 class RoomUserLibraryRepository(
     private val dao: FavoriteDao,
+    /** Perfil ativo: cada perfil tem a própria lista. */
+    private val profile: ActiveProfile = FixedActiveProfile(),
     private val now: () -> Long = System::currentTimeMillis,
     /** Avisa a sincronização de que algo mudou (no-op com o backend desligado). */
     private val onLocalChange: (LocalChange) -> Unit = {}
 ) : UserLibraryRepository {
 
+    private val profileId: String get() = profile.activeId.value
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeFavorites(): Flow<List<FavoriteMedia>> =
-        dao.observeAll().map { list -> list.map { it.toModel() } }
+        profile.activeId.flatMapLatest { id -> dao.observeAll(id) }.map { list -> list.map { it.toModel() } }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeFavoriteIds(): Flow<Set<String>> =
-        dao.observeIds().map { it.toSet() }
+        profile.activeId.flatMapLatest { id -> dao.observeIds(id) }.map { it.toSet() }
 
-    override suspend fun isFavorite(mediaId: String): Boolean = dao.isFavorite(mediaId)
+    override suspend fun isFavorite(mediaId: String): Boolean = dao.isFavorite(profileId, mediaId)
 
     override suspend fun add(media: FavoriteMedia) {
         dao.upsert(media.toEntity())
@@ -60,12 +70,12 @@ class RoomUserLibraryRepository(
 
     // Tombstone em vez de DELETE: a remoção precisa chegar aos outros aparelhos.
     override suspend fun remove(mediaId: String) {
-        dao.markDeleted(mediaId, now())
+        dao.markDeleted(profileId, mediaId, now())
         onLocalChange(LocalChange.EDIT)
     }
 
     override suspend fun toggle(media: FavoriteMedia): Boolean =
-        if (dao.isFavorite(media.mediaId)) {
+        if (dao.isFavorite(profileId, media.mediaId)) {
             remove(media.mediaId)
             false
         } else {
@@ -89,6 +99,7 @@ class RoomUserLibraryRepository(
     private fun FavoriteMedia.toEntity(): FavoriteEntity {
         val t = now()
         return FavoriteEntity(
+            profileId = profileId,
             mediaId = mediaId,
             channelId = channelId,
             channelTitle = channelTitle,

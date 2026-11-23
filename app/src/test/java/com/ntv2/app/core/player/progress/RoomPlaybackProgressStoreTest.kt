@@ -17,15 +17,17 @@ class RoomPlaybackProgressStoreTest {
     private class RecordingDao(private val rows: Map<String, Long>) : PlaybackProgressDao {
         var queries = 0
         val deleted = mutableListOf<String>()
-        override suspend fun get(mediaId: String): PlaybackProgressEntity? = null
-        override suspend fun getAll(): List<PlaybackProgressEntity> {
+        override suspend fun get(profileId: String, mediaId: String): PlaybackProgressEntity? = null
+        override suspend fun getAll(profileId: String): List<PlaybackProgressEntity> {
             queries++
-            return rows.map { (id, pos) -> PlaybackProgressEntity(id, pos, 0L, 0L) }
+            return rows.map { (id, pos) -> PlaybackProgressEntity(mediaId = id, positionMs = pos, durationMs = 0L, updatedAt = 0L) }
         }
         override suspend fun upsert(entity: PlaybackProgressEntity) = Unit
-        override suspend fun markDeleted(mediaId: String, updatedAt: Long) { deleted += mediaId }
-        override suspend fun getForSync(mediaId: String): PlaybackProgressEntity? = null
+        override suspend fun markDeleted(profileId: String, mediaId: String, updatedAt: Long) { deleted += mediaId }
+        override suspend fun getForSync(profileId: String, mediaId: String): PlaybackProgressEntity? = null
         override suspend fun changedSince(sinceMs: Long): List<PlaybackProgressEntity> = emptyList()
+        override suspend fun markProfileDeleted(profileId: String, updatedAt: Long) = Unit
+        override suspend fun deleteAll() = Unit
     }
 
     private fun meta(id: String, durationSeconds: Int = 7200) = WatchedMediaMeta(

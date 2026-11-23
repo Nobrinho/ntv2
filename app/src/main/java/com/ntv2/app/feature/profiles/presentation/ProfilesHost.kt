@@ -240,7 +240,7 @@ fun ProfilesHost(
                     onComplete = { pin ->
                         when {
                             s.first == null -> { onNavigate(s.copy(first = pin)); null }
-                            s.first == pin -> { onNavigate(ProfileScreen.Edit(s.draft.copy(pin = pin), s.isNew)); null }
+                            s.first == pin -> { onNavigate(ProfileScreen.Edit(s.draft.withPin(pin), s.isNew)); null }
                             else -> { onNavigate(s.copy(first = null)); "Os PINs não conferem. Tente de novo." }
                         }
                     }
@@ -258,7 +258,7 @@ fun ProfilesHost(
                     showForgot = true,
                     onBack = { back() },
                     onComplete = { pin ->
-                        if (pin != s.owner.pin) "PIN incorreto. Tente de novo." else {
+                        if (!s.owner.checkPin(pin)) "PIN incorreto. Tente de novo." else {
                             when (val p = s.purpose) {
                                 is PinPurpose.Enter -> activate(p.targetId)
                                 is PinPurpose.ExitKids -> {
@@ -266,7 +266,7 @@ fun ProfilesHost(
                                     if (target != null && target.hasPin) onNavigate(ProfileScreen.PinEnter(target, PinPurpose.Enter(target.id)))
                                     else activate(p.targetId)
                                 }
-                                is PinPurpose.Remove -> onNavigate(ProfileScreen.Edit(p.draft.copy(pin = null), p.isNew))
+                                is PinPurpose.Remove -> onNavigate(ProfileScreen.Edit(p.draft.withPin(null), p.isNew))
                             }
                             null
                         }

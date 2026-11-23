@@ -9,6 +9,9 @@ import com.ntv2.app.core.database.entity.FavoriteEntity
 import com.ntv2.app.core.database.entity.PlaybackProgressEntity
 import com.ntv2.app.core.database.entity.WatchHistoryEntity
 import com.ntv2.app.core.player.progress.PlaybackProgressPolicy
+import com.ntv2.app.core.profiles.Profile
+import com.ntv2.app.core.profiles.ProfileIds
+import com.ntv2.app.core.profiles.ProfileRecord
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -23,7 +26,8 @@ data class SyncResult(
 )
 
 /**
- * Sincroniza Minha lista, progresso e histórico com o Supabase (contrato em ntv2-backend/CONTRATO.md).
+ * Sincroniza os perfis e, por perfil, Minha lista, progresso e histórico com o Supabase (contrato em
+ * ntv2-backend/CONTRATO.md).
  * O Room continua sendo a fonte local: sem rede ou com o backend desligado, nada muda no app.
  *
  * Rodada: push das linhas com `updatedAt` > marca local (upsert com merge-duplicates; o trigger
@@ -37,6 +41,8 @@ class PersonalizationSyncer(
     private val progressDao: PlaybackProgressDao,
     private val historyDao: WatchHistoryDao,
     private val marks: SyncMarks,
+    /** Perfis da conta (ProfileStore); null = não sincroniza perfis. */
+    private val profiles: ProfileSyncSource? = null,
     private val syncFlag: SyncFlag = AppConfigSyncFlag(client),
     // Sincronizar entre aparelhos é Premium (a conta inteira; ver PremiumRepository).
     private val premiumCheck: suspend () -> Boolean = { true },
@@ -75,6 +81,13 @@ class PersonalizationSyncer(
         // Relógio deste aparelho no início da rodada: vira a marca de push (ver [push]).
         val roundStart = now()
         val pushed = linkedMapOf<String, Int>()
+        // Perfis antes da personalização: um perfil apagado em outro aparelho some antes de baixar as listas.
+        if (profiles != null) {
+            pushed[PROFILES] = push(
+                PROFILES, profiles.changedSince(marks.pushedUpTo(PROFILES)), roundStart, { it.updatedAt },
+                conflict = PROFILE_CONFLICT
+            ) { profileToJson(it, owner) }
+        }
         pushed[FAVORITES] = push(FAVORITES, favoriteDao.changedSince(marks.pushedUpTo(FAVORITES)), roundStart, { it.updatedAt }) {
             favoriteToJson(it, owner)
         }
@@ -87,14 +100,19 @@ class PersonalizationSyncer(
 
         // Histórico antes do progresso: a posição baixada depois atualiza as linhas do histórico.
         val pulled = linkedMapOf<String, Int>()
+        if (profiles != null) {
+            pulled[PROFILES] = pull(PROFILES, ::applyProfile, keyOf = { it.getString(PROFILE_ID) }) { since ->
+                profiles.changedSince(since).map { it.id to it.updatedAt }
+            }
+        }
         pulled[FAVORITES] = pull(FAVORITES, ::applyFavorite) { since ->
-            favoriteDao.changedSince(since).map { it.mediaId to it.updatedAt }
+            favoriteDao.changedSince(since).map { key(it.profileId, it.mediaId) to it.updatedAt }
         }
         pulled[HISTORY] = pull(HISTORY, ::applyHistory) { since ->
-            historyDao.changedSince(since).map { it.mediaId to it.updatedAt }
+            historyDao.changedSince(since).map { key(it.profileId, it.mediaId) to it.updatedAt }
         }
         pulled[PROGRESS] = pull(PROGRESS, ::applyProgress) { since ->
-            progressDao.changedSince(since).map { it.mediaId to it.updatedAt }
+            progressDao.changedSince(since).map { key(it.profileId, it.mediaId) to it.updatedAt }
         }
         return SyncResult(pushed = pushed, pulled = pulled)
     }
@@ -117,12 +135,13 @@ class PersonalizationSyncer(
         rows: List<T>,
         roundStart: Long,
         updatedAt: (T) -> Long,
+        conflict: String = ITEM_CONFLICT,
         toJson: (T) -> JSONObject
     ): Int {
         val eligible = rows.filter { updatedAt(it) <= roundStart }
         eligible.chunked(pageSize).forEach { chunk ->
             val body = JSONArray().apply { chunk.forEach { put(toJson(it)) } }.toString()
-            client.post("$table?on_conflict=user_id,media_id", body, prefer = "resolution=merge-duplicates,return=minimal")
+            client.post("$table?on_conflict=$conflict", body, prefer = "resolution=merge-duplicates,return=minimal")
             marks.setPushedUpTo(table, minOf(chunk.maxOf(updatedAt), roundStart))
         }
         // Inclusive quando a marca antiga estava no futuro (versões anteriores): volta para agora.
@@ -138,11 +157,13 @@ class PersonalizationSyncer(
     private suspend fun pull(
         table: String,
         apply: suspend (JSONObject, Long) -> Boolean,
+        /** Chave da linha para comparar com as alterações locais: "perfil|media" (perfis: só o id). */
+        keyOf: (JSONObject) -> String = { key(it.profileOf(), it.getString(MEDIA_ID)) },
         localChangedSince: suspend (Long) -> List<Pair<String, Long>>
     ): Int {
         val applied = hashMapOf<String, Long>()
         val cursorReady = syncedAtSupported != false && try {
-            pullBySyncedAt(table, apply, applied)
+            pullBySyncedAt(table, apply, keyOf, applied)
             syncedAtSupported = true
             true
         } catch (e: com.ntv2.app.core.backend.BackendException) {
@@ -151,7 +172,7 @@ class PersonalizationSyncer(
             syncedAtSupported = false
             false
         }
-        if (!cursorReady) pullByUpdatedAt(table, apply, applied)
+        if (!cursorReady) pullByUpdatedAt(table, apply, keyOf, applied)
         if (applied.isNotEmpty()) {
             val pending = localChangedSince(marks.pushedUpTo(table))
             if (pending.isNotEmpty() && pending.all { (id, at) -> applied[id] == at }) {
@@ -174,25 +195,31 @@ class PersonalizationSyncer(
     private suspend fun pullBySyncedAt(
         table: String,
         apply: suspend (JSONObject, Long) -> Boolean,
+        keyOf: (JSONObject) -> String,
         applied: MutableMap<String, Long>
     ) {
         val markKey = table + CURSOR_SUFFIX
         val savedAt = marks.pulledUpTo(markKey)?.substringBefore(CURSOR_SEPARATOR)
         var at = savedAt?.let(SyncTime::toEpochMs)?.let { SyncTime.toIso(it - PULL_OVERLAP_MS) } ?: EPOCH_ISO
+        var afterProfile = ""
         var afterId = ""
+        val profilesOnly = table == PROFILES
         while (true) {
-            val filter = "(synced_at.gt.\"$at\",and(synced_at.eq.\"$at\",media_id.gt.\"$afterId\"))"
-            val path = "$table?or=${URLEncoder.encode(filter, "UTF-8")}" +
-                "&order=synced_at.asc,media_id.asc&limit=$pageSize"
+            val filter = pullFilter(at, afterProfile, afterId, profilesOnly)
+            val order = if (profilesOnly) "synced_at.asc,profile_id.asc" else "synced_at.asc,profile_id.asc,media_id.asc"
+            val path = "$table?or=${URLEncoder.encode(filter, "UTF-8")}&order=$order&limit=$pageSize"
             val page = JSONArray(client.get(path))
             for (i in 0 until page.length()) {
                 val row = page.getJSONObject(i)
                 val remoteMs = SyncTime.toEpochMs(row.getString("updated_at"))
-                if (remoteMs != null && apply(row, remoteMs)) applied[row.getString("media_id")] = remoteMs
+                if (remoteMs != null && apply(row, remoteMs)) applied[keyOf(row)] = remoteMs
                 at = row.getString(SYNCED_AT)
-                afterId = row.getString("media_id")
+                afterProfile = row.profileOf()
+                afterId = if (profilesOnly) "" else row.getString(MEDIA_ID)
             }
-            if (page.length() > 0) marks.setPulledUpTo(markKey, at + CURSOR_SEPARATOR + afterId)
+            if (page.length() > 0) {
+                marks.setPulledUpTo(markKey, at + CURSOR_SEPARATOR + afterProfile + CURSOR_SEPARATOR + afterId)
+            }
             if (page.length() < pageSize) break
         }
     }
@@ -201,6 +228,7 @@ class PersonalizationSyncer(
     private suspend fun pullByUpdatedAt(
         table: String,
         apply: suspend (JSONObject, Long) -> Boolean,
+        keyOf: (JSONObject) -> String,
         applied: MutableMap<String, Long>
     ) {
         while (true) {
@@ -213,7 +241,7 @@ class PersonalizationSyncer(
                 val row = page.getJSONObject(i)
                 val iso = row.getString("updated_at")
                 val remoteMs = SyncTime.toEpochMs(iso)
-                if (remoteMs != null && apply(row, remoteMs)) applied[row.getString("media_id")] = remoteMs
+                if (remoteMs != null && apply(row, remoteMs)) applied[keyOf(row)] = remoteMs
                 last = iso
             }
             last?.let { marks.setPulledUpTo(table, it) }
@@ -221,11 +249,59 @@ class PersonalizationSyncer(
         }
     }
 
+    // ---- Perfis ----
+
+    private fun profileToJson(r: ProfileRecord, userId: String): JSONObject {
+        val o = JSONObject()
+            .put("user_id", userId)
+            .put(PROFILE_ID, r.id)
+            .put("updated_at", SyncTime.toIso(r.updatedAt))
+            .put("deleted", r.deleted)
+        val p = r.profile
+        if (p == null) {
+            // Tombstone: `name` é obrigatório na tabela.
+            o.put("name", "Perfil")
+        } else {
+            o.put("name", p.name.take(40).ifBlank { "Perfil" })
+                .put("color", p.color.toLong())
+                .put("symbol", p.symbol ?: JSONObject.NULL)
+                .put("kids", p.kids)
+                .put("max_rating", p.maxRating.toString())
+                .put("pin_hash", p.pinHash ?: JSONObject.NULL)
+                .put("auto_next", p.autoNext)
+                .put("audio", p.audio)
+                .put("subtitles", p.subtitles)
+                .put("sort", p.sort)
+        }
+        return o
+    }
+
+    private suspend fun applyProfile(row: JSONObject, remoteMs: Long): Boolean {
+        val store = profiles ?: return false
+        val id = row.getString(PROFILE_ID)
+        val profile = if (row.optBoolean("deleted", false)) null else Profile(
+            id = id,
+            name = row.str("name") ?: "Perfil",
+            color = row.optLong("color", 0L).toInt(),
+            symbol = row.str("symbol"),
+            kids = row.optBoolean("kids", false),
+            maxRating = row.str("max_rating")?.toIntOrNull() ?: 12,
+            pinHash = row.str("pin_hash"),
+            autoNext = row.optBoolean("auto_next", true),
+            audio = row.str("audio") ?: "Português",
+            subtitles = row.str("subtitles") ?: "Desligadas",
+            sort = row.optInt("sort", 0),
+            updatedAt = remoteMs
+        )
+        return store.applyRemote(ProfileRecord(id, remoteMs, profile))
+    }
+
     // ---- Favoritos ----
 
     private fun favoriteToJson(e: FavoriteEntity, userId: String) = JSONObject()
         .put("user_id", userId)
-        .put("media_id", e.mediaId)
+        .put(PROFILE_ID, e.profileId)
+        .put(MEDIA_ID, e.mediaId)
         .put("title", e.title)
         .put("poster_url", remoteUrl(e.posterPath))
         .put("channel_name", e.channelTitle)
@@ -236,11 +312,13 @@ class PersonalizationSyncer(
         .put("deleted", e.deleted)
 
     private suspend fun applyFavorite(row: JSONObject, remoteMs: Long): Boolean {
-        val id = row.getString("media_id")
-        val local = favoriteDao.getForSync(id)
+        val id = row.getString(MEDIA_ID)
+        val pid = row.profileOf()
+        val local = favoriteDao.getForSync(pid, id)
         if (!LastWriteWins.remoteWins(local?.updatedAt, remoteMs)) return false
         favoriteDao.upsert(
             FavoriteEntity(
+                profileId = pid,
                 mediaId = id,
                 channelId = local?.channelId ?: channelIdOf(id),
                 channelTitle = row.str("channel_name") ?: local?.channelTitle.orEmpty(),
@@ -262,7 +340,8 @@ class PersonalizationSyncer(
 
     private fun historyToJson(e: WatchHistoryEntity, userId: String) = JSONObject()
         .put("user_id", userId)
-        .put("media_id", e.mediaId)
+        .put(PROFILE_ID, e.profileId)
+        .put(MEDIA_ID, e.mediaId)
         .put("title", e.title)
         .put("poster_url", remoteUrl(e.posterPath))
         .put("channel_name", e.channelTitle)
@@ -271,13 +350,15 @@ class PersonalizationSyncer(
         .put("deleted", e.deleted)
 
     private suspend fun applyHistory(row: JSONObject, remoteMs: Long): Boolean {
-        val id = row.getString("media_id")
-        val local = historyDao.getForSync(id)
+        val id = row.getString(MEDIA_ID)
+        val pid = row.profileOf()
+        val local = historyDao.getForSync(pid, id)
         if (!LastWriteWins.remoteWins(local?.updatedAt, remoteMs)) return false
         // O watch_history remoto não tem posição: vem do progresso local (ou do pull do progresso, a seguir).
-        val progress = if (local == null) progressDao.get(id) else null
+        val progress = if (local == null) progressDao.get(pid, id) else null
         historyDao.upsert(
             WatchHistoryEntity(
+                profileId = pid,
                 mediaId = id,
                 channelId = local?.channelId ?: channelIdOf(id),
                 channelTitle = row.str("channel_name") ?: local?.channelTitle.orEmpty(),
@@ -299,33 +380,43 @@ class PersonalizationSyncer(
 
     private fun progressToJson(e: PlaybackProgressEntity, userId: String) = JSONObject()
         .put("user_id", userId)
-        .put("media_id", e.mediaId)
+        .put(PROFILE_ID, e.profileId)
+        .put(MEDIA_ID, e.mediaId)
         .put("position_ms", e.positionMs)
         .put("duration_ms", e.durationMs)
         .put("updated_at", SyncTime.toIso(e.updatedAt))
         .put("deleted", e.deleted)
 
     private suspend fun applyProgress(row: JSONObject, remoteMs: Long): Boolean {
-        val id = row.getString("media_id")
-        val local = progressDao.getForSync(id)
+        val id = row.getString(MEDIA_ID)
+        val pid = row.profileOf()
+        val local = progressDao.getForSync(pid, id)
         if (!LastWriteWins.remoteWins(local?.updatedAt, remoteMs)) return false
         val deleted = row.optBoolean("deleted", false)
         val position = row.optLong("position_ms", local?.positionMs ?: 0L)
         val duration = row.optLong("duration_ms", local?.durationMs ?: 0L)
-        progressDao.upsert(PlaybackProgressEntity(id, position, duration, remoteMs, deleted))
+        progressDao.upsert(PlaybackProgressEntity(pid, id, position, duration, remoteMs, deleted))
         if (!deleted) {
             val completed = duration > 0L && position >= duration - PlaybackProgressPolicy.END_GUARD_MS
-            historyDao.applyRemotePosition(id, position, duration, completed)
+            historyDao.applyRemotePosition(pid, id, position, duration, completed)
         }
         return true
     }
 
     private fun JSONObject.str(key: String): String? = if (!has(key) || isNull(key)) null else optString(key)
 
+    /** Linha sem `profile_id` (só um backend anterior aos perfis manda assim): perfil inicial. */
+    private fun JSONObject.profileOf(): String = str(PROFILE_ID) ?: ProfileIds.MAIN
+
     companion object {
         const val FAVORITES = "favorites"
         const val PROGRESS = "playback_progress"
         const val HISTORY = "watch_history"
+        const val PROFILES = "account_profiles"
+        private const val PROFILE_ID = "profile_id"
+        private const val MEDIA_ID = "media_id"
+        private const val ITEM_CONFLICT = "user_id,profile_id,media_id"
+        private const val PROFILE_CONFLICT = "user_id,profile_id"
         const val PAGE_SIZE = 500
         const val SKIP_BACKEND_OFF = "backend desligado"
         const val SKIP_FLAG_OFF = "flag sync=false"
@@ -333,11 +424,29 @@ class PersonalizationSyncer(
         const val SKIP_NO_SESSION = "sem sessão"
         private const val EPOCH_ISO = "1970-01-01T00:00:00Z"
         private const val SYNCED_AT = "synced_at"
-        /** Marca do pull por synced_at fica numa chave própria: "<synced_at>|<media_id>". */
-        private const val CURSOR_SUFFIX = "@synced"
+        /**
+         * Marca do pull por synced_at numa chave própria: "<synced_at>|<profile_id>|<media_id>".
+         * "@synced2": o cursor anterior aos perfis ("@synced") é ignorado e a primeira rodada baixa tudo.
+         */
+        private const val CURSOR_SUFFIX = "@synced2"
         private const val CURSOR_SEPARATOR = "|"
         /** Folga para transações que gravaram antes mas terminaram depois da última leitura. */
         const val PULL_OVERLAP_MS = 60_000L
+
+        internal fun key(profileId: String, mediaId: String) = "$profileId|$mediaId"
+
+        /**
+         * Filtro do pull por (synced_at, profile_id[, media_id]) > cursor, no formato `or=(...)` do PostgREST.
+         */
+        internal fun pullFilter(at: String, afterProfile: String, afterId: String, profilesOnly: Boolean): String {
+            val q = '"'
+            val newer = "synced_at.gt.$q$at$q"
+            val sameAtNextProfile = "and(synced_at.eq.$q$at$q,profile_id.gt.$q$afterProfile$q)"
+            if (profilesOnly) return "($newer,$sameAtNextProfile)"
+            val sameProfileNextId =
+                "and(synced_at.eq.$q$at$q,profile_id.eq.$q$afterProfile$q,media_id.gt.$q$afterId$q)"
+            return "($newer,$sameAtNextProfile,$sameProfileNextId)"
+        }
 
         /** "chatId_messageId" → chatId; cartões de série ("series_<tmdbId>") não têm canal: 0. */
         internal fun channelIdOf(mediaId: String): Long = mediaId.substringBefore('_').toLongOrNull() ?: 0L
@@ -346,6 +455,12 @@ class PersonalizationSyncer(
         internal fun remoteUrl(path: String?): Any =
             path?.takeIf { it.startsWith("http://") || it.startsWith("https://") } ?: JSONObject.NULL
     }
+}
+
+/** Perfis que a sincronização lê e aplica (ProfileStore). */
+interface ProfileSyncSource {
+    fun changedSince(sinceMs: Long): List<ProfileRecord>
+    fun applyRemote(record: ProfileRecord): Boolean
 }
 
 /** Se a sincronização está ligada no servidor (app_config.flags.sync). */

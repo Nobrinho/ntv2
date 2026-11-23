@@ -181,9 +181,9 @@ fun AppNavHost(
         }
     }
 
-  // Perfis de acesso (MOCK local, ver ProfileStore): "Quem está assistindo?" na primeira abertura da
+  // Perfis de acesso (ProfileStore, sincronizados com a conta): "Quem está assistindo?" na primeira abertura da
   // Biblioteca de cada execução quando há mais de um perfil; troca rápida pelo topo e Configurações.
-  val profileStore = remember(context) { com.ntv2.app.core.profiles.ProfileStore.get(context) }
+  val profileStore = remember(appContainer) { appContainer.profileStore }
   var profileScreen by remember { mutableStateOf<com.ntv2.app.feature.profiles.presentation.ProfileScreen?>(null) }
   var profilePickedThisRun by rememberSaveable { mutableStateOf(false) }
   val activeProfileId by profileStore.activeId.collectAsStateWithLifecycle()
@@ -349,6 +349,10 @@ fun AppNavHost(
                             com.ntv2.app.core.backend.config.RemoteConfig.FLAG_TRAILER_PREVIEW,
                             default = true
                         )
+                    },
+                    // Perfil infantil ativo: a biblioteca só mostra o que ele pode ver (KidsFilter).
+                    kidsMaxRating = kotlinx.coroutines.flow.combine(profileStore.activeId, profileStore.profiles) { id, list ->
+                        list.firstOrNull { it.id == id }?.takeIf { it.kids }?.maxRating
                     }
                 )
             )

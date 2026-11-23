@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -138,7 +139,9 @@ class MediaLibraryViewModel(
     // Eventos media_open/search_empty (null = sem telemetria, ex.: testes).
     private val telemetry: com.ntv2.app.core.backend.telemetry.Telemetry? = null,
     // Flag remota da prévia de trailer, lida na hora (ausente = ligada).
-    private val trailerPreviewRemote: () -> Boolean = { true }
+    private val trailerPreviewRemote: () -> Boolean = { true },
+    // Perfil infantil ativo: classificação máxima (null = perfil adulto). Null = sem perfis (testes).
+    private val kidsMaxRating: kotlinx.coroutines.flow.Flow<Int?>? = null
 ) : ViewModel() {
 
     /** Última configuração local da prévia de trailer (o estado final também depende da flag remota). */
@@ -173,7 +176,37 @@ class MediaLibraryViewModel(
     private var openVideoJob: Job? = null
 
     private val _uiState = MutableStateFlow(MediaLibraryUiState(isLoading = true))
-    val uiState: StateFlow<MediaLibraryUiState> = _uiState.asStateFlow()
+
+    /**
+     * Estado da tela. No perfil infantil, passa pelo [KidsFilter]: grade, séries, busca, trilhas e
+     * Minha lista só mostram o que o perfil pode ver. O estado interno (_uiState) continua completo.
+     */
+    val uiState: StateFlow<MediaLibraryUiState> = kidsMaxRating?.let { ratings ->
+        kotlinx.coroutines.flow.combine(_uiState, ratings.distinctUntilChanged()) { state, max ->
+            if (max == null) state else filterForKids(state, max)
+        }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, _uiState.value)
+    } ?: _uiState.asStateFlow()
+
+    private fun filterForKids(state: MediaLibraryUiState, max: Int): MediaLibraryUiState {
+        fun ok(card: com.ntv2.app.feature.media.presentation.state.MediaCardUi): Boolean {
+            val details = mediaDetailsCache.get(card.mediaId)
+            return com.ntv2.app.feature.media.domain.KidsFilter.allows(details?.genres, details?.ageRating, max)
+        }
+        fun okSeries(s: com.ntv2.app.feature.media.domain.SeriesSummary) =
+            com.ntv2.app.feature.media.domain.KidsFilter.allowsGenres(s.genres)
+        val sections = state.sections.map { it.copy(items = it.items.filter(::ok)) }
+        return state.copy(
+            sections = sections,
+            items = sections.flatMap { it.items },
+            series = state.series.filter(::okSeries),
+            continueWatching = state.continueWatching.filter(::ok),
+            myList = state.myList.filter(::ok),
+            history = state.history.filter { ok(it.card) },
+            recommendations = state.recommendations.filter(::ok),
+            searchResults = state.searchResults.filter(::ok),
+            searchSeries = state.searchSeries.filter(::okSeries)
+        )
+    }
 
     // Paginação por canal: cada canal acumula suas páginas e mantém seu cursor.
     private val channelOrder = mutableListOf<Long>()
@@ -1994,7 +2027,8 @@ class MediaLibraryViewModelFactory(
     private val multiPartPreparer: com.ntv2.app.feature.media.domain.MultiPartPreparer? = null,
     // Eventos media_open/search_empty (null = sem telemetria, ex.: testes).
     private val telemetry: com.ntv2.app.core.backend.telemetry.Telemetry? = null,
-    private val trailerPreviewRemote: () -> Boolean = { true }
+    private val trailerPreviewRemote: () -> Boolean = { true },
+    private val kidsMaxRating: kotlinx.coroutines.flow.Flow<Int?>? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -2015,7 +2049,8 @@ class MediaLibraryViewModelFactory(
                 upNextQueue = upNextQueue,
                 multiPartPreparer = multiPartPreparer,
                 telemetry = telemetry,
-                trailerPreviewRemote = trailerPreviewRemote
+                trailerPreviewRemote = trailerPreviewRemote,
+                kidsMaxRating = kidsMaxRating
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

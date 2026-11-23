@@ -1,17 +1,19 @@
 package com.ntv2.app.core.database.entity
 
+import com.ntv2.app.core.profiles.ProfileIds
 import androidx.room.ColumnInfo
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
 /**
  * Um título que o usuário abriu para assistir. Alimenta "Continuar assistindo" (não concluídos, com
  * posição na janela útil) e o "Histórico" (tudo, mais recente primeiro). Os metadados são gravados
  * ao abrir o vídeo; a posição e o [completed] são atualizados pelos ticks de progresso do player.
  */
-@Entity(tableName = "watch_history")
+@Entity(tableName = "watch_history", primaryKeys = ["profileId", "mediaId"])
 data class WatchHistoryEntity(
-    @PrimaryKey val mediaId: String,
+    /** Perfil de "Quem está assistindo?" (ProfileStore); "p_main" é o perfil inicial. */
+    @ColumnInfo(defaultValue = "p_main") val profileId: String = ProfileIds.MAIN,
+    val mediaId: String,
     val channelId: Long,
     val channelTitle: String,
     val title: String,

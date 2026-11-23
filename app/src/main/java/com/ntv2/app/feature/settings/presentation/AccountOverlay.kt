@@ -179,7 +179,7 @@ private fun ColumnScope.AccountBody(
     }
     if (!confirmDelete) {
         TestButton(icon = NbrIcons.Trash2, label = "Apagar meus dados", style = BrandButtonStyle.Destructive,
-            modifier = bw(isTv).focusRequester(firstFocus), onClick = { confirmDelete = true; deleteMessage = null })
+            modifier = bw(isTv), onClick = { confirmDelete = true; deleteMessage = null })
     } else {
         SettingsNotice(NbrIcons.TriangleAlert, BrandColors.Warning, "Não tem como desfazer. Apagar mesmo?", tv = isTv)
         TestButton(
@@ -203,7 +203,8 @@ private fun ColumnScope.AccountBody(
         )
         TestButton(icon = NbrIcons.X, label = "Cancelar", modifier = bw(isTv), onClick = { confirmDelete = false })
     }
-    TestButton(icon = NbrIcons.X, label = "Fechar", modifier = bw(isTv), onClick = onClose)
+    // Foco inicial no Fechar (não no botão destrutivo).
+    TestButton(icon = NbrIcons.X, label = "Fechar", modifier = bw(isTv).focusRequester(firstFocus), onClick = onClose)
 }
 
 @Composable

@@ -1,6 +1,7 @@
 package com.ntv2.app.core.backend.catalog
 
 import com.ntv2.app.core.backend.SupabaseClient
+import com.ntv2.app.core.catalog.NtvIds
 import com.ntv2.app.core.telegram.media.CastMemberMeta
 import com.ntv2.app.feature.media.data.index.CatalogKind
 import com.ntv2.app.feature.media.data.index.CatalogSearch
@@ -8,6 +9,7 @@ import com.ntv2.app.feature.media.data.index.IndexEpisode
 import com.ntv2.app.feature.media.data.index.IndexMovie
 import com.ntv2.app.feature.media.data.index.IndexSeason
 import com.ntv2.app.feature.media.data.index.IndexSeries
+import com.ntv2.app.feature.media.data.index.catalogKey
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -48,6 +50,7 @@ class RemoteCatalogSearch(
 
     // Temporadas por série, com o mesmo prazo das páginas: sem prazo, episódio novo só aparecia depois
     // de reiniciar o app (a TV fica dias aberta).
+    // Chave = IndexSeries.tmdbId (id do TMDB ou a chave local da série própria: não colidem).
     private val seasonsCache = ConcurrentHashMap<Long, Pair<Long, List<IndexSeason>>>()
 
     /** null = ainda não sabe; false = backend sem `series_episodes_many` (uma chamada por série). */
@@ -95,14 +98,38 @@ class RemoteCatalogSearch(
         return page
     }
 
-    private fun cachedSeasons(seriesTmdbId: Long): List<IndexSeason>? =
-        seasonsCache[seriesTmdbId]?.takeIf { now() - it.first < PAGE_CACHE_TTL_MS }?.second
+    private fun cachedSeasons(key: Long): List<IndexSeason>? =
+        seasonsCache[key]?.takeIf { now() - it.first < PAGE_CACHE_TTL_MS }?.second
 
+    /** Temporadas de uma série do TMDB (`series_episodes`). */
     suspend fun seriesEpisodes(seriesTmdbId: Long): List<IndexSeason> {
         cachedSeasons(seriesTmdbId)?.let { return it }
         val body = JSONObject().put("series_tmdb_id", seriesTmdbId).toString()
         return parseSeriesEpisodes(client.rpc("series_episodes", body)).also { seasonsCache[seriesTmdbId] = now() to it }
     }
+
+    /**
+     * Temporadas de qualquer série: própria (sem TMDB) por `series_episodes_ntv`; do TMDB pelo
+     * `series_episodes` de sempre.
+     */
+    suspend fun seriesEpisodes(series: IndexSeries): List<IndexSeason> {
+        if (episodesRpcFor(series) == EpisodesRpc.BY_TMDB) return seriesEpisodes(series.tmdbId)
+        cachedSeasons(series.tmdbId)?.let { return it }
+        if (ntvRpcSupported == false) return emptyList()
+        val body = JSONObject().put("series_ntv_id", series.seriesNtvId).toString()
+        val seasons = try {
+            parseSeriesEpisodes(client.rpc("series_episodes_ntv", body)).also { ntvRpcSupported = true }
+        } catch (e: com.ntv2.app.core.backend.BackendException) {
+            // Backend sem a RPC (migration 20261114000100 não aplicada): a série fica sem episódios, como antes.
+            if (e.code == 404) { ntvRpcSupported = false; return emptyList() }
+            throw e
+        }
+        seasonsCache[series.tmdbId] = now() to seasons
+        return seasons
+    }
+
+    /** null = ainda não sabe; false = backend sem `series_episodes_ntv`. */
+    @Volatile private var ntvRpcSupported: Boolean? = null
 
     /**
      * Temporadas de todas as séries da página numa chamada (`series_episodes_many`). Antes era uma
@@ -129,14 +156,16 @@ class RemoteCatalogSearch(
 
     private suspend fun withSeasons(series: List<IndexSeries>): List<IndexSeries> {
         if (series.isEmpty()) return series
-        val missing = series.map { it.tmdbId }.filter { cachedSeasons(it) == null }.distinct()
+        // Só séries do TMDB entram no lote; as próprias vão uma a uma por series_episodes_ntv (poucas).
+        val missing = series.filter { episodesRpcFor(it) == EpisodesRpc.BY_TMDB }
+            .map { it.tmdbId }.filter { cachedSeasons(it) == null }.distinct()
         if (missing.isEmpty() || fetchSeasonsBatch(missing.take(BATCH_MAX))) {
-            return series.map { s -> s.copy(seasons = cachedSeasons(s.tmdbId) ?: seriesEpisodes(s.tmdbId)) }
+            return series.map { s -> s.copy(seasons = cachedSeasons(s.tmdbId) ?: seriesEpisodes(s)) }
         }
         val permits = Semaphore(episodeConcurrency)
         return coroutineScope {
             series.map { s ->
-                async { permits.withPermit { s.copy(seasons = seriesEpisodes(s.tmdbId)) } }
+                async { permits.withPermit { s.copy(seasons = seriesEpisodes(s)) } }
             }.awaitAll()
         }
     }
@@ -147,6 +176,13 @@ class RemoteCatalogSearch(
         const val BATCH_MAX = 100
     }
 }
+
+/** Qual RPC traz os episódios da série. */
+internal enum class EpisodesRpc { BY_TMDB, BY_NTV_ID }
+
+/** Série do TMDB → `series_episodes`/`series_episodes_many`; própria (sem TMDB) → `series_episodes_ntv`. */
+internal fun episodesRpcFor(series: IndexSeries): EpisodesRpc =
+    if (series.isOwn || series.ntvId?.let(NtvIds::ownSlug) != null) EpisodesRpc.BY_NTV_ID else EpisodesRpc.BY_TMDB
 
 /** Saída do search_catalog: `{ movies: [...], series: [...], total }`. */
 internal fun parseSearchCatalog(json: String): RemoteCatalogPage {
@@ -169,7 +205,9 @@ internal fun parseSeriesEpisodes(json: String): List<IndexSeason> =
     }.sortedBy { it.number }
 
 private fun parseCatalogMovie(o: JSONObject) = IndexMovie(
-    tmdbId = o.optLong("tmdb_id"),
+    // Filme próprio vem com tmdb_id null: a chave sai do ntv_id (m_nbr_<slug>), sem colidir com outros.
+    tmdbId = catalogKey(o),
+    ntvId = o.text("ntv_id"),
     title = o.text("title") ?: "Filme",
     originalTitle = o.text("original_title"),
     year = o.text("year"),
@@ -190,7 +228,8 @@ private fun parseCatalogMovie(o: JSONObject) = IndexMovie(
 )
 
 private fun parseCatalogSeries(o: JSONObject) = IndexSeries(
-    tmdbId = o.optLong("tmdb_id"),
+    tmdbId = catalogKey(o),
+    ntvId = o.text("ntv_id"),
     title = o.text("title") ?: "Série",
     originalTitle = o.text("original_title"),
     posterUrl = o.text("poster_url"),

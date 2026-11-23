@@ -20,9 +20,10 @@ object IndexCatalogSeed {
     fun from(snapshot: IndexSnapshot): CatalogSeed {
         val chatId = snapshot.channelId.takeIf { it != 0L }
         val rows = ArrayList<CatalogRow>(snapshot.movies.size + snapshot.series.size * 8)
-        snapshot.movies.forEach { m -> if (m.tmdbId > 0) rows += movieRow(m, chatId) }
+        // Conteúdo próprio (chave local, NtvIds.isOwnKey) também fica de fora: já chega pelo sync.
+        snapshot.movies.forEach { m -> if (m.tmdbId > 0 && !m.isOwn) rows += movieRow(m, chatId) }
         snapshot.series.forEach { s ->
-            if (s.tmdbId <= 0) return@forEach
+            if (s.tmdbId <= 0 || s.isOwn) return@forEach
             rows += seriesRow(s)
             s.seasons.forEach { season ->
                 season.episodes.forEach { e ->

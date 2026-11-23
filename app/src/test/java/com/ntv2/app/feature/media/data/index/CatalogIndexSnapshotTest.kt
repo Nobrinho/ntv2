@@ -176,4 +176,32 @@ class CatalogIndexSnapshotTest {
         assertEquals("https://k", m.cast.single().photoUrl)
         assertEquals("https://image.tmdb.org/t/p/w500/m.png", m.logoUrl)
     }
+
+    @Test
+    fun `serie propria do catalogo local vira IndexSeries com episodios e chave propria`() {
+        val b = CatalogIndexSnapshot.Builder()
+        b.add(CatalogMerge.rowOf(KIND_SERIES, "s_nbr_tom-e-jerry", null,
+            JSONObject().put("id_proprio", "tom-e-jerry").put("title", "Tom e Jerry").put("logo_url", "https://x/l.png")))
+        b.add(CatalogMerge.rowOf(KIND_SERIES, "s_nbr_pica-pau", null,
+            JSONObject().put("id_proprio", "pica-pau").put("title", "Pica-Pau")))
+        listOf(2, 1).forEach { n ->
+            b.add(CatalogMerge.rowOf(com.ntv2.app.core.catalog.KIND_EPISODE, "e_nbr_tom-e-jerry_01_0$n", null,
+                JSONObject().put("series_id_proprio", "tom-e-jerry").put("season_number", 1).put("episode_number", n)
+                    .put("video_message_id", 500 + n).put("chat_id", chat)))
+        }
+        b.add(CatalogMerge.rowOf(KIND_MOVIE, "m_nbr_curta", null,
+            JSONObject().put("id_proprio", "curta").put("title", "Curta").put("video_message_id", 9).put("chat_id", chat)))
+        val snap = b.build(null)!!
+        val tj = snap.series.first { it.title == "Tom e Jerry" }
+        assertTrue(tj.isOwn)
+        assertEquals("s_nbr_tom-e-jerry", tj.seriesNtvId)
+        assertEquals("https://x/l.png", tj.logoUrl)
+        assertEquals(listOf(501L, 502L), tj.seasons.single().episodes.map { it.videoMessageId })
+        assertTrue(snap.series.first { it.title == "Pica-Pau" }.seasons.isEmpty())
+        assertTrue(snap.series[0].tmdbId != snap.series[1].tmdbId)
+        assertEquals("m_nbr_curta", snap.movies.single().ntvId)
+        assertTrue(snap.movies.single().isOwn)
+        // Seed do index.json não regrava conteúdo próprio (chega pelo sync).
+        assertTrue(IndexCatalogSeed.from(snap).rows.isEmpty())
+    }
 }

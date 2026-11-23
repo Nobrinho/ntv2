@@ -229,7 +229,8 @@ class PersonalizationSyncer(
         .put("title", e.title)
         .put("poster_url", remoteUrl(e.posterPath))
         .put("channel_name", e.channelTitle)
-        .put("tmdb_id", e.tmdbId ?: JSONObject.NULL)
+        // Conteúdo próprio guarda a chave local (NtvIds.ownKey), que não é id do TMDB: vai null.
+        .put("tmdb_id", e.tmdbId?.takeUnless { it.toLongOrNull()?.let(com.ntv2.app.core.catalog.NtvIds::isOwnKey) == true } ?: JSONObject.NULL)
         // `year` não existe no Room: fora do corpo, o upsert preserva o que o servidor tiver.
         .put("updated_at", SyncTime.toIso(e.updatedAt))
         .put("deleted", e.deleted)

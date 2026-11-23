@@ -39,13 +39,55 @@ const val KIND_SERIES = "series"
 const val KIND_EPISODE = "episode"
 const val KIND_REMOVED = "removed"
 
-/** IDs do catálogo, iguais aos do backend: `m_603`, `s_1399`, `e_1399_01_03`. */
+/**
+ * IDs do catálogo, iguais aos do backend: `m_603`, `s_1399`, `e_1399_01_03`; conteúdo próprio (NBR
+ * Studio, sem TMDB): `m_nbr_<slug>`, `s_nbr_<slug>`, `e_nbr_<slug>_TT_EE` (o slug não tem "_").
+ *
+ * O app indexa filmes e séries por um `Long` (o antigo `tmdbId`: mapas, chaves de lista, favoritos,
+ * "continuar"). Item próprio não tem `tmdb_id`, então ganha uma chave estável derivada do slug
+ * ([ownKey]), sempre ≥ 2^62: nunca colide com um id do TMDB e continua > 0 (os `tmdbId > 0` seguem
+ * valendo). Nunca vai a uma URL do TMDB: use [isOwnKey] antes.
+ */
 object NtvIds {
     fun movie(tmdbId: Long) = "m_$tmdbId"
     fun series(tmdbId: Long) = "s_$tmdbId"
-    fun episode(seriesTmdbId: Long, season: Int, episode: Int) = 
+    fun episode(seriesTmdbId: Long, season: Int, episode: Int) =
         String.format(java.util.Locale.ROOT, "e_%d_%02d_%02d", seriesTmdbId, season, episode)
+
+    private const val OWN_KEY_BASE = 1L shl 62
+    private val RX_OWN = Regex("[mse]_nbr_([a-z0-9][a-z0-9-]*)(?:_\\d+_\\d+)?")
+    private val RX_TMDB = Regex("[mse]_(\\d+)(?:_\\d+_\\d+)?")
+    private val RX_EPISODE = Regex("e_((?:nbr_)?[a-z0-9-]+)_\\d+_\\d+")
+
+    /** Chave local de um item próprio pelo slug (FNV-1a 64, faixa [2^62, 2^63)). */
+    fun ownKey(slug: String): Long {
+        var h = -0x340d631b7bdddcdbL // 14695981039346656037
+        for (b in slug.toByteArray(Charsets.UTF_8)) {
+            h = h xor (b.toLong() and 0xff)
+            h *= 0x100000001b3L
+        }
+        return OWN_KEY_BASE or (h and (OWN_KEY_BASE - 1))
+    }
+
+    /** Chave de conteúdo próprio (não é id do TMDB). */
+    fun isOwnKey(key: Long): Boolean = key >= OWN_KEY_BASE
+
+    /** Slug do item próprio (`s_nbr_tom-e-jerry` → `tom-e-jerry`); null se for do TMDB. */
+    fun ownSlug(ntvId: String): String? = RX_OWN.matchEntire(ntvId)?.groupValues?.get(1)
+
+    /**
+     * Chave `Long` do item (ou, para episódio, da série): o id do TMDB ou [ownKey] do slug. Null se o
+     * id não for reconhecido.
+     */
+    fun keyOf(ntvId: String): Long? =
+        ownSlug(ntvId)?.let(::ownKey) ?: RX_TMDB.matchEntire(ntvId)?.groupValues?.get(1)?.toLongOrNull()
+
+    /** `e_1399_01_03` → `s_1399`; `e_nbr_x_01_02` → `s_nbr_x`. Null se não for episódio. */
+    fun seriesOfEpisode(ntvId: String): String? = RX_EPISODE.matchEntire(ntvId)?.let { "s_" + it.groupValues[1] }
 }
+
+/** Chave `Long` do item ([NtvIds.keyOf]); para episódio, a da série. */
+fun CatalogRow.itemKey(): Long? = tmdbId ?: NtvIds.keyOf(ntvId)
 
 object CatalogMerge {
     /**

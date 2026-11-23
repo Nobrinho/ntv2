@@ -252,13 +252,16 @@ object MovieMetadataParser {
         val season = code?.first ?: fromId?.get(2)?.toIntOrNull()
         val episode = code?.second ?: fromId?.get(3)?.toIntOrNull()
         val isEpisode = ntvId.startsWith("e_")
-        val seriesTmdb = if (isEpisode) tmdb ?: fromId?.get(1) else null
+        // Conteúdo próprio (e_nbr_<slug>_TT_EE, m_nbr_<slug>) não tem TMDB: a chave local do slug
+        // (NtvIds.keyOf) agrupa o episódio com a série do catálogo e mantém favoritos/"continuar".
+        val idKey = com.ntv2.app.core.catalog.NtvIds.keyOf(ntvId)?.toString()
+        val seriesTmdb = if (isEpisode) tmdb ?: idKey else null
         return MovieMeta(
             ntvId = ntvId,
             imdbId = fields["imdb"]?.takeIf { it.isNotBlank() },
             // Episódio: a logo da SÉRIE (contrato). Caminho TMDB → URL w500.
             logoUrl = fields["logo"]?.let { tmdbUrl(it, TMDB_LOGO) },
-            tmdbId = tmdb ?: seriesTmdb ?: ntvId.removePrefix("m_").takeIf { ntvId.startsWith("m_") },
+            tmdbId = tmdb ?: seriesTmdb ?: idKey.takeIf { ntvId.startsWith("m_") },
             type = if (isEpisode) "Episódio" else null,
             seriesTmdbId = seriesTmdb,
             seasonNumber = if (isEpisode) season else null,
@@ -341,5 +344,5 @@ internal fun parseDurationMinutes(text: String): Int? {
 private val RX_WHITESPACE = Regex("\\s+")
 private val RX_YEAR4 = Regex("\\d{4}")
 private val RX_NTV_ID = Regex("[a-z]_[A-Za-z0-9_-]+")
-private val RX_NTV_EPISODE = Regex("e_(\\d+)_(\\d{1,3})_(\\d{1,3})")
+private val RX_NTV_EPISODE = Regex("e_((?:nbr_)?[a-z0-9-]+)_(\\d{1,3})_(\\d{1,3})")
 private val RX_V3_CODE = Regex("(?i)S(\\d{1,2})E(\\d{1,3})")

@@ -143,6 +143,20 @@ class MovieMetadataParserTest {
     }
 
     @Test
+    fun `v3 de conteudo proprio usa a chave local do slug`() {
+        val key = com.ntv2.app.core.catalog.NtvIds.ownKey("tom-e-jerry").toString()
+        val ep = MovieMetadataParser.parse("ntv:e_nbr_tom-e-jerry_01_07")
+        assertEquals("e_nbr_tom-e-jerry_01_07", ep.ntvId)
+        assertEquals(key, ep.seriesTmdbId)
+        assertEquals(key, ep.tmdbId)
+        assertEquals(1, ep.seasonNumber)
+        assertEquals(7, ep.episodeNumber)
+        assertTrue(ep.isEpisode)
+        val filme = MovieMetadataParser.parse("ntv:m_nbr_curta-a")
+        assertEquals(com.ntv2.app.core.catalog.NtvIds.ownKey("curta-a").toString(), filme.tmdbId)
+    }
+
+    @Test
     fun `legenda antiga continua igual e sem ntv_id`() {
         val antiga = "Título: Matrix\nAno: 1999\nTMDB: 603\nSinopse: Neo descobre a verdade."
         val meta = MovieMetadataParser.parse(antiga)

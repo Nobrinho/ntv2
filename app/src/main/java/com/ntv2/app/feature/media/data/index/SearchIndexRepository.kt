@@ -15,6 +15,18 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.text.Normalizer
 
+/**
+ * Chave `Long` de filme/série vinda do backend ou do índice: `tmdb_id` (> 0) ou, para conteúdo próprio
+ * sem TMDB, a chave do `ntv_id`/`id_proprio` ([com.ntv2.app.core.catalog.NtvIds.ownKey]). 0 = sem id.
+ */
+internal fun catalogKey(o: JSONObject): Long {
+    o.optLong("tmdb_id", 0L).takeIf { it > 0L }?.let { return it }
+    val ntv = if (o.isNull("ntv_id")) null else o.optString("ntv_id").trim().ifBlank { null }
+    ntv?.let(com.ntv2.app.core.catalog.NtvIds::keyOf)?.let { return it }
+    val slug = if (o.isNull("id_proprio")) null else o.optString("id_proprio").trim().ifBlank { null }
+    return slug?.let(com.ntv2.app.core.catalog.NtvIds::ownKey) ?: 0L
+}
+
 /** Um filme do índice hospedado (schema v1). */
 data class IndexMovie(
     val tmdbId: Long,
@@ -34,8 +46,12 @@ data class IndexMovie(
     val director: String? = null,
     /** Nota do IMDb (0-10) e Tomatômetro do Rotten Tomatoes (0-100), vindas do OMDb no backend. */
     val imdbRating: Double? = null,
-    val rtScore: Int? = null
+    val rtScore: Int? = null,
+    /** `ntv_id` do catálogo (`m_603`, `m_nbr_<slug>`); null no índice antigo. */
+    val ntvId: String? = null
 ) {
+    /** Filme próprio (NBR Studio): [tmdbId] é a chave local, não um id do TMDB. */
+    val isOwn: Boolean get() = com.ntv2.app.core.catalog.NtvIds.isOwnKey(tmdbId)
     /** Diretores normalizados (filtro por diretor). */
     val directorKeys: Set<String> by lazy { directorKeysOf(director) }
     val searchKey: String = normalizeForIndex(listOfNotNull(title, originalTitle).joinToString(" "))
@@ -83,8 +99,14 @@ data class IndexSeries(
     /** Criador(es)/diretor(es) da série, se o índice trouxer. */
     val director: String? = null,
     val imdbRating: Double? = null,
-    val rtScore: Int? = null
+    val rtScore: Int? = null,
+    /** `ntv_id` do catálogo (`s_1399`, `s_nbr_<slug>`); null no índice antigo (= `s_<tmdbId>`). */
+    val ntvId: String? = null
 ) {
+    /** Série própria (NBR Studio, sem TMDB): [tmdbId] é a chave local de [NtvIds.ownKey]. */
+    val isOwn: Boolean get() = com.ntv2.app.core.catalog.NtvIds.isOwnKey(tmdbId)
+    /** `ntv_id` para o backend (`series_episodes_ntv`). */
+    val seriesNtvId: String get() = ntvId ?: com.ntv2.app.core.catalog.NtvIds.series(tmdbId)
     val directorKeys: Set<String> by lazy { directorKeysOf(director) }
     /** Ano da série = ano do 1º episódio (menor temporada/episódio) que traz data de exibição. */
     val year: Int? = seasons.asSequence().flatMap { it.episodes.asSequence() }
@@ -339,7 +361,8 @@ class SearchIndexRepository(
             CastMemberMeta(name = nome, photoUrl = co.optString("photo_url").ifBlank { null })
         } else emptyList()
         return IndexMovie(
-            tmdbId = o.optLong("tmdb_id"),
+            tmdbId = catalogKey(o),
+            ntvId = o.cleanString("ntv_id"),
             title = o.optString("title").ifBlank { "Filme" },
             originalTitle = o.optString("original_title").ifBlank { null },
             year = o.optString("year").ifBlank { null },
@@ -361,7 +384,8 @@ class SearchIndexRepository(
         val genresArr = o.optJSONArray("genres")
         val genres = if (genresArr != null) (0 until genresArr.length()).map { genresArr.optString(it) } else emptyList()
         return IndexSeries(
-            tmdbId = o.optLong("tmdb_id"),
+            tmdbId = catalogKey(o),
+            ntvId = o.cleanString("ntv_id"),
             title = o.optString("title").ifBlank { "Série" },
             originalTitle = o.optString("original_title").ifBlank { null },
             posterUrl = o.optString("poster_url").ifBlank { null },

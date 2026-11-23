@@ -160,4 +160,44 @@ class CatalogCardResolverTest {
         assertEquals("Wachowski", merged.director)
         assertEquals(8.7, merged.rating!!, 0.0)
     }
+
+    @Test
+    fun `episodio proprio acha a serie pelo ntv_id e usa a chave local`() = runTest {
+        val series = CatalogMerge.rowOf(
+            KIND_SERIES, "s_nbr_tom-e-jerry", null,
+            JSONObject().put("tmdb_id", JSONObject.NULL).put("id_proprio", "tom-e-jerry").put("title", "Tom e Jerry")
+                .put("poster_url", "https://x/tj.jpg").put("overview", "Gato e rato.")
+        )
+        val ep = CatalogMerge.rowOf(
+            KIND_EPISODE, "e_nbr_tom-e-jerry_01_05", null,
+            JSONObject().put("series_tmdb_id", JSONObject.NULL).put("series_id_proprio", "tom-e-jerry")
+                .put("season_number", 1).put("episode_number", 5).put("title", "Curta 5")
+                .put("video_message_id", 77).put("chat_id", chat)
+        )
+        val meta = CatalogCardResolver(storeWith(series, ep)) { true }.metaFor(null, chat, 77)!!
+        assertEquals("Tom e Jerry — S01E05 — Curta 5", meta.title)
+        assertTrue(meta.isEpisode)
+        assertEquals("https://x/tj.jpg", meta.posterUrl)
+        assertEquals("Gato e rato.", meta.synopsis)
+        val key = NtvIds.ownKey("tom-e-jerry").toString()
+        assertEquals(key, meta.seriesTmdbId)
+        assertEquals(key, meta.tmdbId)
+        assertNull(ep.tmdbId)
+    }
+
+    @Test
+    fun `chave local de conteudo proprio e estavel e fora da faixa do TMDB`() {
+        val a = NtvIds.ownKey("tom-e-jerry")
+        assertEquals(a, NtvIds.ownKey("tom-e-jerry"))
+        assertTrue(a != NtvIds.ownKey("pica-pau"))
+        assertTrue(NtvIds.isOwnKey(a))
+        assertTrue(!NtvIds.isOwnKey(1399L))
+        assertEquals(a, NtvIds.keyOf("s_nbr_tom-e-jerry"))
+        assertEquals(a, NtvIds.keyOf("e_nbr_tom-e-jerry_01_02"))
+        assertEquals(1399L, NtvIds.keyOf("e_1399_01_03"))
+        assertEquals(603L, NtvIds.keyOf("m_603"))
+        assertEquals("s_nbr_tom-e-jerry", NtvIds.seriesOfEpisode("e_nbr_tom-e-jerry_01_02"))
+        assertEquals("s_1399", NtvIds.seriesOfEpisode("e_1399_01_03"))
+        assertNull(NtvIds.ownSlug("s_1399"))
+    }
 }

@@ -5,6 +5,7 @@ import com.ntv2.app.core.catalog.CatalogStore
 import com.ntv2.app.core.catalog.KIND_EPISODE
 import com.ntv2.app.core.catalog.KIND_MOVIE
 import com.ntv2.app.core.catalog.KIND_SERIES
+import com.ntv2.app.core.catalog.itemKey
 import com.ntv2.app.core.telegram.media.CastMemberMeta
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,23 +36,26 @@ object CatalogIndexSnapshot {
 
     class Builder {
         private val movies = ArrayList<IndexMovie>()
-        private val series = HashMap<Long, JSONObject>()
+        // Chave = id do TMDB ou a chave local do conteúdo próprio (NtvIds.ownKey): não colidem.
+        private val series = HashMap<Long, Pair<String, JSONObject>>()
         private val episodes = HashMap<Long, MutableList<IndexEpisode>>()
         private val chatCounts = HashMap<Long, Int>()
 
         fun add(row: CatalogRow) {
             val d = runCatching { JSONObject(row.data) }.getOrNull() ?: return
             row.chatId?.let { chatCounts[it] = (chatCounts[it] ?: 0) + 1 }
+            // itemKey: tmdb_id ou, sem ele (série/filme próprio do NBR Studio), a chave do ntv_id.
             when (row.kind) {
-                KIND_MOVIE -> row.tmdbId?.let { movies += movie(it, d) }
-                KIND_SERIES -> row.tmdbId?.let { series[it] = d }
-                KIND_EPISODE -> row.tmdbId?.let { s -> episode(d)?.let { episodes.getOrPut(s) { ArrayList() } += it } }
+                KIND_MOVIE -> row.itemKey()?.let { movies += movie(it, row.ntvId, d) }
+                KIND_SERIES -> row.itemKey()?.let { series[it] = row.ntvId to d }
+                KIND_EPISODE -> row.itemKey()?.let { s -> episode(d)?.let { episodes.getOrPut(s) { ArrayList() } += it } }
             }
         }
 
         fun build(updatedAtMillis: Long?): IndexSnapshot? {
             if (movies.isEmpty() && series.isEmpty()) return null
-            val seriesList = series.map { (tmdbId, d) ->
+            val seriesList = series.map { (tmdbId, entry) ->
+                val (ntvId, d) = entry
                 val seasons = episodes[tmdbId].orEmpty()
                     .groupBy { it.seasonNumber }
                     .map { (n, eps) -> IndexSeason(n, eps.sortedBy { it.episodeNumber }) }
@@ -69,7 +73,8 @@ object CatalogIndexSnapshot {
                     trailerUrl = d.text("trailer_url"),
                     director = d.directorText(),
                     imdbRating = d.imdbRating(),
-                    rtScore = d.rtScore()
+                    rtScore = d.rtScore(),
+                    ntvId = ntvId
                 )
             }
             // Mesma ordem do index.json (gerar_indice.py: título em minúsculas).
@@ -81,7 +86,7 @@ object CatalogIndexSnapshot {
             )
         }
 
-        private fun movie(tmdbId: Long, d: JSONObject): IndexMovie {
+        private fun movie(tmdbId: Long, ntvId: String, d: JSONObject): IndexMovie {
             val castArr = d.optJSONArray("cast")
             val cast = if (castArr != null) (0 until castArr.length()).mapNotNull { i ->
                 val c = castArr.optJSONObject(i) ?: return@mapNotNull null
@@ -106,7 +111,8 @@ object CatalogIndexSnapshot {
                 // filtros de diretor e nota mínima não achavam nada e os de nota sumiam.
                 director = d.directorText(),
                 imdbRating = d.imdbRating(),
-                rtScore = d.rtScore()
+                rtScore = d.rtScore(),
+                ntvId = ntvId
             )
         }
 

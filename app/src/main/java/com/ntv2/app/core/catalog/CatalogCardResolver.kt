@@ -20,7 +20,10 @@ class CatalogCardResolver(
         val row = ntvId?.let { store.byNtvId(it) }
             ?: store.byMessage(chatId, botApiMessageId(messageId))
             ?: return null
-        val series = if (row.kind == KIND_EPISODE) row.tmdbId?.let { store.byNtvId(NtvIds.series(it)) } else null
+        // Série do episódio pelo próprio ntv_id (e_1399_01_03 → s_1399; e_nbr_x_01_02 → s_nbr_x).
+        val series = if (row.kind == KIND_EPISODE) {
+            (NtvIds.seriesOfEpisode(row.ntvId) ?: row.tmdbId?.let(NtvIds::series))?.let { store.byNtvId(it) }
+        } else null
         return runCatching { CatalogMetaMapper.toMeta(row, series) }.getOrNull()
     }
 
@@ -47,7 +50,8 @@ object CatalogMetaMapper {
                 common(d, extra, row).copy(
                     title = title,
                     synopsis = d.cleanString("overview") ?: extra.cleanString("overview"),
-                    tmdbId = row.tmdbId?.toString(),
+                    // Próprio (sem TMDB): a chave local, para favoritos/"continuar"/agrupamento.
+                    tmdbId = row.itemKey()?.toString(),
                     type = if (row.kind == KIND_SERIES) "Série" else extra.cleanString("type")
                 )
             }
@@ -84,13 +88,13 @@ object CatalogMetaMapper {
             country = own.country ?: seriesMeta?.country,
             studio = own.studio ?: seriesMeta?.studio,
             // Legado: [MovieMeta.tmdbId] de episódio é o id da SÉRIE.
-            tmdbId = row.tmdbId?.toString(),
+            tmdbId = row.itemKey()?.toString(),
             seriesTitle = seriesTitle,
             seasonNumber = season,
             episodeNumber = number,
             episodeTitle = episodeTitle,
             airDate = d.cleanString("air_date"),
-            seriesTmdbId = row.tmdbId?.toString(),
+            seriesTmdbId = row.itemKey()?.toString(),
             episodeTmdbId = d.positiveLong("episode_tmdb_id")?.toString()
         )
     }

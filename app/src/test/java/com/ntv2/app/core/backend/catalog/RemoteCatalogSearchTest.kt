@@ -5,6 +5,7 @@ import com.ntv2.app.core.backend.BackendRequest
 import com.ntv2.app.core.backend.BackendResponse
 import com.ntv2.app.core.backend.HttpTransport
 import com.ntv2.app.core.backend.SupabaseClient
+import com.ntv2.app.core.catalog.NtvIds
 import com.ntv2.app.feature.media.data.index.CatalogKind
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
@@ -201,5 +202,108 @@ class RemoteCatalogSearchTest {
         assertTrue(transport.requests.single().url.endsWith("/rest/v1/app_config?select=value&key=eq.flags"))
 
         assertFalse(RemoteSearchFlag(SupabaseClient(BackendConfig("", ""))).isEnabled())
+    }
+
+    // ---------------------------------------------------------------- conteúdo próprio (NBR Studio)
+
+    private val ownSearchJson = """
+        {
+          "movies": [
+            {"ntv_id": "m_nbr_curta-a", "tmdb_id": null, "id_proprio": "curta-a", "title": "Curta A", "video_message_id": 10},
+            {"ntv_id": "m_nbr_curta-b", "tmdb_id": null, "id_proprio": "curta-b", "title": "Curta B", "video_message_id": 11}
+          ],
+          "series": [
+            {"ntv_id": "s_nbr_tom-e-jerry", "tmdb_id": null, "id_proprio": "tom-e-jerry", "title": "Tom e Jerry",
+             "poster_url": "https://img/tj.jpg", "backdrop_url": "https://img/tj-bg.jpg", "logo_url": "https://img/tj-logo.png",
+             "overview": "Gato e rato."},
+            {"ntv_id": "s_1396", "tmdb_id": 1396, "title": "Breaking Bad"}
+          ],
+          "total": 4
+        }
+    """.trimIndent()
+
+    private val ownEpisodesJson = """
+        [{"number": 1, "episodes": [
+          {"ntv_id": "e_nbr_tom-e-jerry_01_02", "series_tmdb_id": null, "series_id_proprio": "tom-e-jerry",
+           "season_number": 1, "episode_number": 2, "title": "Ep 2", "video_message_id": 502},
+          {"ntv_id": "e_nbr_tom-e-jerry_01_01", "series_tmdb_id": null, "series_id_proprio": "tom-e-jerry",
+           "season_number": 1, "episode_number": 1, "title": "Ep 1", "video_message_id": 501}
+        ]}]
+    """.trimIndent()
+
+    @Test
+    fun `parse do search_catalog com itens proprios usa a chave do ntv_id sem colidir`() {
+        val page = parseSearchCatalog(ownSearchJson)
+        val (a, b) = page.movies
+        assertTrue(a.tmdbId != b.tmdbId)
+        assertTrue(a.isOwn && b.isOwn)
+        assertEquals(NtvIds.ownKey("curta-a"), a.tmdbId)
+        assertEquals("m_nbr_curta-a", a.ntvId)
+
+        val own = page.series.first()
+        assertTrue(own.isOwn)
+        assertEquals("s_nbr_tom-e-jerry", own.seriesNtvId)
+        assertEquals(NtvIds.ownKey("tom-e-jerry"), own.tmdbId)
+        assertEquals("https://img/tj.jpg", own.posterUrl)
+        assertEquals("https://img/tj-bg.jpg", own.backdropUrl)
+        assertEquals("https://img/tj-logo.png", own.logoUrl)
+        assertEquals("Gato e rato.", own.overview)
+
+        val tmdb = page.series[1]
+        assertFalse(tmdb.isOwn)
+        assertEquals(1396L, tmdb.tmdbId)
+        assertEquals("s_1396", tmdb.seriesNtvId)
+    }
+
+    @Test
+    fun `serie propria busca episodios por series_episodes_ntv e a do TMDB pelo lote`() {
+        val page = parseSearchCatalog(ownSearchJson)
+        assertEquals(EpisodesRpc.BY_NTV_ID, episodesRpcFor(page.series[0]))
+        assertEquals(EpisodesRpc.BY_TMDB, episodesRpcFor(page.series[1]))
+        // Índice antigo, sem ntv_id: TMDB como sempre.
+        assertEquals(EpisodesRpc.BY_TMDB, episodesRpcFor(page.series[1].copy(ntvId = null)))
+    }
+
+    @Test
+    fun `busca com serie propria chama series_episodes_ntv e mantem o lote para o TMDB`() = runTest {
+        val transport = FakeTransport { req ->
+            when {
+                req.url.endsWith("/rpc/search_catalog") -> BackendResponse(200, ownSearchJson)
+                req.url.endsWith("/rpc/series_episodes_many") -> BackendResponse(200, """{"1396": $episodesJson}""")
+                req.url.endsWith("/rpc/series_episodes_ntv") -> BackendResponse(200, ownEpisodesJson)
+                else -> BackendResponse(404, "")
+            }
+        }
+        val remote = RemoteCatalogSearch(SupabaseClient(BackendConfig("http://local", "anon"), transport))
+        val (_, series) = remote.search(0L, "tom", emptySet(), emptySet(), null, CatalogKind.ALL, 30)
+
+        val many = transport.requests.single { it.url.endsWith("/rpc/series_episodes_many") }
+        assertEquals("[1396]", JSONObject(many.body!!).getJSONArray("series_tmdb_ids").toString())
+        val ntv = transport.requests.single { it.url.endsWith("/rpc/series_episodes_ntv") }
+        assertEquals("s_nbr_tom-e-jerry", JSONObject(ntv.body!!).getString("series_ntv_id"))
+        assertEquals(0, transport.requests.count { it.url.endsWith("/rpc/series_episodes") })
+
+        val tj = series.first { it.isOwn }
+        assertEquals(listOf(501L, 502L), tj.seasons.single().episodes.map { it.videoMessageId })
+        assertEquals(2, series.first { !it.isOwn }.seasons.size)
+    }
+
+    @Test
+    fun `backend sem series_episodes_ntv deixa a serie propria sem episodios sem quebrar`() = runTest {
+        val transport = FakeTransport { req ->
+            when {
+                req.url.endsWith("/rpc/search_catalog") -> BackendResponse(200, ownSearchJson)
+                req.url.endsWith("/rpc/series_episodes") -> BackendResponse(200, episodesJson)
+                else -> BackendResponse(404, "")
+            }
+        }
+        val remote = RemoteCatalogSearch(SupabaseClient(BackendConfig("http://local", "anon"), transport))
+        val (_, series) = remote.search(0L, "tom", emptySet(), emptySet(), null, CatalogKind.ALL, 30)
+        assertTrue(series.first { it.isOwn }.seasons.isEmpty())
+        assertEquals(2, series.first { !it.isOwn }.seasons.size)
+
+        // Fica sabendo que não existe: a busca seguinte não tenta de novo.
+        remote.search(0L, "jerry", emptySet(), emptySet(), null, CatalogKind.ALL, 30)
+        assertEquals(1, transport.requests.count { it.url.endsWith("/rpc/series_episodes_ntv") })
     }
 }

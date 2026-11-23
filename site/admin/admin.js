@@ -229,12 +229,30 @@ async function openAccount(accountId) {
          · ${esc(a.favorites)} na Minha lista · ${esc(a.history)} no histórico</p>
       <h2>Aparelhos</h2>
       <table><tbody>${devs.map((d) => `<tr>
-        <td data-label="Aparelho">${esc(d.device_name || 'Aparelho')}<div class="mono">${esc(short(d.user_id))}</div></td>
-        <td data-label="Atividade">${esc(ago(d.active_at))}</td>
+        <td data-label="Aparelho">${esc(d.device_name || d.device_model || 'Aparelho')}<div class="mono">${esc(short(d.user_id))}</div>
+          <div class="muted">${esc([d.device_model, d.app_version].filter(Boolean).join(' · '))}</div></td>
+        <td data-label="Atividade">${esc(ago(d.active_at))}
+          ${d.blocked ? `<div><span class="tag bad">bloqueado ${esc(day(d.blocked_at))}</span></div>
+            <div class="muted">${esc(d.blocked_reason || 'sem motivo')}</div>` : ''}</td>
         <td><div class="row">
           ${d.blocked ? `<button data-unblock="${esc(d.user_id)}">Desbloquear</button>` : `<button class="danger" data-block="${esc(d.user_id)}">Bloquear</button>`}
           ${a.devices.length > 1 ? `<button data-disconnect="${esc(d.user_id)}">Desconectar da conta</button>` : ''}
         </div></td></tr>`).join('')}</tbody></table>
+      <h2 style="margin-top:16px">Perfis</h2>
+      ${(a.profiles || []).length ? `<table><tbody>${a.profiles.map((p) => `<tr class="click" data-profile="${esc(p.profile_id)}">
+        <td data-label="Perfil"><b>${esc(p.name)}</b> ${p.kids ? `<span class="tag acc">infantil${p.max_rating ? ' · até ' + esc(p.max_rating) : ''}</span>` : ''}
+          ${p.has_pin ? '<span class="tag">com PIN</span>' : ''}<div class="mono">${esc(p.profile_id)}</div></td>
+        <td data-label="Minha lista">${esc(p.favorites)} na lista</td><td data-label="Histórico">${esc(p.history)} no histórico</td>
+        <td data-label="Alterado">${esc(when(p.updated_at))}</td></tr>`).join('')}</tbody></table>
+        <p class="muted" style="font-size:13px">Clique num perfil para ver a lista, o histórico e o progresso dele.</p>`
+        : '<p class="muted">Nenhum perfil sincronizado (aparelho em versão antiga ou sem Premium de sincronização).</p>'}
+      <div id="items"></div>
+      <h2 style="margin-top:16px">Denúncias desta conta</h2>
+      ${(a.reports || []).length ? `<table><tbody>${a.reports.map((r) => `<tr>
+        <td data-label="Título"><b>${esc(r.title || r.media_id)}</b><div class="mono">${esc(r.media_id)}</div></td>
+        <td data-label="Motivo">${esc(REASONS[r.reason] || r.reason)}${r.note ? `<div class="muted">"${esc(r.note)}"</div>` : ''}</td>
+        <td data-label="Data">${esc(when(r.created_at))}</td><td data-label="Situação">${statusTag(r.status)}</td></tr>`).join('')}</tbody></table>`
+        : '<p class="muted">Nenhuma denúncia.</p>'}
       <h2 style="margin-top:16px">Premium de cortesia</h2>
       <div class="row"><input id="days" type="number" value="30" min="-3650" max="3650" style="max-width:110px">
         <input id="note" class="grow" placeholder="Motivo (opcional)"><button class="primary" data-grant>Dar dias</button></div>
@@ -243,6 +261,10 @@ async function openAccount(accountId) {
       ${a.payments.length ? `<table><tbody>${a.payments.map((p) => `<tr><td data-label="Data">${esc(when(p.created_at))}</td>
         <td data-label="Plano">${esc(p.plan_id)}</td><td data-label="Valor">${esc(money(p.amount_cents))}</td>
         <td data-label="Situação">${statusTag(p.status)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Nenhum pagamento.</p>'}
+      <h2 style="margin-top:16px">Dados pessoais (LGPD)</h2>
+      <p class="muted" style="font-size:13px">Apaga perfis, Minha lista, histórico e progresso da conta e tira o vínculo das denúncias.
+        Aparelhos, Premium e pagamentos continuam.</p>
+      <button class="danger" data-wipe>Apagar dados da conta</button>
       <p class="msg" id="am"></p>`;
     const done = (text) => { const m = document.getElementById('am'); m.className = 'msg ok'; m.textContent = text; };
     // Confirmação dentro do painel (os diálogos nativos do navegador ficam ruins no celular).
@@ -277,7 +299,53 @@ async function openAccount(accountId) {
       'Desconectar este aparelho da conta? Ele fica com uma cópia dos dados.', false, async () => {
         try { await rpc('admin_disconnect_device', { user_id: b.dataset.disconnect }); openAccount(accountId); } catch (e) { fail(e); }
       })));
+    dlg.querySelectorAll('[data-profile]').forEach((tr) => (tr.onclick = () => showItems(accountId, tr.dataset.profile, 'favorites')));
+    // Dois passos: motivo e depois digitar APAGAR (não tem como desfazer).
+    dlg.querySelector('[data-wipe]').onclick = () => {
+      const m = document.getElementById('am');
+      m.className = 'msg';
+      m.innerHTML = `<div class="card" style="margin:0"><p style="margin:0 0 8px"><b>Não tem como desfazer.</b>
+        Os aparelhos desta conta continuam, mas voltam sem perfis, lista e histórico.</p>
+        <input id="wreason" placeholder="Motivo (ex.: pedido por e-mail em 23/11)" style="margin-bottom:8px">
+        <input id="wconfirm" placeholder="Digite APAGAR para confirmar" style="margin-bottom:8px">
+        <div class="row"><button class="danger" data-yes>Apagar dados</button><button data-no>Cancelar</button></div></div>`;
+      m.querySelector('[data-no]').onclick = () => { m.innerHTML = ''; };
+      m.querySelector('[data-yes]').onclick = async () => {
+        const reason = document.getElementById('wreason').value.trim();
+        if (!reason) return fail(new Error('Informe o motivo.'));
+        if (document.getElementById('wconfirm').value.trim() !== 'APAGAR') return fail(new Error('Digite APAGAR para confirmar.'));
+        try {
+          const r = await rpc('admin_delete_account_data', { account_id: accountId, reason });
+          done(`Apagados: ${r.profiles} perfis, ${r.favorites} na lista, ${r.history} no histórico, ${r.progress} progressos; ` +
+            `${r.reports_unlinked} denúncias sem vínculo.`);
+          setTimeout(() => openAccount(accountId), 1500);
+        } catch (e) { fail(e); }
+      };
+    };
   } catch (e) { dlg.innerHTML = errorBox(e) + '<button data-close>Fechar</button>'; dlg.querySelector('[data-close]').onclick = () => dlg.close(); }
+}
+
+// Lista, histórico ou progresso de um perfil, dentro do detalhe da conta.
+const ITEM_KINDS = [['favorites', 'Minha lista'], ['history', 'Histórico'], ['progress', 'Progresso']];
+async function showItems(accountId, profileId, kind) {
+  const box = document.getElementById('items');
+  if (!box) return;
+  box.innerHTML = '<p class="muted">Carregando…</p>';
+  try {
+    const items = await rpc('admin_account_items', { account_id: accountId, profile_id: profileId, kind, lim: 100, off: 0 });
+    const row = (x) => kind === 'progress'
+      ? `<tr><td data-label="Título" class="mono">${esc(x.media_id)}</td>
+          <td data-label="Posição">${esc(Math.round((x.position_ms || 0) / 60000))} de ${esc(Math.round((x.duration_ms || 0) / 60000))} min</td>
+          <td data-label="Data">${esc(when(x.updated_at))}</td></tr>`
+      : `<tr><td data-label="Título"><b>${esc(x.title || x.media_id)}</b><div class="mono">${esc(x.media_id)}</div></td>
+          <td data-label="Canal">${esc(x.channel_name || '—')}</td>
+          <td data-label="Data">${esc(when(x.updated_at || x.last_opened_at))}</td></tr>`;
+    box.innerHTML = `<div class="card" style="margin:12px 0 0"><div class="row">
+        <b class="grow">Perfil <span class="mono">${esc(profileId)}</span></b>
+        ${ITEM_KINDS.map(([k, n]) => `<button data-kind="${k}" ${k === kind ? 'class="primary"' : ''}>${n}</button>`).join('')}</div>
+      ${items.length ? `<table><tbody>${items.map(row).join('')}</tbody></table>` : '<p class="muted">Vazio.</p>'}</div>`;
+    box.querySelectorAll('[data-kind]').forEach((b) => (b.onclick = () => showItems(accountId, profileId, b.dataset.kind)));
+  } catch (e) { box.innerHTML = errorBox(e); }
 }
 
 function statusTag(s) {
@@ -350,7 +418,8 @@ async function reports() {
 
 // ---------------------------------------------------------------- auditoria
 const ACTIONS = { grant_premium: 'Premium de cortesia', report_resolved: 'Reportes resolvidos', report_ignored: 'Reportes ignorados',
-  report_open: 'Reportes reabertos', block_device: 'Bloqueio', unblock_device: 'Desbloqueio', disconnect_device: 'Desconexão' };
+  report_open: 'Reportes reabertos', block_device: 'Bloqueio', unblock_device: 'Desbloqueio', disconnect_device: 'Desconexão',
+  delete_account_data: 'Dados apagados (LGPD)' };
 async function audit() {
   view().innerHTML = '<div class="card"><p class="muted">Carregando…</p></div>';
   try {

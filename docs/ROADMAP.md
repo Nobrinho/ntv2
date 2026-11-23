@@ -72,15 +72,19 @@ Backend pronto e desligado. Falta:
 
 Qualidade (4K/HDR/DV) e áudio não podem ser cobrados.
 
-### 5. Administração de usuários ⏳
-Pedida em 18/10/2026, ainda sem escopo. Ideias:
-- ver contas e aparelhos;
-- Premium de cortesia;
-- bloquear abuso;
-- tratar reportes (`media_reports`);
-- consultar pagamentos.
+### 5. Administração, perfis e denúncias 🧪
+Escopo fechado e implementado em 23/11/2026 (app + `ntv2-backend` + painel `site/admin`), **ainda sem deploy**:
+- **Perfis reais:** `account_profiles` sincronizado, lista/histórico/progresso por perfil (Room v6), PIN só como
+  hash, Kids filtrando por classificação ou, sem ela, por gênero (Animação/Família).
+- **Painel:** conta com perfis, itens por perfil, motivo do bloqueio, denúncias da conta e "Apagar dados" (LGPD);
+  triagem de denúncias por título com resposta ao usuário, ocultar/mostrar título e pedido de repostagem.
+- **App:** Configurações › Minha conta (identificador, aparelhos, Premium, minhas denúncias com a resposta,
+  apagar meus dados) e aviso de aparelho bloqueado.
+- **Alertas:** 3 denúncias abertas num título avisam na hora no Telegram; resumo das novas a cada hora.
 
-Lugar provável: `api/` (NestJS) do `ntv2-backend`. Definir o escopo antes de construir.
+Falta: deploy na ordem do `OPERACAO.md` (release 0.11.0 → `db push` das 4 migrations → `min_version_code`),
+validar no Fire TV e no S23, o bot ler `private.repost_requests` e gravar a classificação indicativa
+(`certification` do TMDB-BR) para o Kids deixar de depender do gênero.
 
 ### 6. Dívidas técnicas e de dados ⏳
 - **Cards da grade:** os que vêm do índice (NBRlib) não mostram duração nem qualidade.
@@ -143,5 +147,7 @@ a fase 5 segue em aberto no item 6.
 Media3 ficou de fora, como tarefa própria.
 
 23/11/2026: novas plataformas (iOS, Samsung, LG e PS5) entram como item 8, ainda sem escopo e sem data.
+
+23/11/2026: item 5 (administração, perfis e denúncias) implementado nas 4 fases do plano; falta o deploy.
 
 Itens novos entram aqui com data.

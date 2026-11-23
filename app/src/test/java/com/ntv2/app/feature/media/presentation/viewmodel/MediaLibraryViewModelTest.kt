@@ -417,6 +417,7 @@ class MediaLibraryViewModelTest {
         )
         val index = com.ntv2.app.feature.media.data.index.SearchIndexRepository(
             indexUrl = "http://127.0.0.1:1/index.json",
+            client = okhttp3.OkHttpClient(),
             localIndex = { local },
             refreshLocal = { syncs++ },
             ioDispatcher = dispatcher,

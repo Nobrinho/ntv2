@@ -77,6 +77,8 @@ interface AppContainer {
     val playbackSourceResolver: PlaybackSourceResolver
     val playbackController: PlaybackController
     val castManager: com.ntv2.app.core.cast.CastManager
+    /** Cliente OkHttp único do app; usos com prazos próprios derivam dele com `newBuilder()`. */
+    val httpClient: okhttp3.OkHttpClient
     val localStreamServer: com.ntv2.app.core.cast.LocalStreamServer
     val playbackProgressStore: PlaybackProgressStore
     val userLibraryRepository: com.ntv2.app.core.library.UserLibraryRepository
@@ -132,6 +134,10 @@ class DefaultAppContainer(
 ) : AppContainer {
     private val appContext = context.applicationContext
     private val playbackTuning = PlaybackTuning()
+
+    override val httpClient: okhttp3.OkHttpClient by lazy {
+        com.ntv2.app.core.network.buildBaseOkHttpClient(appContext)
+    }
     private val tdlibConfig = TdlibRuntimeConfig(
         enabled = com.ntv2.app.BuildConfig.TELEGRAM_REAL_ENABLED,
         apiId = com.ntv2.app.BuildConfig.TELEGRAM_API_ID,
@@ -344,6 +350,7 @@ class DefaultAppContainer(
     override val searchIndexRepository: SearchIndexRepository by lazy {
         SearchIndexRepository(
             indexUrl = SEARCH_INDEX_URL,
+            client = httpClient,
             // Flag remote_catalog ligada e primeira carga concluída: a busca lê o catálogo local.
             localIndex = {
                 if (remoteCatalogOn() && catalogStore.cursor() != null) {

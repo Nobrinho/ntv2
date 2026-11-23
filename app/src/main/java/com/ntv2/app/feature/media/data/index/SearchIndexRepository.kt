@@ -183,7 +183,8 @@ data class SearchIndexStatus(
  */
 class SearchIndexRepository(
     private val indexUrl: String,
-    private val client: OkHttpClient = OkHttpClient(),
+    /** Cliente único do app (AppContainer.httpClient): CAs embutidas, IPv4 e pool compartilhado. */
+    private val client: OkHttpClient,
     // Revalida após esse tempo; enquanto isso usa o cache em memória.
     private val ttlMillis: Long = 6 * 60 * 60 * 1000L,
     /**

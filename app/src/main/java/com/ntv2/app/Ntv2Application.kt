@@ -10,13 +10,6 @@ import com.ntv2.app.di.AppContainer
 import com.ntv2.app.di.DefaultAppContainer
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
-import java.security.KeyStore
-import java.security.cert.CertificateException
-import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManagerFactory
-import javax.net.ssl.X509TrustManager
 
 class Ntv2Application : Application(), ImageLoaderFactory {
     lateinit var appContainer: AppContainer
@@ -103,8 +96,7 @@ class Ntv2Application : Application(), ImageLoaderFactory {
     // - Cache de memória (25% da RAM) + disco (3% do volume, 64–256 MB): menos re-decode sem
     //   disputar espaço com os vídeos. Já foi 1%/80 MB, mas o pré-carregamento das capas enchia
     //   esse teto e expulsava o banner e o elenco dos Detalhes, que voltavam a baixar toda vez.
-    // - OkHttp com TrustManager que confia nas CAs do sistema + raízes Amazon/Starfield
-    //   (o image.tmdb.org usa CloudFront/Amazon; alguns aparelhos não têm essas raízes).
+    // - OkHttp derivado do cliente único (core/network/HttpClients.kt: CAs Amazon/Starfield + IPv4).
     // Pouca memória no aparelho (TV/emulador de 2 GB): devolve o cache de capas ao sistema antes que o
     // lmkd mate o app (a saída aparecia como "PROCESS ENDED" sem exceção, motivo LOW_MEMORY).
     override fun onTrimMemory(level: Int) {
@@ -114,7 +106,10 @@ class Ntv2Application : Application(), ImageLoaderFactory {
 
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
-            .okHttpClient { buildOkHttpClient() }
+            // Deriva do cliente único do app: mesmo pool de conexões, com dispatcher e prazos das capas.
+            .okHttpClient {
+                appContainer.httpClient.newBuilder().dispatcher(coverDispatcher()).applyImageTimeouts().build()
+            }
             .bitmapConfig(Bitmap.Config.RGB_565)
             .allowRgb565(true)
             .crossfade(false)
@@ -146,33 +141,6 @@ class Ntv2Application : Application(), ImageLoaderFactory {
             }
             .build()
 
-    private fun buildOkHttpClient(): OkHttpClient {
-        return runCatching {
-            val cf = CertificateFactory.getInstance("X.509")
-            val extras = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
-                load(null)
-                listOf(R.raw.amazon_root_ca1 to "amazon", R.raw.starfield_g2 to "starfield").forEach { (res, alias) ->
-                    resources.openRawResource(res).use { setCertificateEntry(alias, cf.generateCertificate(it)) }
-                }
-            }
-            val alg = TrustManagerFactory.getDefaultAlgorithm()
-            val customTms = TrustManagerFactory.getInstance(alg).apply { init(extras) }.trustManagers
-            val systemTms = TrustManagerFactory.getInstance(alg).apply { init(null as KeyStore?) }.trustManagers
-            val managers = (customTms + systemTms).filterIsInstance<X509TrustManager>()
-            val composite = CompositeX509TrustManager(managers)
-            val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(composite), null) }
-            OkHttpClient.Builder()
-                .dispatcher(coverDispatcher())
-                .applyImageTimeouts()
-                .sslSocketFactory(ssl.socketFactory, composite)
-                .dns(Ipv4PreferredDns)
-                .build()
-        }.getOrElse {
-            android.util.Log.e("Ntv2Ssl", "Falha ao montar OkHttp com CAs embutidas; usando padrão", it)
-            OkHttpClient.Builder().dispatcher(coverDispatcher()).applyImageTimeouts().build()
-        }
-    }
-
     /**
      * Sem prazo, uma conexão que ficou pendurada segura o pedido por minutos — era isso que deixava
      * a arte da tela de Detalhes (a única imagem que não está em cache) sem aparecer. Com prazo, o
@@ -189,41 +157,5 @@ class Ntv2Application : Application(), ImageLoaderFactory {
         maxRequests = 64
         // Android < 8 (Fire TV de 1ª linha): menos downloads simultâneos para não competir com a UI.
         maxRequestsPerHost = if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) 8 else 16
-    }
-
-    /** Prefere endereços IPv4 (evita timeout em redes/emuladores com IPv6 quebrado). */
-    private object Ipv4PreferredDns : okhttp3.Dns {
-        override fun lookup(hostname: String): List<java.net.InetAddress> {
-            val all = okhttp3.Dns.SYSTEM.lookup(hostname)
-            val v4 = all.filterIsInstance<java.net.Inet4Address>()
-            return if (v4.isNotEmpty()) v4 else all
-        }
-    }
-
-    /** Aceita o certificado se QUALQUER trust manager (sistema ou raízes embutidas) confiar nele. */
-    // Não relaxa a validação: só delega aos validadores padrão (sistema + raízes Amazon/Starfield).
-    @android.annotation.SuppressLint("CustomX509TrustManager")
-    private class CompositeX509TrustManager(
-        private val managers: List<X509TrustManager>
-    ) : X509TrustManager {
-        override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
-            var last: CertificateException? = null
-            for (tm in managers) {
-                try {
-                    tm.checkServerTrusted(chain, authType)
-                    return
-                } catch (e: CertificateException) {
-                    last = e
-                }
-            }
-            throw last ?: CertificateException("Nenhum trust manager disponível")
-        }
-
-        override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
-            managers.firstOrNull()?.checkClientTrusted(chain, authType)
-        }
-
-        override fun getAcceptedIssuers(): Array<X509Certificate> =
-            managers.flatMap { it.acceptedIssuers.toList() }.toTypedArray()
     }
 }

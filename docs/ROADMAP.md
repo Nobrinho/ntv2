@@ -105,6 +105,28 @@ Lugar provável: `api/` (NestJS) do `ntv2-backend`. Definir o escopo antes de co
   assinatura. O app continua só agregador.
 - NBR Studio (repo `nbr-studio`): bot, cortador e captador num app só; falta teste real no Telegram.
 
+### 8. Novas plataformas ⏳
+Pedido em 23/11/2026, ainda sem escopo. O app atual é só Android (celular, Android TV e Fire TV); cada
+plataforma abaixo é um app novo, não uma recompilação. Pontos a resolver antes de começar:
+- **iOS (iPhone, iPad, Apple TV):**
+  - o TDLib compila para iOS;
+  - a interface teria de ser refeita (SwiftUI) ou migrada para Compose Multiplatform;
+  - o AVPlayer não toca MKV nem AC3/DTS/TrueHD, então o player precisaria de FFmpeg ou VLCKit;
+  - risco de recusa na App Store para um app que reproduz conteúdo de canais do Telegram;
+  - distribuição fora da loja é restrita.
+- **Samsung (Tizen) e LG (webOS):**
+  - são apps web (HTML/JS) com player nativo da TV (AVPlay no Tizen);
+  - o Telegram teria de vir do TDLib em WebAssembly (`tdweb`) ou de um servidor intermediário;
+  - o download progressivo com janela no disco não tem equivalente direto;
+  - publicar exige conta de desenvolvedor e aprovação na loja de cada fabricante.
+- **PS5:**
+  - não há SDK aberto para apps de terceiros;
+  - apps de vídeo entram só por parceria com a Sony;
+  - na prática, depende de um acordo comercial, e não de trabalho técnico.
+
+Ordem sugerida, se avançar: Samsung e LG primeiro (base de TVs grande no Brasil, um mesmo app web serve às
+duas), iOS depois e PS5 só com parceria.
+
 ## Ordem
 Combinado em 18/10/2026: validar em aparelhos reais e, depois, Premium e administração de usuários.
 
@@ -119,5 +141,7 @@ a fase 5 segue em aberto no item 6.
 
 23/11/2026: raio-x das bibliotecas conferido no Context7; correções feitas e conferidas no emulador. A subida do
 Media3 ficou de fora, como tarefa própria.
+
+23/11/2026: novas plataformas (iOS, Samsung, LG e PS5) entram como item 8, ainda sem escopo e sem data.
 
 Itens novos entram aqui com data.

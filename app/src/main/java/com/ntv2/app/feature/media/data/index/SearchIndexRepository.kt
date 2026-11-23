@@ -1,5 +1,6 @@
 package com.ntv2.app.feature.media.data.index
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -191,7 +192,11 @@ class SearchIndexRepository(
      */
     private val localIndex: suspend () -> IndexSnapshot? = { null },
     /** Botão "atualizar" com o catálogo local: pede a diferença ao backend antes de reler a cópia. */
-    private val refreshLocal: suspend () -> Unit = {}
+    private val refreshLocal: suspend () -> Unit = {},
+    /** Rede/disco (download do índice). Injetável para os testes não dependerem de threads reais. */
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Contas sobre o índice (busca, filtros, listagens). */
+    private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) {
     private val mutex = Mutex()
     @Volatile private var cached: LoadedIndex? = null
@@ -279,7 +284,7 @@ class SearchIndexRepository(
         }
     }
 
-    private suspend fun fetch(forceNetwork: Boolean = false): LoadedIndex? = withContext(Dispatchers.IO) {
+    private suspend fun fetch(forceNetwork: Boolean = false): LoadedIndex? = withContext(ioDispatcher) {
         val req = Request.Builder()
             .apply {
                 if (forceNetwork) {
@@ -463,7 +468,7 @@ class SearchIndexRepository(
     }
 
     /** Filmes do canal, do post mais novo ao mais antigo (grade da biblioteca). Vazio se não cobrir o canal. */
-    suspend fun allMovies(channelId: Long): List<IndexMovie> = withContext(Dispatchers.Default) {
+    suspend fun allMovies(channelId: Long): List<IndexMovie> = withContext(computeDispatcher) {
         val idx = ensureLoaded() ?: return@withContext emptyList()
         if (idx.channelId != channelId) emptyList()
         else idx.movies.filter { it.videoMessageId > 0L }.sortedByDescending { it.videoMessageId }
@@ -476,7 +481,7 @@ class SearchIndexRepository(
     }
 
     /** Busca local por séries: casa título da série, título de episódio ou código SxxExx. */
-    suspend fun searchSeries(channelId: Long, query: String, limit: Int = 60): List<IndexSeries> = withContext(Dispatchers.Default) {
+    suspend fun searchSeries(channelId: Long, query: String, limit: Int = 60): List<IndexSeries> = withContext(computeDispatcher) {
         val idx = ensureLoaded() ?: return@withContext emptyList()
         if (idx.channelId != channelId) return@withContext emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
@@ -500,7 +505,7 @@ class SearchIndexRepository(
         actor: String? = null,
         limit: Int = 60,
         attrs: AttrFilter = AttrFilter()
-    ): Pair<List<IndexMovie>, List<IndexSeries>> = withContext(Dispatchers.Default) {
+    ): Pair<List<IndexMovie>, List<IndexSeries>> = withContext(computeDispatcher) {
         val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext emptyList<IndexMovie>() to emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }
         val wanted = genres.map { normalizeForIndex(it).trim() }
@@ -533,21 +538,21 @@ class SearchIndexRepository(
     }
 
     /** O índice do canal traz nota do IMDb / do Rotten Tomatoes em algum item? */
-    suspend fun ratingsAvailable(channelId: Long): Pair<Boolean, Boolean> = withContext(Dispatchers.Default) {
+    suspend fun ratingsAvailable(channelId: Long): Pair<Boolean, Boolean> = withContext(computeDispatcher) {
         val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext false to false
         (idx.movies.any { it.imdbRating != null } || idx.series.any { it.imdbRating != null }) to
             (idx.movies.any { it.rtScore != null } || idx.series.any { it.rtScore != null })
     }
 
     /** Quantos filmes do canal têm [actor] no elenco. */
-    suspend fun countByActor(channelId: Long, actor: String): Int = withContext(Dispatchers.Default) {
+    suspend fun countByActor(channelId: Long, actor: String): Int = withContext(computeDispatcher) {
         val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext 0
         val key = normalizeForIndex(actor).trim()
         idx.movieActorKeys.count { key in it }
     }
 
     /** Gêneros (A-Z) e anos (mais recente primeiro) existentes no índice do canal, para o filtro. */
-    suspend fun filterOptions(channelId: Long): Pair<List<String>, List<Int>> = withContext(Dispatchers.Default) {
+    suspend fun filterOptions(channelId: Long): Pair<List<String>, List<Int>> = withContext(computeDispatcher) {
         val idx = ensureLoaded()?.takeIf { it.channelId == channelId } ?: return@withContext emptyList<String>() to emptyList()
         val genres = LinkedHashMap<String, String>()
         (idx.movies.flatMap { it.genres } + idx.series.flatMap { it.genres }).forEach { g ->
@@ -602,7 +607,7 @@ class SearchIndexRepository(
     }
 
     /** Busca local por título/título original (sem acento/caixa). Vazio se não cobrir o canal. */
-    suspend fun search(channelId: Long, query: String, limit: Int = 60): List<IndexMovie> = withContext(Dispatchers.Default) {
+    suspend fun search(channelId: Long, query: String, limit: Int = 60): List<IndexMovie> = withContext(computeDispatcher) {
         val idx = ensureLoaded() ?: return@withContext emptyList()
         if (idx.channelId != channelId) return@withContext emptyList()
         val tokens = normalizeForIndex(query).split(' ').filter { it.isNotBlank() }

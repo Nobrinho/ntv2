@@ -418,7 +418,9 @@ class MediaLibraryViewModelTest {
         val index = com.ntv2.app.feature.media.data.index.SearchIndexRepository(
             indexUrl = "http://127.0.0.1:1/index.json",
             localIndex = { local },
-            refreshLocal = { syncs++ }
+            refreshLocal = { syncs++ },
+            ioDispatcher = dispatcher,
+            computeDispatcher = dispatcher
         )
         val media = FakeMediaRepo().apply {
             listPages = { channelId, _ -> MediaPage(listOf(item("a", channelId, 600, 1)), nextCursor = 0L) }
@@ -433,9 +435,6 @@ class MediaLibraryViewModelTest {
         assertEquals(1, syncs)
         assertFalse(vm.uiState.value.isRefreshing)
         assertTrue(vm.uiState.value.items.isNotEmpty())
-        // O índice real faz contas em Dispatchers.Default e volta ao Main do teste: espera elas acabarem
-        // antes do resetMain, senão a volta estoura no teste seguinte.
-        repeat(5) { Thread.sleep(50); advanceUntilIdle() }
     }
 
     @Test

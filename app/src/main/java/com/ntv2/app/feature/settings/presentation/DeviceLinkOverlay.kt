@@ -30,7 +30,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -74,6 +73,7 @@ import com.ntv2.app.core.ui.trapFocus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.ntv2.app.core.ui.icons.NbrIcons
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private enum class LinkMode { MENU, SHOW_CODE, ENTER_CODE }
 
@@ -576,7 +576,7 @@ private fun KeypadKey(label: String, enabled: Boolean, modifier: Modifier = Modi
 @Composable
 private fun SyncNow(runner: SyncRunner, tv: Boolean) {
     val scope = rememberCoroutineScope()
-    val status by runner.status.collectAsState()
+    val status by runner.status.collectAsStateWithLifecycle()
     var outcome by remember { mutableStateOf<SyncOutcome?>(null) }
     // Relógio da linha "há N min" (anda sozinho enquanto a tela está aberta).
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }

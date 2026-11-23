@@ -25,7 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -71,6 +70,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** Fundo das telas do Premium (31/33 e TV 15): violeta (ou verde na confirmação) embaixo, bg no topo. */
 private val PremiumViolet = Color(0xFF2A1F5C)
@@ -178,7 +178,7 @@ private fun PremiumIntro(tv: Boolean) {
 @Composable
 private fun PlanChooser(repository: PremiumRepository, tv: Boolean, onCharge: (PixCharge) -> Unit, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val status by repository.status.collectAsState()
+    val status by repository.status.collectAsStateWithLifecycle()
     var loadFailed by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }

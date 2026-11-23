@@ -33,7 +33,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -85,6 +84,7 @@ import com.ntv2.app.feature.media.data.index.SearchIndexStatus
 import com.ntv2.app.feature.update.presentation.UpdateStage
 import com.ntv2.app.feature.update.presentation.UpdateUiState
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun SettingsScreen(
@@ -127,7 +127,7 @@ fun SettingsScreen(
     premium: com.ntv2.app.core.backend.premium.PremiumRepository? = null
 ) {
     var showPremium by remember { mutableStateOf(false) }
-    val premiumStatus = premium?.status?.collectAsState()?.value
+    val premiumStatus = premium?.status?.collectAsStateWithLifecycle()?.value
     LaunchedEffect(premium) { runCatching { premium?.refresh() } }
     var showConnectionTest by remember { mutableStateOf(false) }
     var showDeviceLink by remember { mutableStateOf(false) }

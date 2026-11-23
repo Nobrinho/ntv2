@@ -1,7 +1,6 @@
 ﻿package com.ntv2.app.core.navigation
 
 import com.ntv2.app.core.ui.initialKeyFocus
-import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -148,7 +147,7 @@ fun AppNavHost(
 
     // Sessão do Telegram revogada/deslogada FORA do app: detecção + reação global.
     val rootScope = rememberCoroutineScope()
-    val authUi by appContainer.authRepository.authState.collectAsState(initial = AuthState())
+    val authUi by appContainer.authRepository.authState.collectAsStateWithLifecycle(initialValue = AuthState())
     val lifecycleOwner = LocalLifecycleOwner.current
     // Ao voltar ao foreground, sonda a sessão (GetMe leve): se foi revogada, vira sessionExpired.
     DisposableEffect(lifecycleOwner) {
@@ -187,8 +186,8 @@ fun AppNavHost(
   val profileStore = remember(context) { com.ntv2.app.core.profiles.ProfileStore.get(context) }
   var profileScreen by remember { mutableStateOf<com.ntv2.app.feature.profiles.presentation.ProfileScreen?>(null) }
   var profilePickedThisRun by rememberSaveable { mutableStateOf(false) }
-  val activeProfileId by profileStore.activeId.collectAsState()
-  val profileList by profileStore.profiles.collectAsState()
+  val activeProfileId by profileStore.activeId.collectAsStateWithLifecycle()
+  val profileList by profileStore.profiles.collectAsStateWithLifecycle()
   LaunchedEffect(currentRoute, showSplash, showOnboarding) {
       if (!profilePickedThisRun && currentRoute == RoutePath.MEDIA_LIBRARY && !showSplash && !showOnboarding) {
           profilePickedThisRun = true
@@ -206,7 +205,7 @@ fun AppNavHost(
   }
 
   // "Animações" (Configurações) para qualquer tela: liga o anel de foco deslizante.
-  val settingAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)
+  val settingAnimations by appContainer.settingsRepository.animationsEnabled.collectAsStateWithLifecycle(initialValue = true)
   // Respeita também o "movimento reduzido" do sistema (escala de animações = 0).
   val appContext = androidx.compose.ui.platform.LocalContext.current
   val systemAnimations = remember {
@@ -382,14 +381,14 @@ fun AppNavHost(
         composable(RoutePath.SETTINGS) {
             val scope = rememberCoroutineScope()
             val settings = appContainer.settingsRepository
-            val showCovers by settings.showCovers.collectAsState(initial = true)
-            val animationsEnabled by settings.animationsEnabled.collectAsState(initial = true)
-            val minDuration by settings.minDurationMinutes.collectAsState(initial = 15)
-            val castPhotos by settings.castPhotos.collectAsState(initial = true)
-            val trailerPreview by settings.trailerPreview.collectAsState(initial = true)
-            val nativeBlurGlow by settings.nativeBlurGlow.collectAsState(initial = true)
+            val showCovers by settings.showCovers.collectAsStateWithLifecycle(initialValue = true)
+            val animationsEnabled by settings.animationsEnabled.collectAsStateWithLifecycle(initialValue = true)
+            val minDuration by settings.minDurationMinutes.collectAsStateWithLifecycle(initialValue = 15)
+            val castPhotos by settings.castPhotos.collectAsStateWithLifecycle(initialValue = true)
+            val trailerPreview by settings.trailerPreview.collectAsStateWithLifecycle(initialValue = true)
+            val nativeBlurGlow by settings.nativeBlurGlow.collectAsStateWithLifecycle(initialValue = true)
             val cardLoadingStyleName by settings.cardLoadingStyle
-                .collectAsState(initial = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT.name)
+                .collectAsStateWithLifecycle(initialValue = com.ntv2.app.core.ui.CardLoadingStyle.DEFAULT.name)
             val searchIndex = appContainer.searchIndexRepository
             val indexStatus by searchIndex.status.collectAsStateWithLifecycle()
             SettingsScreen(
@@ -510,8 +509,8 @@ fun AppNavHost(
                     partsLookup = appContainer.partsLookup
                 )
             )
-            val playerAnimations by appContainer.settingsRepository.animationsEnabled.collectAsState(initial = true)
-            val playerNativeBlur by appContainer.settingsRepository.nativeBlurGlow.collectAsState(initial = true)
+            val playerAnimations by appContainer.settingsRepository.animationsEnabled.collectAsStateWithLifecycle(initialValue = true)
+            val playerNativeBlur by appContainer.settingsRepository.nativeBlurGlow.collectAsStateWithLifecycle(initialValue = true)
             PlaybackScreen(
                 animationsEnabled = playerAnimations,
                 nativeBlurGlow = playerNativeBlur,

@@ -32,7 +32,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +68,7 @@ import com.ntv2.app.core.ui.rememberAdaptiveLayoutInfo
 import com.ntv2.app.core.ui.trapFocus
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** Telas do fluxo de perfis (protótipo 43, 44, 60-66; TV 19, 22-24). */
 sealed interface ProfileScreen {
@@ -105,8 +105,8 @@ fun ProfilesHost(
     onNavigate: (ProfileScreen?) -> Unit
 ) {
     if (screen == null) return
-    val profiles by store.profiles.collectAsState()
-    val activeId by store.activeId.collectAsState()
+    val profiles by store.profiles.collectAsStateWithLifecycle()
+    val activeId by store.activeId.collectAsStateWithLifecycle()
     val tv = rememberAdaptiveLayoutInfo().useTvLayout
 
     fun activate(id: String) { store.setActive(id); onNavigate(null) }

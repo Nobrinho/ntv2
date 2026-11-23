@@ -3,6 +3,7 @@ package com.ntv2.app.core.cast
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.mediarouter.app.MediaRouteChooserDialog
 import androidx.mediarouter.app.MediaRouteControllerDialog
 import com.google.android.gms.cast.MediaInfo
@@ -49,13 +50,12 @@ data class RemotePlayback(
 class CastManager(context: Context) {
     private val appContext = context.applicationContext
 
-    private val castContext: CastContext? by lazy {
-        val gms = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(appContext)
-        if (gms != ConnectionResult.SUCCESS) return@lazy null
-        runCatching { CastContext.getSharedInstance(appContext) }
-            .onFailure { Log.w(TAG, "Cast indisponível", it) }
-            .getOrNull()
-    }
+    /**
+     * Preenchido de forma assíncrona em [start] (`getSharedInstance(context, executor)`, que não trava a
+     * thread principal carregando o módulo do Cast). Null = sem Play Services, ainda carregando ou falhou.
+     */
+    @Volatile
+    private var castContext: CastContext? = null
 
     private val _status = MutableStateFlow<CastStatus>(CastStatus.Unsupported)
     val status: StateFlow<CastStatus> = _status.asStateFlow()
@@ -84,11 +84,32 @@ class CastManager(context: Context) {
         override fun onSessionSuspended(session: CastSession, reason: Int) = Unit
     }
 
-    /** Liga a escuta de aparelhos/sessões (chamar na thread principal). */
+    /**
+     * Liga a escuta de aparelhos/sessões (chamar na thread principal). O Cast carrega em segundo plano:
+     * até terminar, o status fica [CastStatus.Unsupported] (botão escondido).
+     */
     fun start() {
         if (started) return
-        val ctx = castContext ?: return
+        val gms = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(appContext)
+        if (gms != ConnectionResult.SUCCESS) return
         started = true
+        val mainExecutor = ContextCompat.getMainExecutor(appContext)
+        runCatching { CastContext.getSharedInstance(appContext, mainExecutor) }
+            .onFailure {
+                Log.w(TAG, "Cast indisponível", it)
+                started = false
+            }
+            .getOrNull()
+            ?.addOnSuccessListener(mainExecutor) { ctx -> attachContext(ctx) }
+            ?.addOnFailureListener(mainExecutor) {
+                // ModuleUnavailableException: o módulo interno do Cast não carregou.
+                Log.w(TAG, "Cast indisponível", it)
+                started = false
+            }
+    }
+
+    private fun attachContext(ctx: CastContext) {
+        castContext = ctx
         ctx.addCastStateListener { state -> onCastState(state) }
         ctx.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
         onCastState(ctx.castState)

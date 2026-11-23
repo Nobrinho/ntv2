@@ -308,12 +308,15 @@ async function openAccount(accountId) {
         Os aparelhos desta conta continuam, mas voltam sem perfis, lista e histórico.</p>
         <input id="wreason" placeholder="Motivo (ex.: pedido por e-mail em 23/11)" style="margin-bottom:8px">
         <input id="wconfirm" placeholder="Digite APAGAR para confirmar" style="margin-bottom:8px">
-        <div class="row"><button class="danger" data-yes>Apagar dados</button><button data-no>Cancelar</button></div></div>`;
+        <div class="row"><button class="danger" data-yes>Apagar dados</button><button data-no>Cancelar</button></div>
+        <p class="msg err" id="werr"></p></div>`;
+      // Erros de preenchimento ficam dentro do cartão (o #am inteiro é o formulário).
+      const werr = (t) => { document.getElementById('werr').textContent = t; };
       m.querySelector('[data-no]').onclick = () => { m.innerHTML = ''; };
       m.querySelector('[data-yes]').onclick = async () => {
         const reason = document.getElementById('wreason').value.trim();
-        if (!reason) return fail(new Error('Informe o motivo.'));
-        if (document.getElementById('wconfirm').value.trim() !== 'APAGAR') return fail(new Error('Digite APAGAR para confirmar.'));
+        if (!reason) return werr('Informe o motivo.');
+        if (document.getElementById('wconfirm').value.trim() !== 'APAGAR') return werr('Digite APAGAR para confirmar.');
         try {
           const r = await rpc('admin_delete_account_data', { account_id: accountId, reason });
           done(`Apagados: ${r.profiles} perfis, ${r.favorites} na lista, ${r.history} no histórico, ${r.progress} progressos; ` +

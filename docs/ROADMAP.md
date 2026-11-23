@@ -1,12 +1,16 @@
 # Roadmap do NBR Play
 
-Atualizado em 11/11/2026, na versão **0.10.0**. Legenda: ✅ entregue · 🧪 entregue, falta validar em aparelho real ·
+Atualizado em 23/11/2026, na versão **0.10.3** (mais as correções de 23/11 ainda sem release). Legenda: ✅ entregue · 🧪 entregue, falta validar em aparelho real ·
 ⏳ em aberto.
 
 ## Entregue
 
 | Versão | Data | Destaques |
 |---|---|---|
+| _sem release_ | 23/11/2026 | Correções do raio-x conferido no Context7: cliente OkHttp único (capas, busca e Supabase com as CAs do Fire TV e DNS IPv4), Cast pela API assíncrona, contrato do `transferEnded` nos DataSources, Flows com lifecycle em todas as telas. Dependências: sai `tv-foundation` (puxava o Compose 1.10 escondido) e `turbine`; Compose BOM 2026.02.00 (Material3 1.4.0) e `tv-material` 1.0.1. `CLAUDE.md` com a regra do Context7. Conferido no emulador de TV |
+| 0.10.3 | 22/11/2026 | Teste do Atualizar sem `Thread.sleep` (índice de busca com dispatcher injetável) |
+| 0.10.2 | 22/11/2026 | Filmes e séries próprios do NBR Studio (sem TMDB), identificados pelo `ntv_id` |
+| 0.10.1 | 17/11/2026 | Correções da revisão de 16/11 ([REVISAO-2026-11-16.md](REVISAO-2026-11-16.md)): punch hole no armeabi-v7a, sessão do backend só trocada com `USER_GONE`, APK de atualização só com a chave oficial, sessão fora do backup, progresso real dos episódios e do Cast, sync pela hora do servidor (`synced_at`) com "Sincronizar agora", diretor e notas preservados no catálogo local, estabilidade do TDLib e do player, desempenho da busca e das séries, testes no CI a cada push. Atualizar também sincroniza o catálogo |
 | 0.10.0 | 11/11/2026 | D-pad na tela de séries com trailer contínuo e foco preservado. Menu lateral e seletor Filmes/Séries centralizados. Recomendações sempre visíveis nos detalhes, logo na espera do player. Tipo de aparelho explícito e foco correto em Perfis. Tablet deitado respeita a barra de tarefas. Sem anel de foco no uso por toque, "Carregar mais" inteiro na grade. Menos trabalho por quadro na biblioteca |
 | 0.9.2 | 09/11/2026 | Trailer na TV: prévia em tela cheia no lugar com som, legenda só na tela cheia, sem tela final do YouTube. Filtros por diretor e notas (IMDb/RT), ano com autocompletar. Episódio abre detalhes antes de tocar. Logo da série. Grade do NBRlib pelo índice. Atualizar e "Carregar mais" sem travar. Um único anel de foco entre telas. O foco volta à origem (busca, trilhas, grade) com o card inteiro na tela. "Continuar assistindo" abre detalhes completos. Fim do filme volta aos detalhes. Logo de entrada menor na TV |
 | 0.9.1 | 05/11/2026 | Cache de 5 min das páginas do `search_catalog`; cores de marca centralizadas no `BrandColors` |
@@ -31,6 +35,11 @@ celular (S23):
 - Puxar para atualizar no celular.
 - Filmes em partes: teste de ~20 GB no Fire TV (etapa 7).
 - Dolby Vision 7 no Fire TV (validado só no S23).
+- Correções de 23/11: Cast pela API assíncrona com Chromecast de verdade no S23; aparência com o Material3
+  1.4.0; capas, busca e Supabase no Fire TV antigo (raízes Amazon/Starfield agora valem para os três).
+- Filmes e séries próprios do NBR Studio: série com episódios agrupados e reprodução.
+- Correções da revisão de 16/11 que dependem de aparelho: filme acima de 4 GB no Fire TV (punch hole),
+  progresso do Cast e foco na TV.
 
 ### 2. Dados de diretor e notas ⏳
 O app já lê e filtra `director`, `imdb_rating` e `rt_score`. O filtro e os chips não aparecem enquanto o catálogo
@@ -76,6 +85,13 @@ Lugar provável: `api/` (NestJS) do `ntv2-backend`. Definir o escopo antes de co
 ### 6. Dívidas técnicas e de dados ⏳
 - **Cards da grade:** os que vêm do índice (NBRlib) não mostram duração nem qualidade.
 - **Episódios:** alguns têm título igual ao nome da série (dado do bot).
+- **Media3 1.5.1 → 1.11.x:** tarefa separada. Exige atualizar junto as fontes do `:ffmpeg-decoder` (tag do
+  Media3) e testar de novo decoder e janelas no Fire TV.
+- **APIs obsoletas** que o build aponta: `LocalLifecycleOwner` (mudou de pacote), `FocusRequester.enter/exit`
+  (usar `onEnter/onExit`), `LocalClipboardManager` (usar `LocalClipboard`), `TRIM_MEMORY_RUNNING_LOW`.
+- **Fase 5 da revisão de 16/11 (manutenção):** dividir o `MediaLibraryViewModel` (~2.000 linhas: paginação,
+  busca, personalização, início de reprodução), overlay selado na `MediaLibraryScreen` e lint no CI.
+- **HTTP:** atualizador e teste de conexão ainda em `HttpURLConnection`, fora do cliente único.
 - **Cores:** ~56 cores literais `0xFF…` fora do `BrandColors` (principalmente avatares).
 - **Cron `ntv2-import-index`:** pausado desde a migração. Decidir se volta ou se sai.
 - **TDLib:** abort `PartsManager` mitigado com limite de faixa no download; causa não confirmada.
@@ -97,5 +113,11 @@ Segurança e custo vêm antes do Premium, porque são pré-requisito dele.
 
 11/11/2026: item 3 revisto contra o `PLANO-SEGURANCA-CUSTO.md`; Fases 0 e 1 essencialmente feitas, restam os
 itens listados nele.
+
+16/11/2026: revisão do código ([REVISAO-2026-11-16.md](REVISAO-2026-11-16.md)); fases 1 a 4 corrigidas nos commits de 16/11 (0.10.1);
+a fase 5 segue em aberto no item 6.
+
+23/11/2026: raio-x das bibliotecas conferido no Context7; correções feitas e conferidas no emulador. A subida do
+Media3 ficou de fora, como tarefa própria.
 
 Itens novos entram aqui com data.

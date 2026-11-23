@@ -4,7 +4,7 @@ App Android para **TV (Android TV / Fire TV) e celular** que organiza canais do 
 biblioteca de filmes e séries, com reprodução progressiva pelo TDLib. O app é um agregador e organizador:
 não hospeda nem vende conteúdo.
 
-Versão atual: **0.9.2** (`versionCode` 37). Histórico e próximos passos: [docs/ROADMAP.md](docs/ROADMAP.md).
+Versão atual: **0.10.3** (`versionCode` 41). Histórico e próximos passos: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Recursos
 
@@ -27,6 +27,9 @@ Versão atual: **0.9.2** (`versionCode` 37). Histórico e próximos passos: [doc
   - o botão Trailer continua o mesmo vídeo em tela cheia, com som e legenda em português;
   - no fim, a tela volta aos detalhes.
 - **Séries:** temporadas e episódios. OK no episódio abre os detalhes dele (Assistir/Continuar/Recomeçar).
+  Filmes e séries próprios do NBR Studio (sem TMDB) entram pelo `ntv_id`.
+- **Sincronização** da personalização entre aparelhos (pull pela hora do servidor, `synced_at`) e
+  "Sincronizar agora" nas configurações.
 - **Player** (media3/ExoPlayer):
   - download progressivo do Telegram, com janela no disco que libera o trecho já assistido;
   - áudio por software para AC3/EAC3/DTS/TrueHD;
@@ -61,6 +64,24 @@ Pacotes em `app/src/main/java/com/ntv2/app/`:
   - `media/` (biblioteca, busca, detalhes, séries, trailer);
   - `playback/`, `auth/`, `channels/`, `profiles/`, `settings/`, `splash/`, `update/` e `onboarding/`.
 
+Rede: um único `OkHttpClient` (`core/network/HttpClients.kt`, exposto em `AppContainer.httpClient`) com as
+raízes Amazon/Starfield embutidas e DNS que prefere IPv4. Capas (Coil), índice de busca e Supabase derivam dele
+com `newBuilder()`. O atualizador e o teste de conexão ainda usam `HttpURLConnection`.
+
+### Stacks e versões
+
+Fonte da verdade: [gradle/libs.versions.toml](gradle/libs.versions.toml). Antes de usar a API de uma biblioteca,
+consulte a documentação no Context7 nessa versão (regra no [CLAUDE.md](CLAUDE.md)).
+
+| Área | Versões |
+|---|---|
+| Build | Kotlin 2.0.21, AGP 8.13.2, Gradle 9.0.0, KSP 2.0.21-1.0.27, Java 17, NDK 26.1 (r26b), CMake 3.22.1 |
+| Interface | Compose BOM 2026.02.00 (foundation 1.10.3, Material3 1.4.0), Compose for TV `tv-material` 1.0.1, Navigation 2.9.0, Coil 2.7.0 |
+| Player | Media3 1.5.1, FFmpeg 6.0 (`:ffmpeg-decoder`), Google Cast 22.1.0, MediaRouter 1.7.0 |
+| Dados | Room 2.6.1, DataStore 1.1.2, TDLib 1.8.x (`libtdjni.so`), OkHttp 4.12.0, `org.json` |
+| Testes | JUnit 4.13.2, kotlinx-coroutines-test 1.9.0 |
+| Site | HTML/CSS/JS puros, `@supabase/supabase-js` 2.45.4 (painel admin) |
+
 Fontes de dados de um título, em ordem: catálogo do backend, índice do canal (`index.json` no Pages) e legenda
 do post no Telegram ([brand/CHANNEL_FORMAT.md](brand/CHANNEL_FORMAT.md)). A skill `ntv2-architecture` guia onde colocar código
 novo.
@@ -94,6 +115,7 @@ Veja também [gradle.properties.example](gradle.properties.example).
 ```
 
 - `minSdk` 23 (Fire OS 6+), `targetSdk`/`compileSdk` 35.
+- O CI (`.github/workflows/test.yml`) roda os testes unitários a cada push e pull request.
 - Testes JVM em `app/src/test`; instrumentados em `app/src/androidTest` (rodar com `am instrument`, não com
   `connectedAndroidTest`, que desinstala o app).
 - Emulador usado no desenvolvimento: AVD `Television_1080p`. O emulador não decodifica HEVC 4K nem Dolby Vision:
@@ -113,6 +135,8 @@ o `update.json`. Detalhes e secrets em [docs/UPDATES.md](docs/UPDATES.md) (skill
 |---|---|
 | [docs/ROADMAP.md](docs/ROADMAP.md) | O que já foi entregue, o que está em aberto e a ordem planejada |
 | [docs/UPDATES.md](docs/UPDATES.md) | Fluxo de atualização, `update.json` e secrets do CI |
+| [docs/REVISAO-2026-11-16.md](docs/REVISAO-2026-11-16.md) | Revisão do código cruzada com o backend e plano de correção em fases |
+| [CLAUDE.md](CLAUDE.md) | Instruções para o Claude: consultar o Context7 na versão das bibliotecas do projeto |
 | [docs/SERIES_EPISODES.md](docs/SERIES_EPISODES.md) | Contrato de séries e episódios no índice |
 | [docs/PLANO-CATALOGO-BACKEND.md](docs/PLANO-CATALOGO-BACKEND.md) | Catálogo no Supabase, Telegram só com o vídeo |
 | [docs/PLANO-MIGRACAO-NBRPLAY-NBRLIB.md](docs/PLANO-MIGRACAO-NBRPLAY-NBRLIB.md) | Migração do acervo do NBR Play para o NBRlib (concluída) |

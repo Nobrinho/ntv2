@@ -24,8 +24,14 @@ Atualizado em 23/11/2026, na versão **0.11.0** (obrigatória: `min_version_code
 ## Em aberto, por prioridade
 
 ### 1. Validar em aparelho real 🧪
-O emulador não cobre decoder real, rede lenta nem memória do Fire TV. Validar no Fire TV (AFTKM/AFTMM) e no
-celular (S23):
+O emulador não cobre decoder real, rede lenta nem memória do Fire TV.
+
+**S23: ✅ validado em 23/11/2026 na 0.11.0** — atualização obrigatória; perfis, sync, PIN e Kids pela
+classificação; Minha conta com a resposta da denúncia; repostagem do painel até o NBR Studio; aparência com o
+Material3 1.4.0; puxar para atualizar; sem anel de foco no toque; conteúdo próprio do NBR Studio; trailer no
+celular. Falta só o **Cast** (API assíncrona e progresso) com um Chromecast de verdade.
+
+**Fire TV (AFTKM/AFTMM): ⏳**
 - Trailer:
   - prévia e tela cheia, foco do controle e legenda;
   - memória depois de várias aberturas;
@@ -33,17 +39,12 @@ celular (S23):
 - Navegação da TV:
   - anel de foco em rajadas;
   - volta da busca e das trilhas.
-- Puxar para atualizar no celular.
-- Filmes em partes: teste de ~20 GB no Fire TV (etapa 7).
-- Dolby Vision 7 no Fire TV (validado só no S23).
-- Correções de 23/11: Cast pela API assíncrona com Chromecast de verdade no S23; aparência com o Material3
-  1.4.0; capas, busca e Supabase no Fire TV antigo (raízes Amazon/Starfield agora valem para os três).
+- Filmes em partes: teste de ~20 GB (etapa 7) e filme acima de 4 GB (punch hole, revisão de 16/11).
+- Dolby Vision 7 (validado só no S23).
+- Capas, busca e Supabase no Fire TV antigo (raízes Amazon/Starfield agora valem para os três).
 - Filmes e séries próprios do NBR Studio: série com episódios agrupados e reprodução.
-- 0.11.0: perfis sincronizando entre TV e celular (favoritar num perfil não aparece no outro), Kids com PIN e
-  a grade filtrada pela classificação, Minha conta (denúncias com resposta, apagar meus dados) e a tela de
-  atualização obrigatória numa versão antiga.
-- Correções da revisão de 16/11 que dependem de aparelho: filme acima de 4 GB no Fire TV (punch hole),
-  progresso do Cast e foco na TV.
+- 0.11.0 do lado da TV: perfis sincronizando com o celular, Kids com PIN e a grade filtrada, Minha conta e a
+  tela de atualização obrigatória numa versão antiga.
 
 ### 2. Dados de diretor e notas ⏳
 O app já lê e filtra `director`, `imdb_rating` e `rt_score`. O filtro e os chips não aparecem enquanto o catálogo
@@ -95,7 +96,7 @@ NBR Studio): migrations aplicadas, `min_version_code` = 43, função `repost-req
   classificação em 2.449 de 2.826 filmes, 76 de 106 séries e 745 de 1.019 episódios. O resto não tem selo no
   TMDB e o Kids decide pelo gênero.
 
-Falta: validar no Fire TV e no S23 (item 1) e um pedido de repostagem real de ponta a ponta. Conteúdo próprio
+Validado no S23 em 23/11, inclusive o pedido de repostagem de ponta a ponta. Falta o Fire TV (item 1). Conteúdo próprio
 (`e_nbr_…`, sem TMDB) ficou com o selo como veio ("L", "NR"), que o app já entende ou ignora.
 
 ### 6. Dívidas técnicas e de dados ⏳
@@ -165,5 +166,7 @@ Media3 ficou de fora, como tarefa própria.
 
 23/11/2026: item 5 publicado (0.11.0, migrations, `min_version_code` 43); o NBR Studio passou a ler os pedidos de
 repostagem e a gravar a classificação indicativa, com o catálogo antigo completado. Resta validar em aparelho.
+
+23/11/2026: S23 validado na 0.11.0 (só o Cast ficou sem teste, por falta de Chromecast); resta o Fire TV.
 
 Itens novos entram aqui com data.

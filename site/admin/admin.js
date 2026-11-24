@@ -392,11 +392,12 @@ async function reports() {
         .map(([v, n]) => `<option value="${v}" ${repState.status === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
       <select id="rs" style="max-width:220px"><option value="">Todos os motivos</option>${Object.entries(REASONS)
         .map(([v, n]) => `<option value="${v}" ${repState.reason === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
-      <span class="grow"></span><button id="hiddenBtn">Títulos ocultos</button></div>
+      <span class="grow"></span><button id="repostBtn">Repostagens</button><button id="hiddenBtn">Títulos ocultos</button></div>
     <div id="list" style="margin-top:12px"><p class="muted">Carregando…</p></div></div>`;
   document.getElementById('st').onchange = (e) => { repState.status = e.target.value; repState.off = 0; reports(); };
   document.getElementById('rs').onchange = (e) => { repState.reason = e.target.value; repState.off = 0; reports(); };
   document.getElementById('hiddenBtn').onclick = hiddenTitles;
+  document.getElementById('repostBtn').onclick = repostRequests;
   try {
     const r = await rpc('admin_reports_grouped', { status: repState.status || null, reason: repState.reason || null, lim: PAGE, off: repState.off });
     const list = document.getElementById('list');
@@ -468,6 +469,25 @@ async function hiddenTitles() {
       try { await rpc('admin_unhide_title', { ntv_id: b.dataset.show }); hiddenTitles(); }
       catch (e) { list.insertAdjacentHTML('afterbegin', errorBox(e)); }
     }));
+  } catch (e) { list.innerHTML = errorBox(e); }
+}
+
+// Pedidos de repostagem e o andamento no bot (NBR Studio): aberto → feito / cancelado.
+const REPOST_STATUS = { open: ['Aguardando o bot', 'warn'], done: ['Repostado', 'ok'], cancelled: ['Cancelado pelo bot', ''] };
+async function repostRequests() {
+  const list = document.getElementById('list');
+  list.innerHTML = '<p class="muted">Carregando…</p>';
+  try {
+    const items = await rpc('admin_repost_requests', { lim: 100 });
+    list.innerHTML = items.length === 0 ? '<p class="muted">Nenhum pedido de repostagem.</p>' :
+      `<table><tbody>${items.map((p) => {
+        const [label, cls] = REPOST_STATUS[p.status] || [p.status, ''];
+        return `<tr><td data-label="Título"><b>${esc(p.title || p.ntv_id || p.media_id)}</b>
+          <div class="mono">#${esc(p.id)} · ${esc(p.ntv_id || p.media_id)}</div></td>
+          <td data-label="Motivo">${esc(REASONS[p.reason] || p.reason || '—')}${p.note ? `<div class="muted">"${esc(p.note)}"</div>` : ''}</td>
+          <td data-label="Pedido">${esc(when(p.created_at))}</td>
+          <td data-label="Situação"><span class="tag ${cls}">${esc(label)}</span>${p.done_at ? `<div class="muted">${esc(when(p.done_at))}</div>` : ''}</td></tr>`;
+      }).join('')}</tbody></table>`;
   } catch (e) { list.innerHTML = errorBox(e); }
 }
 

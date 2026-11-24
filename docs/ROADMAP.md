@@ -1,13 +1,14 @@
 # Roadmap do NBR Play
 
-Atualizado em 23/11/2026, na versão **0.10.3** (mais as correções de 23/11 ainda sem release). Legenda: ✅ entregue · 🧪 entregue, falta validar em aparelho real ·
+Atualizado em 23/11/2026, na versão **0.11.0** (obrigatória: `min_version_code` = 43). Legenda: ✅ entregue · 🧪 entregue, falta validar em aparelho real ·
 ⏳ em aberto.
 
 ## Entregue
 
 | Versão | Data | Destaques |
 |---|---|---|
-| _sem release_ | 23/11/2026 | Correções do raio-x conferido no Context7: cliente OkHttp único (capas, busca e Supabase com as CAs do Fire TV e DNS IPv4), Cast pela API assíncrona, contrato do `transferEnded` nos DataSources, Flows com lifecycle em todas as telas. Dependências: sai `tv-foundation` (puxava o Compose 1.10 escondido) e `turbine`; Compose BOM 2026.02.00 (Material3 1.4.0) e `tv-material` 1.0.1. `CLAUDE.md` com a regra do Context7. Conferido no emulador de TV |
+| 0.11.0 | 23/11/2026 | Perfis reais: lista, histórico e progresso por perfil, sincronizados entre aparelhos (`account_profiles`), PIN só como hash, Kids filtrando pela classificação indicativa (sem ela, por gênero). Configurações › Minha conta: identificador, aparelhos, Premium, minhas denúncias com a resposta do admin e "Apagar meus dados" (LGPD). Aviso de aparelho bloqueado. Atualização obrigatória (a chave do sync mudou). No backend, no painel e no NBR Studio: ver item 5 |
+| 0.10.4 | 23/11/2026 | Correções do raio-x conferido no Context7: cliente OkHttp único (capas, busca e Supabase com as CAs do Fire TV e DNS IPv4), Cast pela API assíncrona, contrato do `transferEnded` nos DataSources, Flows com lifecycle em todas as telas. Dependências: sai `tv-foundation` (puxava o Compose 1.10 escondido) e `turbine`; Compose BOM 2026.02.00 (Material3 1.4.0) e `tv-material` 1.0.1. `CLAUDE.md` com a regra do Context7. Conferido no emulador de TV |
 | 0.10.3 | 22/11/2026 | Teste do Atualizar sem `Thread.sleep` (índice de busca com dispatcher injetável) |
 | 0.10.2 | 22/11/2026 | Filmes e séries próprios do NBR Studio (sem TMDB), identificados pelo `ntv_id` |
 | 0.10.1 | 17/11/2026 | Correções da revisão de 16/11 ([REVISAO-2026-11-16.md](REVISAO-2026-11-16.md)): punch hole no armeabi-v7a, sessão do backend só trocada com `USER_GONE`, APK de atualização só com a chave oficial, sessão fora do backup, progresso real dos episódios e do Cast, sync pela hora do servidor (`synced_at`) com "Sincronizar agora", diretor e notas preservados no catálogo local, estabilidade do TDLib e do player, desempenho da busca e das séries, testes no CI a cada push. Atualizar também sincroniza o catálogo |
@@ -38,6 +39,9 @@ celular (S23):
 - Correções de 23/11: Cast pela API assíncrona com Chromecast de verdade no S23; aparência com o Material3
   1.4.0; capas, busca e Supabase no Fire TV antigo (raízes Amazon/Starfield agora valem para os três).
 - Filmes e séries próprios do NBR Studio: série com episódios agrupados e reprodução.
+- 0.11.0: perfis sincronizando entre TV e celular (favoritar num perfil não aparece no outro), Kids com PIN e
+  a grade filtrada pela classificação, Minha conta (denúncias com resposta, apagar meus dados) e a tela de
+  atualização obrigatória numa versão antiga.
 - Correções da revisão de 16/11 que dependem de aparelho: filme acima de 4 GB no Fire TV (punch hole),
   progresso do Cast e foco na TV.
 
@@ -73,7 +77,8 @@ Backend pronto e desligado. Falta:
 Qualidade (4K/HDR/DV) e áudio não podem ser cobrados.
 
 ### 5. Administração, perfis e denúncias 🧪
-Escopo fechado e implementado em 23/11/2026 (app + `ntv2-backend` + painel `site/admin`), **ainda sem deploy**:
+Escopo fechado, implementado e publicado em 23/11/2026 (app 0.11.0 + `ntv2-backend` + painel `site/admin` +
+NBR Studio): migrations aplicadas, `min_version_code` = 43, função `repost-requests` no ar.
 - **Perfis reais:** `account_profiles` sincronizado, lista/histórico/progresso por perfil (Room v6), PIN só como
   hash, Kids filtrando por classificação ou, sem ela, por gênero (Animação/Família).
 - **Painel:** conta com perfis, itens por perfil, motivo do bloqueio, denúncias da conta e "Apagar dados" (LGPD);
@@ -81,10 +86,17 @@ Escopo fechado e implementado em 23/11/2026 (app + `ntv2-backend` + painel `site
 - **App:** Configurações › Minha conta (identificador, aparelhos, Premium, minhas denúncias com a resposta,
   apagar meus dados) e aviso de aparelho bloqueado.
 - **Alertas:** 3 denúncias abertas num título avisam na hora no Telegram; resumo das novas a cada hora.
+- **Repostagem pelo bot:** ✅ o NBR Studio lê os pedidos do painel (Edge Function `repost-requests`, tela
+  "Pedidos do app"), liga cada um ao título do Acervo e fecha sozinho quando o título é repostado e chega ao
+  catálogo; o painel mostra o andamento em Denúncias › Repostagens. Reenviar parte de um título que já estava
+  no app agora manda o vídeo novo ao catálogo (antes o app seguia abrindo a mensagem antiga).
+- **Classificação indicativa:** ✅ o Studio converte o selo dos EUA para o padrão do app (Livre/10/12/14/16/18) e
+  manda também na série. Catálogo antigo completado em 23/11: 3.452 títulos reenviados; o catálogo tem
+  classificação em 2.449 de 2.826 filmes, 76 de 106 séries e 745 de 1.019 episódios. O resto não tem selo no
+  TMDB e o Kids decide pelo gênero.
 
-Falta: deploy na ordem do `OPERACAO.md` (release 0.11.0 → `db push` das 4 migrations → `min_version_code`),
-validar no Fire TV e no S23, o bot ler `private.repost_requests` e gravar a classificação indicativa
-(`certification` do TMDB-BR) para o Kids deixar de depender do gênero.
+Falta: validar no Fire TV e no S23 (item 1) e um pedido de repostagem real de ponta a ponta. Conteúdo próprio
+(`e_nbr_…`, sem TMDB) ficou com o selo como veio ("L", "NR"), que o app já entende ou ignora.
 
 ### 6. Dívidas técnicas e de dados ⏳
 - **Cards da grade:** os que vêm do índice (NBRlib) não mostram duração nem qualidade.
@@ -107,7 +119,8 @@ validar no Fire TV e no S23, o bot ler `private.repost_requests` e gravar a clas
 ### 7. Produto, mais adiante ⏳
 - Monetização: a aposta recomendada é B2B/white-label da tecnologia (player progressivo, TV e decoder) mais
   assinatura. O app continua só agregador.
-- NBR Studio (repo `nbr-studio`): bot, cortador e captador num app só; falta teste real no Telegram.
+- NBR Studio (repo `nbr-studio`): bot, cortador e captador num app só; falta teste real no Telegram. O repo
+  não tem remoto: os commits ficam só no PC.
 
 ### 8. Novas plataformas ⏳
 Pedido em 23/11/2026, ainda sem escopo. O app atual é só Android (celular, Android TV e Fire TV); cada
@@ -149,5 +162,8 @@ Media3 ficou de fora, como tarefa própria.
 23/11/2026: novas plataformas (iOS, Samsung, LG e PS5) entram como item 8, ainda sem escopo e sem data.
 
 23/11/2026: item 5 (administração, perfis e denúncias) implementado nas 4 fases do plano; falta o deploy.
+
+23/11/2026: item 5 publicado (0.11.0, migrations, `min_version_code` 43); o NBR Studio passou a ler os pedidos de
+repostagem e a gravar a classificação indicativa, com o catálogo antigo completado. Resta validar em aparelho.
 
 Itens novos entram aqui com data.

@@ -4,7 +4,7 @@ App Android para **TV (Android TV / Fire TV) e celular** que organiza canais do 
 biblioteca de filmes e séries, com reprodução progressiva pelo TDLib. O app é um agregador e organizador:
 não hospeda nem vende conteúdo.
 
-Versão atual: **0.10.3** (`versionCode` 41). Histórico e próximos passos: [docs/ROADMAP.md](docs/ROADMAP.md).
+Versão atual: **0.11.0** (`versionCode` 43). Histórico e próximos passos: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Recursos
 

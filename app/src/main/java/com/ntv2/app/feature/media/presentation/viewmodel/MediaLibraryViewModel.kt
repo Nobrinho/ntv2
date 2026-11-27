@@ -674,7 +674,8 @@ class MediaLibraryViewModel(
                     // Troca de canal reinicia a aba e limpa as séries do canal anterior.
                     libraryTab = if (keepTab) it.libraryTab
                     else com.ntv2.app.feature.media.presentation.state.LibraryTab.MOVIES,
-                    series = if (keepTab) it.series else emptyList()
+                    series = if (keepTab) it.series else emptyList(),
+                    catalogChannel = keepTab && it.catalogChannel
                 )
             }
             val query = ""
@@ -742,7 +743,7 @@ class MediaLibraryViewModel(
         viewModelScope.launch {
             if (!runCatching { idx.covers(channelId) }.getOrDefault(false)) {
                 if (_uiState.value.activeChannelId == channelId) {
-                    _uiState.update { it.copy(searchFilterOptions = com.ntv2.app.feature.media.presentation.state.SearchFilterOptions()) }
+                    _uiState.update { it.copy(catalogChannel = false, searchFilterOptions = com.ntv2.app.feature.media.presentation.state.SearchFilterOptions()) }
                 }
                 return@launch
             }
@@ -755,6 +756,7 @@ class MediaLibraryViewModel(
             if (_uiState.value.activeChannelId != channelId) return@launch
             _uiState.update {
                 it.copy(
+                    catalogChannel = true,
                     series = series,
                     searchFilterOptions = com.ntv2.app.feature.media.presentation.state.SearchFilterOptions(genres, years, hasImdb, hasRt)
                 )
@@ -1904,12 +1906,31 @@ class MediaLibraryViewModel(
         // conta: completa pelo índice, senão os Detalhes abriam sem sinopse, ano e elenco.
         val cached = mediaDetailsCache.get(media.mediaId)
         if (cached != null && !cached.synopsis.isNullOrBlank()) return
-        val idx = searchIndexRepository ?: return
+        val idx = searchIndexRepository
         val messageId = media.mediaId.substringAfterLast('_').toLongOrNull() ?: return
-        val movie = runCatching { idx.movieByMessage(media.channelId, messageId) }.getOrNull() ?: return
-        movie.toSummary(media.channelId, media.channelName)
-            .copy(durationSeconds = media.durationSeconds)
-            .toCard(0L)
+        val movie = idx?.let { runCatching { it.movieByMessage(media.channelId, messageId) }.getOrNull() }
+        if (movie != null) {
+            movie.toSummary(media.channelId, media.channelName)
+                .copy(durationSeconds = media.durationSeconds)
+                .toCard(0L)
+            return
+        }
+        // Fora do índice (outro canal, ex. o backup NBR Play): o mesmo filme pelo título no catálogo;
+        // senão, a própria mensagem do Telegram (a legenda pode trazer os metadados).
+        // O título do card (do histórico) é o confiável: legenda antiga vem como "Título: X".
+        val byTitle = idx?.let { runCatching { it.movieByTitle(media.title) }.getOrNull() }
+        if (byTitle != null) {
+            // Mesmo mediaId do card: o resumo do catálogo aponta para a mensagem do outro canal.
+            byTitle.toSummary(media.channelId, media.channelName)
+                .copy(mediaId = media.mediaId, durationSeconds = media.durationSeconds)
+                .toCard(0L)
+            return
+        }
+        val fromMessage = runCatching {
+            mediaRepository.getVideoByMessage(media.channelId, media.channelName, messageId)
+        }.getOrNull()
+        // Só vale se a legenda trouxer algo além do básico (sem sinopse, mantém o que o card já tem).
+        if (fromMessage != null && !fromMessage.synopsis.isNullOrBlank()) fromMessage.toCard(0L)
     }
 
     /** Detalhes ricos para a tela de Detalhes (lidos do cache por mediaId). */

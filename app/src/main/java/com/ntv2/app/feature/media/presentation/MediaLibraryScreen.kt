@@ -148,8 +148,8 @@ fun MediaLibraryScreen(
     // Fronteira antes do load: guardamos o último item conhecido para achar o 1º novo por
     // identidade (robusto ao corte do topo pelo teto de itens).
     var lastIdBeforeLoad by remember { mutableStateOf<String?>(null) }
-    val gridState = rememberLazyStaggeredGridState()
-    val seriesGridState = rememberLazyStaggeredGridState()
+    val gridState = rememberLibraryGridState()
+    val seriesGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     // Canal cuja 1ª página já foi posicionada no topo. A grade guarda a rolagem entre canais; sem
     // isso, trocar de canal abria o novo na altura em que o anterior estava (e já disparava o
     // "carregar mais" do novo canal, parecendo continuar a página anterior).
@@ -188,7 +188,7 @@ fun MediaLibraryScreen(
             val id = mediaId?.takeIf { wanted -> items.any { it.mediaId == wanted } }
                 ?: items.firstOrNull()?.mediaId
             val index = items.indexOfFirst { it.mediaId == id }
-            val visible = gridState.layoutInfo.visibleItemsInfo
+            val visible = gridState.visibleItems
             if (id != null && index >= 0 && visible.none { it.key == id }) {
                 // Índice na grade = índice no catálogo + itens antes dos cards (cabeçalho com as trilhas).
                 val shift = visible.firstNotNullOfOrNull { v ->
@@ -213,7 +213,7 @@ fun MediaLibraryScreen(
     // topo se ele saiu da tela. Se o card sumiu da trilha (ex.: terminou o filme), cai na grade.
     fun focusTrackCard(trackKey: String, mediaId: String) {
         scope.launch {
-            if (gridState.layoutInfo.visibleItemsInfo.none { it.key == "library-header" }) {
+            if (gridState.visibleItems.none { it.key == "library-header" }) {
                 runCatching { gridState.scrollToItem(0) }
             }
             var ok = false
@@ -357,8 +357,7 @@ fun MediaLibraryScreen(
     // celular a próxima página só vinha pelo card "Carregar mais" e a página de cima nunca vinha.
     LaunchedEffect(gridState, state.items.size, state.hasMore, state.hasPrevious) {
         snapshotFlow {
-            val info = gridState.layoutInfo
-            val visible = info.visibleItemsInfo
+            val visible = gridState.visibleItems
             (visible.firstOrNull()?.index ?: 0) to (visible.lastOrNull()?.index ?: 0)
         }
             .distinctUntilChanged()
@@ -554,7 +553,8 @@ fun MediaLibraryScreen(
                     // Cards das trilhas podem não estar carregados na grade (cache de detalhes vazio
                     // ou só com o básico do histórico): completa pelo índice antes de abrir.
                     scope.launch {
-                        kotlinx.coroutines.withTimeoutOrNull(1500) { viewModel.ensureDetails(media) }
+                        // Até 3 s: fora do índice, a mensagem vem do Telegram.
+                        kotlinx.coroutines.withTimeoutOrNull(3000) { viewModel.ensureDetails(media) }
                         detailsMedia = media
                     }
                 }
@@ -725,12 +725,13 @@ fun MediaLibraryScreen(
                             lowRamPlaybackWarnings = lowRamPlaybackWarnings,
                             hasMore = state.hasMore,
                             loadingMore = state.isLoadingMore,
-                            state = gridState,
+                            gridState = gridState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = gridPadding,
                             horizontalGap = gridHGap,
                             verticalGap = gridVGap,
                             titleBelow = !useTvLayout,
+                            uniform = state.catalogChannel,
                             focusRequesterFor = { id ->
                                 cardFocusRequesters.getOrPut(id) { FocusRequester() }
                             },

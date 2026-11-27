@@ -200,6 +200,8 @@ data class MediaLibraryUiState(
      *  do player). Os Detalhes usam isto para mostrar Continuar/Recomeçar sem reabrir. */
     val progressOverrides: Map<String, Float> = emptyMap(),
     /** Temporada escolhida por série (tmdbId) nos detalhes; ausente = a do próximo episódio. */
+    /** Canal ativo coberto pelo catálogo (pôsteres TMDB 2:3): a grade usa cards de altura igual. */
+    val catalogChannel: Boolean = false,
     val seriesSeason: Map<Long, Int> = emptyMap(),
     /** Episódio (mediaId) aberto por último em cada série (tmdbId), pelo histórico. */
     val seriesLastWatched: Map<Long, String> = emptyMap(),

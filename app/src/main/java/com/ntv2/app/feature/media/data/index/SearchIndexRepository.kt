@@ -570,6 +570,18 @@ class SearchIndexRepository(
     }
 
     /** Filme do índice pelo id da mensagem do vídeo (metadados dos Detalhes de itens fora da grade). */
+    /**
+     * Filme do catálogo com o mesmo título (normalizado), em qualquer canal: para completar os Detalhes
+     * de um item de outro canal (ex.: o backup), que posta os mesmos títulos com outra numeração.
+     */
+    suspend fun movieByTitle(title: String): IndexMovie? = withContext(computeDispatcher) {
+        val idx = ensureLoaded() ?: return@withContext null
+        val key = normalizeForIndex(title).trim()
+        if (key.isEmpty()) return@withContext null
+        idx.movies.firstOrNull { normalizeForIndex(it.title).trim() == key }
+            ?: idx.movies.firstOrNull { it.originalTitle != null && normalizeForIndex(it.originalTitle).trim() == key }
+    }
+
     suspend fun movieByMessage(channelId: Long, messageId: Long): IndexMovie? {
         val idx = ensureLoaded() ?: return null
         if (idx.channelId != channelId) return null

@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
@@ -43,6 +44,7 @@ import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -166,6 +168,58 @@ private fun kotlinx.coroutines.CoroutineScope.revealGridItem(state: LazyStaggere
     }
 }
 
+/** [revealGridItem] para a grade de linhas fixas. */
+private fun kotlinx.coroutines.CoroutineScope.revealFixedGridItem(
+    state: androidx.compose.foundation.lazy.grid.LazyGridState, key: Any, marginPx: Float
+) {
+    launch {
+        withFrameNanos { }
+        var waited = 0
+        while (state.isScrollInProgress && waited < 60) {
+            withFrameNanos { }
+            waited++
+        }
+        val info = state.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.key == key } ?: return@launch
+        val top = item.offset.y - marginPx
+        val bottom = item.offset.y + item.size.height + marginPx
+        val delta = when {
+            top < info.viewportStartOffset -> top - info.viewportStartOffset
+            bottom > info.viewportEndOffset -> bottom - info.viewportEndOffset
+            else -> 0f
+        }
+        if (delta != 0f) state.animateScrollBy(delta)
+    }
+}
+
+/** Item visível da grade, igual nos dois tipos (mosaico e linhas fixas). */
+internal data class GridVisibleItem(val key: Any, val index: Int)
+
+/**
+ * Estado da grade de filmes: mosaico (proporção de cada capa) ou linhas fixas (canal com catálogo,
+ * cards 2:3). A tela fala só com este objeto; [uniform] diz qual dos dois está na tela.
+ */
+@androidx.compose.runtime.Stable
+internal class LibraryGridState(
+    val staggered: LazyStaggeredGridState,
+    val fixed: androidx.compose.foundation.lazy.grid.LazyGridState
+) {
+    var uniform by mutableStateOf(false)
+    val visibleItems: List<GridVisibleItem>
+        get() = if (uniform) fixed.layoutInfo.visibleItemsInfo.map { GridVisibleItem(it.key, it.index) }
+        else staggered.layoutInfo.visibleItemsInfo.map { GridVisibleItem(it.key, it.index) }
+    suspend fun scrollToItem(index: Int) {
+        if (uniform) fixed.scrollToItem(index) else staggered.scrollToItem(index)
+    }
+}
+
+@Composable
+internal fun rememberLibraryGridState(): LibraryGridState {
+    val staggered = androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState()
+    val fixed = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    return remember(staggered, fixed) { LibraryGridState(staggered, fixed) }
+}
+
 internal fun columnsForWidthDp(widthDp: Float): Int =
     (widthDp / GRID_TARGET_COL_DP).toInt().coerceIn(2, 6)
 internal val GRID_GAP = 12.dp
@@ -182,7 +236,7 @@ internal fun LazyMediaGrid(
     lowRamPlaybackWarnings: Boolean,
     hasMore: Boolean,
     loadingMore: Boolean,
-    state: LazyStaggeredGridState,
+    gridState: LibraryGridState,
     focusRequesterFor: (String) -> FocusRequester,
     onCardFocused: (String) -> Unit,
     onCardClick: (MediaCardUi) -> Unit,
@@ -196,9 +250,13 @@ internal fun LazyMediaGrid(
     horizontalGap: Dp = GRID_GAP,
     verticalGap: Dp = GRID_GAP,
     // Celular (protótipo): nome sempre sob a capa; TV: nome só quando não há pôster.
-    titleBelow: Boolean = false
+    titleBelow: Boolean = false,
+    // Canal com catálogo (pôsteres TMDB 2:3): cards de altura igual, então o mosaico vira linhas alinhadas.
+    uniform: Boolean = false
 ) {
     val scope = rememberCoroutineScope()
+    val state = gridState.staggered
+    SideEffect { gridState.uniform = uniform }
     val hasHeader = headerContent != null
     val revealMarginPx = with(androidx.compose.ui.platform.LocalDensity.current) { FOCUS_REVEAL_MARGIN.toPx() }
     // Grade de alturas mistas: a busca espacial padrão do ↑/↓ às vezes pula de coluna.
@@ -236,7 +294,64 @@ internal fun LazyMediaGrid(
     val glide = screenGlide ?: ownGlide
     BoxWithConstraints(modifier = modifier.focusGlideHost(ownGlide)) {
         val columns = columnsForWidthDp(maxWidth.value)
-        LazyVerticalStaggeredGrid(
+        // Um card (o mesmo nos dois tipos de grade) e o "Carregar mais".
+        val card: @Composable (MediaCardUi) -> Unit = { media ->
+            val requester = focusRequesterFor(media.mediaId)
+            MediaCard(
+                media = media,
+                showCover = showCovers,
+                cardLoadingStyle = cardLoadingStyle,
+                animationsEnabled = animationsEnabled,
+                showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning(),
+                titleBelow = titleBelow,
+                uniform = uniform,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusGlideTarget(media.mediaId, glide, radius = CARD_RADIUS, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
+                    .focusRequester(requester)
+                    .onFocusChanged { if (it.isFocused) { onCardFocused(media.mediaId); if (uniform) scope.revealFixedGridItem(gridState.fixed, media.mediaId, revealMarginPx) else scope.revealGridItem(state, media.mediaId, revealMarginPx) } }
+                    .onPreviewKeyEvent { e ->
+                        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (e.key) {
+                            Key.DirectionDown -> moveInLane(media.mediaId, down = true)
+                            Key.DirectionUp -> moveInLane(media.mediaId, down = false)
+                            else -> false
+                        }
+                    },
+                onClick = { onCardClick(media) }
+            )
+        }
+        val loadMore: @Composable () -> Unit = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                LoadMoreButton(
+                    loading = loadingMore,
+                    focusRequester = loadMoreFocus,
+                    onClick = onLoadMore
+                )
+            }
+        }
+        if (uniform) {
+            // Canal com catálogo: linhas fixas (o mosaico redistribuía os cards entre as colunas ao rolar).
+            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(columns),
+                state = gridState.fixed,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+                horizontalArrangement = Arrangement.spacedBy(horizontalGap),
+                verticalArrangement = Arrangement.spacedBy(verticalGap)
+            ) {
+                val full: androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope.() -> androidx.compose.foundation.lazy.grid.GridItemSpan =
+                    { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }
+                if (headerContent != null) item(key = "library-header", span = full) { headerContent() }
+                items(items = items, key = { it.mediaId }, contentType = { if (it.posterPath != null) 0 else 1 }) { card(it) }
+                if (hasMore) item(key = "load-more", span = full) { loadMore() }
+            }
+        } else LazyVerticalStaggeredGrid(
             columns = StaggeredGridCells.Fixed(columns),
             state = state,
             modifier = Modifier.fillMaxSize(),
@@ -253,50 +368,9 @@ internal fun LazyMediaGrid(
                 items = items,
                 key = { it.mediaId },
                 contentType = { if (it.posterPath != null) 0 else 1 }
-            ) { media ->
-                val requester = focusRequesterFor(media.mediaId)
-                MediaCard(
-                    media = media,
-                    showCover = showCovers,
-                    cardLoadingStyle = cardLoadingStyle,
-                    animationsEnabled = animationsEnabled,
-                    showPlaybackWarning = lowRamPlaybackWarnings && media.needsLowRamPlaybackWarning(),
-                    titleBelow = titleBelow,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusGlideTarget(media.mediaId, glide, radius = CARD_RADIUS, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
-                        .focusRequester(requester)
-                        .onFocusChanged { if (it.isFocused) { onCardFocused(media.mediaId); scope.revealGridItem(state, media.mediaId, revealMarginPx) } }
-                        .onPreviewKeyEvent { e ->
-                            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                            when (e.key) {
-                                Key.DirectionDown -> moveInLane(media.mediaId, down = true)
-                                Key.DirectionUp -> moveInLane(media.mediaId, down = false)
-                                else -> false
-                            }
-                        },
-                    onClick = { onCardClick(media) }
-                )
-            }
-
+            ) { media -> card(media) }
             if (hasMore) {
-                item(
-                    key = "load-more",
-                    span = StaggeredGridItemSpan.FullLine
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        LoadMoreButton(
-                            loading = loadingMore,
-                            focusRequester = loadMoreFocus,
-                            onClick = onLoadMore
-                        )
-                    }
-                }
+                item(key = "load-more", span = StaggeredGridItemSpan.FullLine) { loadMore() }
             }
         }
         FocusGlideRing(ownGlide)
@@ -440,12 +514,15 @@ internal fun MediaCard(
     showPlaybackWarning: Boolean,
     modifier: Modifier,
     titleBelow: Boolean = false,
+    // Canal com catálogo: todo card 2:3 com o nome dentro quando não há pôster (altura igual = linhas alinhadas).
+    uniform: Boolean = false,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
     // Com pôster → capa retrato (9:16). Sem pôster (capas ON) → frame 16:9. Capas OFF → placeholder.
     val cover = if (showCover) (media.posterPath ?: media.thumbnailPath)?.let { com.ntv2.app.core.ui.gridCoverUrl(it) } else null
-    val showTitle = !titleBelow && (!showCover || media.posterPath == null)
+    val noPoster = !showCover || media.posterPath == null
+    val showTitle = !uniform && !titleBelow && noPoster
     // Foco: aro verde (cor de destaque do app) com contorno escuro por dentro, desenhado POR CIMA
     // da capa. Só a borda branca sumia em pôsteres claros e o usuário se perdia.
     // Tudo que muda com o foco (aro, fundo) segue UMA fração animada 0..1. Antes o aro e o
@@ -479,7 +556,7 @@ internal fun MediaCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(media.gridAspectRatio(showCover))
+                    .aspectRatio(if (uniform) 2f / 3f else media.gridAspectRatio(showCover))
                     .then(if (titleBelow) Modifier.cardFrame(false, focusFraction, animationsEnabled) else Modifier)
                     // Com capa, o fundo é pintado pela própria CoverWithLoading só até a imagem cobrir o card.
                     .then(if (cover == null) Modifier.background(com.ntv2.app.core.ui.BrandColors.SurfaceAlt) else Modifier)
@@ -505,6 +582,8 @@ internal fun MediaCard(
                         )
                     }
                 }
+
+                if (uniform && noPoster) PlaceholderTitle(media.title)
 
                 // Selos nos cantos, em pílula escura: resolução no topo esquerdo, duração embaixo à direita
                 // (acima da barra de progresso). Só aparecem quando o dado é conhecido.
@@ -573,7 +652,7 @@ internal fun MediaCard(
                 )
             }
             // Com capa, a própria arte identifica o título: o nome só aparece sem capa.
-            if (titleBelow && (!showCover || media.posterPath == null)) {
+            if (!uniform && titleBelow && noPoster) {
                 Text(
                     media.title,
                     color = TEXT_PRIMARY,
@@ -583,6 +662,26 @@ internal fun MediaCard(
                 )
             }
         }
+    }
+}
+
+/** Nome do título dentro do card sem pôster (topo, sobre o placeholder): não muda a altura do card. */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.PlaceholderTitle(title: String) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .fillMaxWidth()
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
+            .padding(horizontal = 10.dp, vertical = 10.dp)
+    ) {
+        Text(
+            title,
+            color = Color.White,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleSmall
+        )
     }
 }
 
@@ -676,7 +775,7 @@ private fun LibraryTabChip(label: String, active: Boolean, onClick: () -> Unit) 
 internal fun LazySeriesGrid(
     series: List<com.ntv2.app.feature.media.domain.SeriesSummary>,
     showCovers: Boolean,
-    state: LazyStaggeredGridState,
+    state: androidx.compose.foundation.lazy.grid.LazyGridState,
     focusRequesterFor: (String) -> FocusRequester,
     onSeriesClick: (com.ntv2.app.feature.media.domain.SeriesSummary) -> Unit,
     onCardFocused: (String) -> Unit = {},
@@ -696,13 +795,15 @@ internal fun LazySeriesGrid(
     val revealMarginPx = with(androidx.compose.ui.platform.LocalDensity.current) { FOCUS_REVEAL_MARGIN.toPx() }
     BoxWithConstraints(modifier = modifier.focusGlideHost(ownGlide)) {
         val columns = columnsForWidthDp(maxWidth.value)
-        LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Fixed(columns),
+        // Grade de linhas fixas: toda série é 2:3 (pôster do catálogo). O mosaico redistribuía os cards
+        // entre as colunas ao rolar e as desalinhava; aqui ↑/↓ também vão sempre ao card de cima/baixo.
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+            columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(columns),
             state = state,
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding,
             horizontalArrangement = Arrangement.spacedBy(horizontalGap),
-            verticalItemSpacing = verticalGap
+            verticalArrangement = Arrangement.spacedBy(verticalGap)
         ) {
             items(items = series, key = { "series_${it.tmdbId}" }) { s ->
                 val id = "series_${s.tmdbId}"
@@ -716,7 +817,7 @@ internal fun LazySeriesGrid(
                         .fillMaxWidth()
                         .focusGlideTarget(id, glide, radius = CARD_RADIUS, scale = com.ntv2.app.core.ui.BRAND_FOCUS_SCALE)
                         .focusRequester(focusRequesterFor(id))
-                        .onFocusChanged { if (it.isFocused) { onCardFocused(id); scope.revealGridItem(state, id, revealMarginPx) } },
+                        .onFocusChanged { if (it.isFocused) { onCardFocused(id); scope.revealFixedGridItem(state, id, revealMarginPx) } },
                     onClick = { onSeriesClick(s) }
                 )
             }
@@ -783,31 +884,11 @@ private fun SeriesGridCard(
                         )
                     }
                 }
+                // Sem capa (opção desligada ou série sem pôster), o nome vai DENTRO do card: embaixo dele
+                // deixava o card mais alto e desalinhava as colunas da grade.
+                if (series.posterUrl == null || !showCover) PlaceholderTitle(series.title)
                 // Selo do protótipo para série.
                 PosterBadge("SÉRIE", Modifier.align(Alignment.BottomStart).padding(8.dp))
-            }
-            // Sem capa (opção desligada ou série sem pôster), o nome aparece sob o placeholder,
-            // igual ao card de filmes.
-            if (titleBelow && (series.posterUrl == null || !showCover)) {
-                Text(
-                    series.title,
-                    color = TEXT_PRIMARY,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = com.ntv2.app.core.ui.NbrType.Chip
-                )
-            } else if (!titleBelow && (series.posterUrl == null || !showCover)) {
-                Text(
-                    series.title,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(CARD_TITLE_H)
-                        .padding(horizontal = 8.dp, vertical = 8.dp)
-                )
             }
         }
     }

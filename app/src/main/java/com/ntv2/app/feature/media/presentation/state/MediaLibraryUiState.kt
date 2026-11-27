@@ -199,6 +199,10 @@ data class MediaLibraryUiState(
     /** Progresso atualizado (0..1) por mediaId, gravado depois que o card foi montado (ex.: ao sair
      *  do player). Os Detalhes usam isto para mostrar Continuar/Recomeçar sem reabrir. */
     val progressOverrides: Map<String, Float> = emptyMap(),
+    /** Temporada escolhida por série (tmdbId) nos detalhes; ausente = a do próximo episódio. */
+    val seriesSeason: Map<Long, Int> = emptyMap(),
+    /** Episódio (mediaId) aberto por último em cada série (tmdbId), pelo histórico. */
+    val seriesLastWatched: Map<Long, String> = emptyMap(),
     val focusRestoreNonce: Long = 0,
     val pendingNavigation: MediaNavigationPayload? = null
 )

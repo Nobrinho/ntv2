@@ -99,6 +99,11 @@ import com.ntv2.app.feature.media.presentation.state.SearchFilterKind
 internal fun SeriesDetailsOverlay(
     series: SeriesSummary,
     episodeProgress: Map<String, Float>,
+    // Temporada escolhida (guardada no ViewModel: sobrevive à ida ao player). null = a do próximo episódio.
+    selectedSeason: Int?,
+    onSelectSeason: (Int) -> Unit,
+    // Episódio aberto por último (histórico); null = deduz pela ordem da série.
+    lastWatchedEpisodeId: String? = null,
     showCovers: Boolean,
     // (episódio, seguintes da série em ordem) — alimentam o autoplay encadeado no player.
     onPlayEpisode: (MediaItemSummary, List<MediaItemSummary>) -> Unit,
@@ -117,13 +122,12 @@ internal fun SeriesDetailsOverlay(
     val episodeFocusMode = isTv && adaptiveInfo.hasKeyNavigation
 
     val seasons = series.seasons.filter { it.episodes.isNotEmpty() }
-    var selectedSeason by remember(series.tmdbId) { mutableStateOf(seasons.firstOrNull()?.number ?: 0) }
-    val current: SeasonSummary? = seasons.firstOrNull { it.number == selectedSeason } ?: seasons.firstOrNull()
-
     val ordered = remember(series.tmdbId) {
         seasons.sortedBy { it.number }.flatMap { s -> s.episodes.sortedBy { it.episodeNumber } }
     }
-    val nextEpisode = ordered.firstOrNull { (episodeProgress[it.mediaId] ?: 0f) <= 0f } ?: ordered.firstOrNull()
+    val nextEpisode = resumeEpisode(ordered, episodeProgress, lastWatchedEpisodeId)
+    val shownSeason = selectedSeason ?: nextEpisode?.seasonNumber ?: seasons.firstOrNull()?.number ?: 0
+    val current: SeasonSummary? = seasons.firstOrNull { it.number == shownSeason } ?: seasons.firstOrNull()
     fun followingOf(ep: MediaItemSummary): List<MediaItemSummary> {
         val i = ordered.indexOfFirst { it.mediaId == ep.mediaId }
         return if (i >= 0) ordered.drop(i + 1) else emptyList()
@@ -248,7 +252,7 @@ internal fun SeriesDetailsOverlay(
                                     }
                             ) {
                                 Icon(NbrIcons.PlayFilled, contentDescription = null, tint = BrandColors.OnCta, modifier = Modifier.size(15.dp))
-                                BrandButtonLabel(playLabel(ep))
+                                BrandButtonLabel(playLabel(ep, episodeProgress[ep.mediaId] ?: 0f))
                             }
                             Text(
                                 ctaHint(ep, episodeProgress[ep.mediaId] ?: 0f, seasons),
@@ -295,7 +299,7 @@ internal fun SeriesDetailsOverlay(
                                     modifier = Modifier
                                         .then(if (index == 0) Modifier.focusRequester(seasonsFocus) else Modifier)
                                         .focusProperties { if (episodes.isNotEmpty()) down = listFocus },
-                                    onClick = { selectedSeason = s.number }
+                                    onClick = { onSelectSeason(s.number) }
                                 )
                             }
                         }
@@ -357,7 +361,7 @@ internal fun SeriesDetailsOverlay(
                                     modifier = Modifier.fillMaxWidth().focusRequester(playFocus)
                                 ) {
                                     Icon(NbrIcons.PlayFilled, contentDescription = null, tint = BrandColors.OnCta, modifier = Modifier.size(20.dp))
-                                    BrandButtonLabel(playLabel(ep))
+                                    BrandButtonLabel(playLabel(ep, episodeProgress[ep.mediaId] ?: 0f))
                                 }
                                 Text(
                                     ctaHint(ep, episodeProgress[ep.mediaId] ?: 0f, seasons),
@@ -423,7 +427,7 @@ internal fun SeriesDetailsOverlay(
                             label = "Temporada ${s.number}",
                             subtitle = "${if (total == 1) "1 episódio" else "$total episódios"} · ${watchedIn(s)} assistidos",
                             selected = s.number == current?.number,
-                            onClick = { selectedSeason = s.number; seasonSheet = false }
+                            onClick = { onSelectSeason(s.number); seasonSheet = false }
                         )
                     }
                 }
@@ -687,11 +691,33 @@ private fun SeriesBackdrop(
     }
 }
 
-/** "Assistir T1 · E3" (sem números: "Assistir"). */
-private fun playLabel(ep: MediaItemSummary): String {
+/**
+ * Episódio do botão principal: parte do episódio visto por último ([lastWatchedId], pelo histórico;
+ * sem ele, o último na ordem da série com progresso). Se ele não
+ * terminou, continua nele; se terminou, vai para o seguinte. Sem nada assistido, o primeiro. Na última
+ * temporada toda vista, cai no primeiro ainda não visto (ou no último, se a série inteira foi vista).
+ */
+internal fun resumeEpisode(
+    ordered: List<MediaItemSummary>,
+    progress: Map<String, Float>,
+    lastWatchedId: String? = null
+): MediaItemSummary? {
+    fun p(ep: MediaItemSummary) = progress[ep.mediaId] ?: 0f
+    val last = ordered.indexOfFirst { it.mediaId == lastWatchedId && p(it) > 0f }
+        .takeIf { it >= 0 } ?: ordered.indexOfLast { p(it) > 0f }
+    if (last < 0) return ordered.firstOrNull()
+    if (p(ordered[last]) < SERIES_WATCHED_FRACTION) return ordered[last]
+    return ordered.getOrNull(last + 1)
+        ?: ordered.firstOrNull { p(it) < SERIES_WATCHED_FRACTION }
+        ?: ordered[last]
+}
+
+/** "Assistir T1 · E3" ou, começado e não terminado, "Continuar T1 · E3" (sem números: só o verbo). */
+private fun playLabel(ep: MediaItemSummary, progress: Float): String {
+    val verb = if (progress > 0f && progress < SERIES_WATCHED_FRACTION) "Continuar" else "Assistir"
     val s = ep.seasonNumber
     val e = ep.episodeNumber
-    return if (s != null && e != null) "Assistir T$s · E$e" else "Assistir"
+    return if (s != null && e != null) "$verb T$s · E$e" else verb
 }
 
 /** "Faltam 22min · Episódio 3 de 10" (o "Faltam" só quando já começou e a duração é conhecida). */

@@ -39,6 +39,7 @@ import com.ntv2.app.core.ui.LocalFocusRestoreSignal
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -121,6 +122,8 @@ fun MediaLibraryScreen(
     var showMyStuff by remember { mutableStateOf(false) }
     // Card selecionado para a tela de Detalhes (overlay estilo Netflix/Prime).
     var detailsMedia by remember { mutableStateOf<MediaCardUi?>(null) }
+    // Conta os ON_RESUME (ex.: voltou do player) para reler o progresso dos Detalhes abertos.
+    var resumeCount by remember { mutableIntStateOf(0) }
     // Série aberta na busca (overlay de temporadas/episódios).
     // Série aberta: guardamos só o tmdbId (rememberSaveable sobrevive à ida ao player) e derivamos a
     // SeriesSummary de state.series/searchSeries (o ViewModel persiste no backstack). Assim, ao
@@ -243,9 +246,20 @@ fun MediaLibraryScreen(
         }
     }
 
+    // Detalhes na tela (abriu, trocou de título ou voltou do player): relê o progresso salvo, para o
+    // "Continuar" bater com o ponto de onde o player retoma — venha a série/filme de onde vier (grade,
+    // busca, recomendação, trilha Continuar).
+    LaunchedEffect(openSeriesTmdbId, seriesDetails != null, resumeCount) {
+        seriesDetails?.let { viewModel.onAction(MediaLibraryAction.OpenSeries(it)) }
+    }
+    LaunchedEffect(detailsMedia?.mediaId, resumeCount) {
+        detailsMedia?.let { viewModel.onAction(MediaLibraryAction.RefreshDetailsProgress(it.mediaId)) }
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                resumeCount++
                 viewModel.onAction(MediaLibraryAction.ScreenResumed)
             }
         }
@@ -557,7 +571,6 @@ fun MediaLibraryScreen(
                         ?.takeIf { media.mediaId.startsWith("series_") }
                     val series = tmdb?.let { id -> state.series.firstOrNull { it.tmdbId == id } }
                     if (series != null) {
-                        viewModel.onAction(MediaLibraryAction.OpenSeries(series))
                         seriesFromSearch = false
                         lastFocusedSeriesId = "series_${series.tmdbId}"
                         openSeriesTmdbId = series.tmdbId
@@ -625,7 +638,6 @@ fun MediaLibraryScreen(
                         cardLoadingStyle = state.cardLoadingStyle,
                         animationsEnabled = state.animationsEnabled,
                         onSeriesClick = { s ->
-                            viewModel.onAction(MediaLibraryAction.OpenSeries(s))
                             seriesFromSearch = false
                             lastFocusedSeriesId = "series_${s.tmdbId}"
                             openSeriesTmdbId = s.tmdbId
@@ -1042,12 +1054,17 @@ fun MediaLibraryScreen(
             SeriesDetailsOverlay(
                 series = series,
                 episodeProgress = state.episodeProgress,
+                selectedSeason = state.seriesSeason[series.tmdbId],
+                lastWatchedEpisodeId = state.seriesLastWatched[series.tmdbId],
+                onSelectSeason = { n -> viewModel.onAction(MediaLibraryAction.SelectSeason(series.tmdbId, n)) },
                 showCovers = state.showCovers,
                 // Episódio abrindo: sai o trailer (nunca toca junto com o player do app).
                 trailerPreviewEnabled = state.trailerPreviewEnabled && !state.isOpeningVideo,
                 animationsEnabled = state.animationsEnabled,
                 onPlayEpisode = { ep, following ->
                     viewModel.onAction(MediaLibraryAction.ClearOpenVideoState)
+                    // Ao voltar do player, os detalhes reabrem na temporada do episódio tocado.
+                    ep.seasonNumber?.let { viewModel.onAction(MediaLibraryAction.SelectSeason(series.tmdbId, it)) }
                     viewModel.onAction(MediaLibraryAction.OpenEpisode(ep, following))
                 },
                 onFilterClick = { filter ->

@@ -475,10 +475,14 @@ class SearchIndexRepository(
         else idx.movies.filter { it.videoMessageId > 0L }.sortedByDescending { it.videoMessageId }
     }
 
-    /** Todas as séries do canal (para montar os cards da biblioteca). Vazio se não cobrir o canal. */
-    suspend fun allSeries(channelId: Long): List<IndexSeries> {
-        val idx = ensureLoaded() ?: return emptyList()
-        return if (idx.channelId == channelId) idx.series else emptyList()
+    /**
+     * Séries do canal para a grade da biblioteca: a que recebeu o episódio postado mais recentemente primeiro
+     * (mesmo critério de [allMovies]); sem episódio postado vão ao fim, na ordem do índice (alfabética).
+     */
+    suspend fun allSeries(channelId: Long): List<IndexSeries> = withContext(computeDispatcher) {
+        val idx = ensureLoaded() ?: return@withContext emptyList()
+        if (idx.channelId != channelId) emptyList()
+        else idx.series.sortedByDescending { latestPostId(it) }
     }
 
     /** Busca local por séries: casa título da série, título de episódio ou código SxxExx. */
@@ -624,6 +628,10 @@ class SearchIndexRepository(
 private const val FAILURE_BACKOFF_MS = 60_000L
 
 /** "generated_at" do índice (ISO-8601 com fuso, ex.: 2026-09-29T05:00:21+00:00) em ms; null se inválido. */
+/** Maior id de mensagem entre os episódios postados da série (0 se nenhum): "postagem mais recente". */
+internal fun latestPostId(series: IndexSeries): Long =
+    series.seasons.maxOfOrNull { s -> s.episodes.maxOfOrNull { it.videoMessageId } ?: 0L } ?: 0L
+
 internal fun parseGeneratedAt(raw: String?): Long? {
     val value = raw?.trim()?.takeIf { it.isNotEmpty() && !it.equals("null", true) } ?: return null
     return runCatching { java.time.OffsetDateTime.parse(value).toInstant().toEpochMilli() }

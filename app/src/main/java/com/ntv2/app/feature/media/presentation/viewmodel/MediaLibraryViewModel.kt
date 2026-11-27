@@ -73,6 +73,10 @@ sealed interface MediaLibraryAction {
     data class SelectTab(val tab: com.ntv2.app.feature.media.presentation.state.LibraryTab) : MediaLibraryAction
     /** Abriu uma série (grade): carrega o progresso salvo dos episódios para o overlay. */
     data class OpenSeries(val series: com.ntv2.app.feature.media.domain.SeriesSummary) : MediaLibraryAction
+    /** Detalhes de filme na tela (abriu ou voltou do player): relê o progresso salvo para o "Continuar". */
+    data class RefreshDetailsProgress(val mediaId: String) : MediaLibraryAction
+    /** Temporada escolhida nos detalhes da série; sobrevive à ida ao player. */
+    data class SelectSeason(val seriesTmdbId: Long, val season: Int) : MediaLibraryAction
     data object ConsumeNavigation : MediaLibraryAction
     data object ConsumeReturnToDetails : MediaLibraryAction
     data object ScreenResumed : MediaLibraryAction
@@ -444,9 +448,22 @@ class MediaLibraryViewModel(
                 refreshTrailerPreviewEnabled()
                 val ids = action.series.seasons.flatMap { s -> s.episodes.map { it.mediaId } }
                 viewModelScope.launch {
-                    val watched = withContext(ioDispatcher) { progressStore.watchedFractions(ids) }
+                    val wanted = ids.toHashSet()
+                    val (watched, lastId) = withContext(ioDispatcher) {
+                        progressStore.watchedFractions(ids) to
+                            // Episódio aberto por último (histórico): é dele que o botão principal parte.
+                            runCatching { progressStore.history() }.getOrDefault(emptyList())
+                                .filter { it.mediaId in wanted }
+                                .maxByOrNull { it.updatedAt }?.mediaId
+                    }
                     val progress = ids.associateWith { watched[it] ?: 0f }
-                    _uiState.update { it.copy(episodeProgress = it.episodeProgress + progress) }
+                    _uiState.update {
+                        it.copy(
+                            episodeProgress = it.episodeProgress + progress,
+                            seriesLastWatched = if (lastId == null) it.seriesLastWatched
+                            else it.seriesLastWatched + (action.series.tmdbId to lastId)
+                        )
+                    }
                 }
             }
 
@@ -510,6 +527,16 @@ class MediaLibraryViewModel(
 
             MediaLibraryAction.ClearHistory -> viewModelScope.launch {
                 withContext(ioDispatcher) { runCatching { progressStore.clearHistory() } }
+            }
+
+            is MediaLibraryAction.RefreshDetailsProgress -> {
+                viewModelScope.launch {
+                    val progress = resumeFraction(action.mediaId)
+                    _uiState.update { it.copy(progressOverrides = it.progressOverrides + (action.mediaId to progress)) }
+                }
+            }
+            is MediaLibraryAction.SelectSeason -> {
+                _uiState.update { it.copy(seriesSeason = it.seriesSeason + (action.seriesTmdbId to action.season)) }
             }
 
             MediaLibraryAction.ConsumeNavigation -> {
@@ -1530,19 +1557,26 @@ class MediaLibraryViewModel(
             mediaRepository.searchChannelVideos(channelId, channelTitle, query, fromMessageId, limit)
         }
 
+    /**
+     * Fração para o botão "Continuar": > 0 só se há posição salva (é dela que o player retoma), em
+     * 0.01..0.99; a duração vem do que o player gravou, então vale para card sem duração conhecida.
+     */
+    private suspend fun resumeFraction(mediaId: String): Float = withContext(ioDispatcher) {
+        runCatching {
+            val saved = progressStore.savedPositions(listOf(mediaId))[mediaId] ?: 0L
+            if (saved <= 0L) 0f
+            else (progressStore.watchedFractions(listOf(mediaId))[mediaId] ?: 0.01f).coerceIn(0.01f, 0.99f)
+        }.getOrDefault(0f)
+    }
+
     /** Progresso gravado/limpo (ex.: ao sair do player): atualiza cards e Detalhes abertos. */
     private fun observeProgressChanges() {
         viewModelScope.launch {
             progressStore.changes.collect { mediaId ->
                 val s = _uiState.value
-                val card = s.returnToDetailsMedia?.takeIf { it.mediaId == mediaId }
-                    ?: s.items.firstOrNull { it.mediaId == mediaId }
-                    ?: s.searchResults.firstOrNull { it.mediaId == mediaId }
-                val totalMs = (card?.durationSeconds ?: 0) * 1_000L
-                val savedMs = withContext(ioDispatcher) {
-                    runCatching { progressStore.savedPositions(listOf(mediaId))[mediaId] }.getOrNull()
-                } ?: 0L
-                val progress = if (totalMs > 0L && savedMs > 0L) (savedMs.toFloat() / totalMs).coerceIn(0f, 1f) else 0f
+                // Pela duração gravada (não a do card: fora da grade, ex. trilha Continuar, ela vinha 0 e
+                // escondia o "Continuar" mesmo com o player retomando do ponto salvo).
+                val progress = resumeFraction(mediaId)
                 // Episódio de uma série já aberta: atualiza o "assistido"/"Faltam" ao voltar do player.
                 val episodeFraction = if (mediaId in s.episodeProgress) {
                     withContext(ioDispatcher) {
